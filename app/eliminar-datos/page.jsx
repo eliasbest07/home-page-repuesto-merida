@@ -5,7 +5,7 @@ export default function Eliminar() {
         <div className="myComponent">
         <br/>
         <br/>
-            <h1>Repuestos Mérida aplicación móvil por Gochos' Group</h1>
+            <h1>Repuestos Mérida aplicación móvil por Gochos&apos; Group</h1>
             <br/>
             <h2>Derecho a la eliminación de tus datos</h2>
             <br/>
