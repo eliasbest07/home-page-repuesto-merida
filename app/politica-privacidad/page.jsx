@@ -19,8 +19,8 @@ export default function Home() {
             <br/>
             <p>
             Es necesaria la recopilación de información personal. Nuestra aplicación solicita recopilar la siguiente información por cada usuario: <br/>
-            Nombre (requerido)<br/>
             <br/>
+            ♦Nombre (requerido)<br/>
             ♦ Ciudad de procedencia (requerido) <br/>
             ♦ Zona de la ciudad (requerido)<br/> 
             ♦ Marca y modelo del vehículo que posee (opcional)<br/>
@@ -31,13 +31,13 @@ export default function Home() {
             ♦ Foto personal (requerido)<br/>
             ♦ Foto de su documento de identidad (requerido)<br/>
             <br/>
-            Usamos tu información personal para proporcionar características y servicios con el fin práctico de la aplicación Repuestos Mérida, para mejorar nuestra aplicación, para garantizar una comunidad y comunicación sana, para que formes parte de la comunidad. Por estas razones es debido para nosotros tener tu información personal para identificarte y referirnos a ti brindándote nuestro mejor servicio.  
+            Usamos tu información personal para proporcionar características y servicios con el fin práctico de la aplicación Repuestos Mérida, para mejorar nuestra aplicación, para garantizar una comunidad coordinada y comunicación sana, para que formes parte de la comunidad. Por estas razones es debido para nosotros tener tu información personal para identificarte y referirnos a ti brindándote nuestro mejor servicio.  
             </p>
             <br/>
             <h2>Recopilación y Uso de Información No Personal</h2>
             <br/>
             <p>
-            También recopilamos información no personal, datos en forma que no permiten la asociación directa con ninguna persona en particular. Podemos recopilar, usar, transferir y divulgar información no personal introducida de forma libre y con total consentimiento, con el propósito de cumplir con nuestro servicio en función para la finalidad de la aplicación que es establecer relaciones comerciales. Además utilizamos esta información para tomar decisiones en cuanto a las necesidades de la comunidad que debemos cubrir.
+            También recopilamos información no personal, datos en forma que no permiten la asociación directa con ninguna persona en particular. Podemos recopilar, usar, transferir y divulgar información no personal introducida de forma libre y con total consentimiento, con el propósito de cumplir con nuestro servicio en función para la finalidad de la aplicación. Además utilizamos esta información para tomar decisiones en cuanto a las necesidades de la comunidad que debemos cubrir.
             </p>
             <br/>
             <h2>Información que ingresas o creas dentro de la aplicación</h2>
