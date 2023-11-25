@@ -8,6 +8,8 @@ export default function Home() {
         <h1>Repuestos Mérida Aplicación móvil. </h1>
         <Image alt="icono aplicación" src={"/iconorm.png"} width={360} height={360} ></Image>
         <Link href="politica-privacidad">Política de Privacidad</Link>
+        <br/>
+        <Link href="eliminar-datos">Derecho a la eliminación de cuenta y datos</Link>
       </div>
     </main>
   )

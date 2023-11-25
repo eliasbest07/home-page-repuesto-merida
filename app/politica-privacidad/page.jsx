@@ -20,7 +20,7 @@ export default function Home() {
             <p>
             Es necesaria la recopilación de información personal. Nuestra aplicación solicita recopilar la siguiente información por cada usuario: <br/>
             <br/>
-            ♦Nombre (requerido)<br/>
+            ♦ Nombre (requerido)<br/>
             ♦ Ciudad de procedencia (requerido) <br/>
             ♦ Zona de la ciudad (requerido)<br/> 
             ♦ Marca y modelo del vehículo que posee (opcional)<br/>
