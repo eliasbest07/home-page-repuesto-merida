@@ -18,6 +18,10 @@ export default function Home() {
         <br/>
         <h2> Gochos&apos; Group </h2>
         <Image alt="logo Gochos Group" src={"/gochosgroup.png"} width={512} height={512} ></Image>
+        <br/>
+        <br/>
+        <h2> Club Andino </h2>
+        <Image alt="logo Club Andino" src={"/club_andino.png"} width={1024} height={1157} ></Image>
       </div>
     </main>
   )
