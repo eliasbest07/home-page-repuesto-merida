@@ -3,6 +3,9 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
+
+const PlazaChat = dynamic(() => import('./components/PlazaChat'), { ssr: false })
 
 // ════════════════════════════════════════════════
 // CONFIGURACIÓN DE CONTACTO
@@ -181,7 +184,9 @@ export default function Home() {
               <a href="#categorias" className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Categorías</a>
               <a href="#catalogo"   className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Catálogo</a>
               <a href="#nosotros"   className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Nosotros</a>
-              <a href="#contacto"   className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Contacto</a>
+              <Link href="/plaza"   className="text-sm font-bold px-3 py-1.5 rounded-lg bg-[#FFD700] text-gray-900 hover:bg-yellow-300 transition-colors">
+                Plaza 🏪
+              </Link>
             </div>
 
             {/* WhatsApp CTA – desktop */}
@@ -218,6 +223,13 @@ export default function Home() {
                 {['Categorías','Catálogo','Nosotros','Contacto'][i]}
               </a>
             ))}
+            <Link
+              href="/plaza"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2 bg-[#FFD700] text-gray-900 font-bold text-sm px-4 py-2.5 rounded-lg"
+            >
+              🏪 Ir a Plaza
+            </Link>
             <a
               href={waUrl('consulta general')}
               target="_blank" rel="noopener noreferrer"
@@ -610,6 +622,9 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {/* ── Plaza AI Chat Widget ── */}
+      <PlazaChat />
 
     </div>
   )
