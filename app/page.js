@@ -502,10 +502,7 @@ export default function Home() {
                 comprometidos con llevar los mejores repuestos automotrices a cada rincón del estado Mérida
                 y la región andina venezolana.
               </p>
-              <p className="text-gray-600 leading-relaxed mb-6">
-                Trabajamos con marcas líderes mundiales como <strong>Bosch, NGK, Mann, Gates, Brembo y Gabriel</strong>,
-                garantizando calidad y compatibilidad para los vehículos más populares del parque automotor venezolano.
-              </p>
+            
 
               {/* Trust icons */}
               <div className="grid grid-cols-2 gap-4">
