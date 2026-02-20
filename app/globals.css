@@ -1,39 +1,160 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Inter:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Variables de Marca ─── */
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  --brand-yellow:     #FFD700;
+  --brand-yellow-h:   #E6C200;
+  --brand-green:      #22C55E;
+  --brand-green-h:    #16A34A;
+  --brand-dark:       #111827;
+  --brand-darker:     #0D1117;
+  --text-primary:     #111827;
+  --text-secondary:   #6B7280;
+  --bg-surface:       #F9FAFB;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+/* ─── Reset base ─── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--text-primary);
+  background-color: #ffffff;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
 }
 
-.myComponent {
-  border-radius: 25px;
-  padding: 0 15%;
-  height: 100%;
-  overflow: auto;
-  background: white;
-  box-sizing: border-box;
+/* ─── Tipografía de marca ─── */
+.font-brand {
+  font-family: 'Montserrat', 'Inter', sans-serif;
+  font-weight: 800;
 }
-h2 {
-  font-size: 24px;
+
+/* ─── Gradiente de marca ─── */
+.text-gradient-brand {
+  background: linear-gradient(135deg, var(--brand-yellow), #FFA500);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Botón WhatsApp ─── */
+.btn-whatsapp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: #25D366;
+  color: white;
+  font-weight: 600;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  white-space: nowrap;
+}
+.btn-whatsapp:hover {
+  background-color: #128C7E;
+  transform: translateY(-1px);
+}
+
+/* ─── Card de producto ─── */
+.product-card {
+  background: white;
+  border-radius: 0.75rem;
+  border: 1px solid #E5E7EB;
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+  overflow: hidden;
+}
+.product-card:hover {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  transform: translateY(-3px);
+}
+
+/* ─── Badge de disponibilidad ─── */
+.badge-available {
+  background-color: #DCFCE7;
+  color: #166534;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+}
+.badge-unavailable {
+  background-color: #FEE2E2;
+  color: #991B1B;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+}
+.badge-featured {
+  background-color: var(--brand-yellow);
+  color: #1A1A1A;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ─── Botón CTA amarillo ─── */
+.btn-brand {
+  background-color: var(--brand-yellow);
+  color: var(--brand-dark);
+  font-weight: 700;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.btn-brand:hover {
+  background-color: var(--brand-yellow-h);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(255, 215, 0, 0.4);
+}
+
+/* ─── Filtro de categorías activo ─── */
+.cat-btn-active {
+  background-color: var(--brand-dark);
+  color: var(--brand-yellow);
+  border-color: var(--brand-dark);
+}
+
+/* ─── Input de búsqueda ─── */
+.search-input {
+  border: 2px solid #E5E7EB;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem 0.75rem 3rem;
+  font-size: 1rem;
+  width: 100%;
+  transition: border-color 0.2s ease;
+  background: white;
+}
+.search-input:focus {
+  outline: none;
+  border-color: var(--brand-yellow);
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.15);
+}
+
+/* ─── Sticky Navbar shadow ─── */
+.navbar-scrolled {
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.35);
+}
+
+/* ─── Scroll suave para anclas ─── */
+section[id] {
+  scroll-margin-top: 72px;
 }
