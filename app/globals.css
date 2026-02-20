@@ -158,3 +158,27 @@ body {
 section[id] {
   scroll-margin-top: 72px;
 }
+
+/* ─── Scrollbar oculta (tabs de categorías en Plaza) ─── */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Line clamp (fallback para navegadores sin soporte nativo) ─── */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ─── Plaza page reset ─── */
+.plaza-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
