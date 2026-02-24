@@ -18,6 +18,7 @@ export default function SolicitarPage() {
   const set = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))
   const canSubmit = form.titulo.trim() && form.descripcion.trim() && form.contacto.trim()
 
+  // ── Pantalla de confirmación ──
   if (submitted) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -34,15 +35,15 @@ export default function SolicitarPage() {
             <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center text-4xl mx-auto mb-6">✅</div>
             <h1 className="font-bold text-2xl text-gray-900 mb-3">¡Solicitud publicada!</h1>
             <p className="text-gray-500 text-sm leading-relaxed mb-6">
-              Tu solicitud de <strong>&ldquo;{form.titulo}&rdquo;</strong> ha sido publicada.
-              Los vendedores que tengan ese repuesto te contactarán directamente por WhatsApp.
+              Tu solicitud de <strong>&ldquo;{form.titulo}&rdquo;</strong> ya está en Plaza.
+              Los usuarios que puedan ayudarte te contactarán por WhatsApp.
             </p>
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-left text-sm text-yellow-900 mb-6">
               <p className="font-semibold mb-1">¿Qué sigue?</p>
               <ul className="space-y-1 text-xs">
-                <li>✔ Vendedores de Plaza verán tu solicitud</li>
+                <li>✔ Los usuarios de Plaza verán tu solicitud</li>
                 <li>✔ Los interesados te escribirán por WhatsApp</li>
-                <li>✔ Tú decides con quién negociar</li>
+                <li>✔ Tú decides con quién acordar</li>
               </ul>
             </div>
             <Link
@@ -70,42 +71,39 @@ export default function SolicitarPage() {
             Plaza
           </Link>
           <span className="text-gray-600">·</span>
-          <div>
-            <span className="text-white font-semibold text-sm">Solicitar Repuesto</span>
-            <span className="text-[10px] text-gray-500 ml-2">Encontrar</span>
-          </div>
+          <span className="text-white font-semibold text-sm">Crear solicitud</span>
         </div>
       </nav>
 
       <main className="max-w-lg mx-auto px-4 pt-24 pb-16">
 
-        {/* Description card */}
+        {/* Info card */}
         <div className="bg-gray-900 rounded-2xl p-5 mb-6 flex gap-3 items-start">
           <span className="text-3xl shrink-0">🔎</span>
           <div>
-            <p className="text-white font-semibold text-sm">¿No encuentras tu repuesto?</p>
+            <p className="text-white font-semibold text-sm">¿No encuentras lo que buscas?</p>
             <p className="text-gray-400 text-xs mt-1 leading-relaxed">
-              Publica lo que necesitas y los vendedores de Plaza te contactarán directamente por WhatsApp. Es gratis y rápido.
+              Publica tu solicitud y los usuarios de Plaza que tengan lo que necesitas te contactarán por WhatsApp. Es gratis y rápido.
             </p>
           </div>
         </div>
 
-        {/* AI Tip */}
-        <div className="border-2 border-yellow-400 bg-yellow-50 rounded-xl px-4 py-3 mb-6 flex gap-2.5">
-          <span className="text-xl shrink-0">🤖</span>
+        {/* Tip Oso */}
+        <div className="border-2 border-yellow-400 bg-yellow-50 rounded-xl px-4 py-3 mb-6 flex gap-2.5 items-start">
+          <img src="/iconorm.png" alt="Oso" className="w-8 h-8 rounded-full shrink-0 object-cover" />
           <p className="text-sm text-yellow-900">
-            <strong>Consejo:</strong> Incluir el modelo exacto de tu vehículo (marca, modelo, año) aumenta las probabilidades de recibir respuestas rápidas.
+            <strong>Oso Frontino Brain:</strong> Cuanto más detallada sea tu solicitud, más rápido recibirás respuestas. Incluye modelo, color, presupuesto u otras características clave.
           </p>
         </div>
 
         {/* Form */}
         <div className="space-y-5 bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
           <div>
-            <label className={LABEL}>¿Qué repuesto necesitas? *</label>
+            <label className={LABEL}>¿Qué estás buscando? *</label>
             <input
               type="text"
               className={FIELD}
-              placeholder="Ej: Filtro de aceite Toyota Hilux 2018"
+              placeholder="Ej: Lavadora usada en buen estado, Clases de guitarra, Silla de oficina…"
               value={form.titulo}
               onChange={set('titulo')}
               maxLength={100}
@@ -113,11 +111,11 @@ export default function SolicitarPage() {
           </div>
 
           <div>
-            <label className={LABEL}>Descripción / Vehículo *</label>
+            <label className={LABEL}>Descripción detallada *</label>
             <textarea
               rows={4}
               className={FIELD}
-              placeholder="Indica: marca del vehículo, modelo, año, motor. Cualquier detalle extra que ayude al vendedor…"
+              placeholder="Describe características importantes, presupuesto máximo, ubicación preferida, urgencia…"
               value={form.descripcion}
               onChange={set('descripcion')}
             />
@@ -136,15 +134,14 @@ export default function SolicitarPage() {
                 onChange={set('contacto')}
               />
             </div>
-            <p className="text-xs text-gray-400 mt-1">Los vendedores te contactarán por aquí.</p>
+            <p className="text-xs text-gray-400 mt-1">Los usuarios te contactarán por aquí.</p>
           </div>
 
-          {/* Image upload (visual only) */}
           <div>
             <label className={LABEL}>Imagen referencial <span className="font-normal text-gray-400">(opcional)</span></label>
             <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center cursor-pointer hover:border-yellow-400 hover:bg-yellow-50 transition-all">
               <span className="text-3xl">🖼️</span>
-              <p className="text-sm text-gray-500 mt-2">Agregar imagen del repuesto</p>
+              <p className="text-sm text-gray-500 mt-2">Agregar imagen de referencia</p>
               <p className="text-xs text-gray-400">JPG o PNG · Máx. 5MB</p>
             </div>
           </div>
@@ -159,7 +156,7 @@ export default function SolicitarPage() {
         </button>
 
         <p className="text-center text-gray-400 text-xs mt-3">
-          Tu solicitud será visible para todos los vendedores registrados en Plaza.
+          Tu solicitud será visible para todos los usuarios de Plaza.
         </p>
       </main>
 

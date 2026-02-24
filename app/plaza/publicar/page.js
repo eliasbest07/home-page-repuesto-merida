@@ -7,24 +7,23 @@ import dynamic from 'next/dynamic'
 const PlazaChat = dynamic(() => import('../../components/PlazaChat'), { ssr: false })
 
 const CATEGORIAS = [
-  'Motor y Transmisión', 'Frenos y Suspensión', 'Sistema Eléctrico',
-  'Carrocería', 'Filtros y Lubricantes', 'Refrigeración', 'Servicios Mecánicos',
+  'Servicios', 'Electrónica', 'Electrodomésticos', 'Hogar', 'Deportes', 'Otros',
 ]
 
 const FIELD = 'border border-gray-200 rounded-xl px-4 py-3 text-sm w-full focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100 transition-all bg-white'
 const LABEL = 'block text-sm font-semibold text-gray-700 mb-1.5'
 
 export default function PublicarPage() {
-  const [step, setStep]         = useState(1)
-  const [submitted, setSubmit]  = useState(false)
-  const [form, setForm]         = useState({
+  const [step, setStep]        = useState(1)
+  const [submitted, setSubmit] = useState(false)
+  const [form, setForm]        = useState({
     titulo: '', descripcion: '', precio: '', categoria: '', contacto: '',
   })
 
   const set = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))
-
   const canNext = form.titulo.trim() && form.descripcion.trim() && form.precio && form.categoria
 
+  // ── Pantalla de confirmación ──
   if (submitted) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -41,15 +40,15 @@ export default function PublicarPage() {
             <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center text-4xl mx-auto mb-6">✅</div>
             <h1 className="font-bold text-2xl text-gray-900 mb-3">¡Publicación enviada!</h1>
             <p className="text-gray-500 text-sm leading-relaxed mb-6">
-              Tu repuesto <strong>&ldquo;{form.titulo}&rdquo;</strong> ha sido enviado para revisión.
-              El equipo de Plaza lo revisará en menos de 24 horas. Te notificaremos cuando esté aprobado.
+              Tu publicación <strong>&ldquo;{form.titulo}&rdquo;</strong> fue enviada para revisión.
+              El equipo de Plaza la revisará en menos de 24 horas.
             </p>
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-left text-sm text-yellow-900 mb-6">
               <p className="font-semibold mb-1">¿Qué sigue?</p>
               <ul className="space-y-1 text-xs">
                 <li>✔ Revisión manual por el equipo Plaza</li>
                 <li>✔ Aprobación o solicitud de correcciones</li>
-                <li>✔ Tu repuesto aparece en el catálogo</li>
+                <li>✔ Tu publicación aparece en el feed de Plaza</li>
               </ul>
             </div>
             <Link
@@ -77,9 +76,8 @@ export default function PublicarPage() {
             Plaza
           </Link>
           <span className="text-gray-600">·</span>
-          <span className="text-white font-semibold text-sm">Publicar Repuesto</span>
+          <span className="text-white font-semibold text-sm">Nueva publicación</span>
         </div>
-        {/* Step indicator */}
         <div className="flex items-center gap-1.5 text-xs text-gray-400">
           {[1, 2].map((s) => (
             <div key={s} className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[11px]
@@ -95,26 +93,26 @@ export default function PublicarPage() {
 
         {/* ── STEP 1 ── */}
         {step === 1 && (
-          <div className="animate-fade-in">
-            <h2 className="font-bold text-xl text-gray-900 mb-1">Información del repuesto</h2>
-            <p className="text-gray-500 text-sm mb-6">Completa los datos de tu publicación.</p>
+          <div>
+            <h2 className="font-bold text-xl text-gray-900 mb-1">¿Qué vas a publicar?</h2>
+            <p className="text-gray-500 text-sm mb-6">Puede ser un objeto, un servicio o cualquier cosa que quieras ofrecer.</p>
 
-            {/* AI Tip */}
-            <div className="border-2 border-yellow-400 bg-yellow-50 rounded-xl px-4 py-3 mb-6 flex gap-2.5">
-              <span className="text-xl shrink-0">🤖</span>
+            {/* Tip Oso */}
+            <div className="border-2 border-yellow-400 bg-yellow-50 rounded-xl px-4 py-3 mb-6 flex gap-2.5 items-start">
+              <img src="/iconorm.png" alt="Oso" className="w-8 h-8 rounded-full shrink-0 object-cover" />
               <p className="text-sm text-yellow-900">
-                <strong>Consejo Plaza AI:</strong> Un buen título incluye marca, modelo y año del vehículo compatible.
-                Ejemplo: <em>&ldquo;Filtro de aceite Toyota Hilux 2018-2022 original&rdquo;</em>
+                <strong>Oso Frontino Brain:</strong> Los títulos descriptivos consiguen más respuestas.
+                Ejemplo: <em>&ldquo;iPhone 12 128GB negro — excelente estado&rdquo;</em> o <em>&ldquo;Clases de inglés online, nivel básico&rdquo;</em>
               </p>
             </div>
 
             <div className="space-y-5 bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <div>
-                <label className={LABEL}>Título del repuesto *</label>
+                <label className={LABEL}>Título de la publicación *</label>
                 <input
                   type="text"
                   className={FIELD}
-                  placeholder="Ej: Filtro de aceite Toyota Hilux 2020"
+                  placeholder="Ej: Lavadora Samsung 20kg, poco uso"
                   value={form.titulo}
                   onChange={set('titulo')}
                   maxLength={100}
@@ -127,7 +125,7 @@ export default function PublicarPage() {
                 <textarea
                   rows={4}
                   className={FIELD}
-                  placeholder="Describe el repuesto: condición (nuevo/usado), marca, número de parte, compatibilidad…"
+                  placeholder="Detalla el estado, marca, modelo, características, condiciones de entrega…"
                   value={form.descripcion}
                   onChange={set('descripcion')}
                 />
@@ -164,21 +162,20 @@ export default function PublicarPage() {
               disabled={!canNext}
               className="mt-6 w-full bg-gray-900 text-yellow-400 font-bold py-3.5 rounded-xl hover:bg-gray-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              Siguiente → Imágenes y contacto
+              Siguiente → Fotos y contacto
             </button>
           </div>
         )}
 
         {/* ── STEP 2 ── */}
         {step === 2 && (
-          <div className="animate-fade-in">
-            <h2 className="font-bold text-xl text-gray-900 mb-1">Imágenes y contacto</h2>
-            <p className="text-gray-500 text-sm mb-6">Agrega fotos del repuesto y tu información de contacto.</p>
+          <div>
+            <h2 className="font-bold text-xl text-gray-900 mb-1">Fotos y contacto</h2>
+            <p className="text-gray-500 text-sm mb-6">Agrega imágenes y tu número para que los interesados te contacten.</p>
 
             <div className="space-y-5 bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-              {/* Image upload placeholder */}
               <div>
-                <label className={LABEL}>Fotos del repuesto (mín. 3 recomendadas)</label>
+                <label className={LABEL}>Fotos (mín. 2 recomendadas)</label>
                 <div className="grid grid-cols-3 gap-3 mt-2">
                   {[1, 2, 3].map((n) => (
                     <div
@@ -190,10 +187,9 @@ export default function PublicarPage() {
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-gray-400 mt-2">JPG o PNG · Máx. 5MB por imagen · Fotos reales del producto</p>
+                <p className="text-xs text-gray-400 mt-2">JPG o PNG · Máx. 5MB · Fotos reales del artículo o servicio</p>
               </div>
 
-              {/* Contact */}
               <div>
                 <label className={LABEL}>Tu número de WhatsApp *</label>
                 <div className="relative">
@@ -208,12 +204,11 @@ export default function PublicarPage() {
                 </div>
               </div>
 
-              {/* Info box */}
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex gap-2.5">
                 <span className="text-lg">📋</span>
                 <div className="text-sm text-blue-900">
                   <p className="font-semibold">Proceso de aprobación</p>
-                  <p className="text-xs mt-0.5 text-blue-700">Tu publicación será revisada en menos de 24 horas. Si hay correcciones te avisamos.</p>
+                  <p className="text-xs mt-0.5 text-blue-700">Revisamos en menos de 24 horas. Si necesitamos correcciones te avisamos por WhatsApp.</p>
                 </div>
               </div>
             </div>
