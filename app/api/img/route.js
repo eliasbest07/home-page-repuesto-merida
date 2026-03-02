@@ -46,9 +46,8 @@ export async function GET(request) {
       })
     }
 
-    const buffer = await upstream.arrayBuffer()
-
-    return new Response(buffer, {
+    // Streaming directo: retransmite el body sin acumularlo en memoria
+    return new Response(upstream.body, {
       status: 200,
       headers: {
         'Content-Type': contentType || 'image/jpeg',
