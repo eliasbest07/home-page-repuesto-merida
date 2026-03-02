@@ -1,20 +1,63 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
-import ANUNCIOS from '../../anuncios.json'
 
 const PlazaChat = dynamic(() => import('../components/PlazaChat'), { ssr: false })
 
 // ════════════════════════════════════════════════
-// DATOS — importados de anuncios.json
-// JSON shape: { id, tipo, titulo, descripcion, precio,
-//               categoria, vendedor, prioridad, ubicacion,
-//               disponible, color, emoji, tiempo,
-//               redes, whatsapp, pagos, fuente }
+// API — datos cargados desde el servidor
 // ════════════════════════════════════════════════
+const API_BASE = 'https://uncandid-overmighty-jodie.ngrok-free.dev'
+const IMG_BASE = `${API_BASE}/public/imagenes_anuncios`
+const PAGE_SIZE = 12
+
+// Construye la URL correcta y la pasa por el proxy /api/img para evitar
+// OpaqueResponseBlocking con ngrok (el proxy añade ngrok-skip-browser-warning).
+function imgUrl(fuente) {
+  if (!fuente) return null
+  let absolute
+  if (fuente.startsWith('http')) absolute = fuente
+  else if (fuente.startsWith('/')) absolute = `${API_BASE}/public${fuente}`
+  else absolute = `${IMG_BASE}/${fuente}`
+  return `/api/img?url=${encodeURIComponent(absolute)}`
+}
+
+// Componente imagen con fallback al emoji cuando falla la carga
+// inline=true → sin absolute (para galería con overflow-hidden)
+function AnuncioImg({ p, emojiClass, inline = false }) {
+  const [err, setErr] = useState(false)
+  const src = imgUrl(p.imagen_ref)
+  if (!src || err) return <span className={`${emojiClass} select-none`}>{p.emoji ?? '📦'}</span>
+  return (
+    <img
+      src={src}
+      alt={p.titulo ?? ''}
+      className={inline ? 'w-full h-full object-cover' : 'absolute inset-0 w-full h-full object-cover'}
+      onError={() => setErr(true)}
+    />
+  )
+}
+
+// Normaliza una fila del DB al shape que espera la UI:
+//  · redes: JSON string → array
+//  · pagos: CSV string  → array
+//  · disponible: 0/1    → boolean
+//  · prioridad: 'alta'  → 'destacado' (para compatibilidad con la UI)
+function normalizeRow(row) {
+  return {
+    ...row,
+    // El driver MySQL auto-parsea columnas JSON → ya puede venir como array
+    redes: Array.isArray(row.redes)
+      ? row.redes
+      : (() => { try { return JSON.parse(row.redes || '[]') } catch { return [] } })(),
+    pagos: row.pagos ? row.pagos.split(',').map(s => s.trim()).filter(Boolean) : [],
+    disponible: Boolean(row.disponible),
+    prioridad: row.prioridad === 'alta' ? 'destacado' : (row.prioridad ?? 'media'),
+  }
+}
 
 // Filtros especiales por tipo (van antes que las categorías)
 const TIPO_FILTROS = {
@@ -22,13 +65,6 @@ const TIPO_FILTROS = {
   'Se vende':    (p) => p.tipo === 'vende' || p.tipo === 'ofrece',
   'Se solicita': (p) => p.tipo === 'busca'  || p.tipo === 'solicita',
 }
-
-// Categorías: tipo-filtros primero, luego las del JSON
-const CATEGORIAS = [
-  'Todos',
-  ...Object.keys(TIPO_FILTROS),
-  ...new Set(ANUNCIOS.map(p => p.categoria).filter(Boolean)),
-]
 
 const CAT_EMOJI = {
   Todos:                '🏪',
@@ -51,9 +87,9 @@ const CAT_EMOJI = {
 
 // Tipo → color de borde del card
 const TIPO_BORDER = {
-  ofrece:        '#FFD700',   // amarillo
+  ofrece:        '#111827',
   vende:         '#FFD700',   // amarillo
-  busca:         '#22C55E',   // verde
+  busca:         '#111827',
   solicita:      '#22C55E',   // verde
   empleo_oferta: '#3B82F6',   // azul
 }
@@ -78,9 +114,10 @@ const waUrl = (item) => {
   return `https://wa.me/${num}?text=${encodeURIComponent(texto)}`
 }
 
-// Si el vendedor es un número de teléfono, mostramos "Por definir"
+// Si el vendedor es un número de teléfono, mostramos "Contactando..."
 const isPhone = (s) => !!s && /^[+\d\s().-]{7,}$/.test(s.trim())
-const vendedorLabel = (s) => (!s || isPhone(s)) ? 'Por definir' : s
+const vendedorLabel = (s) => (!s || isPhone(s)) ? 'Contactando...' : s
+const hasRealName = (s) => !!s && !isPhone(s)
 
 const initials = (name) =>
   name ? name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'
@@ -219,6 +256,7 @@ function AnuncioModal({ item: p, onClose }) {
   const color      = p.color ?? '#9CA3AF'
   const emoji      = p.emoji ?? '📦'
   const disponible = p.disponible !== false
+  const tieneNombre = hasRealName(p.vendedor)
 
   const [comments, setComments] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`plaza-c-${p.id}`) || '[]') }
@@ -258,7 +296,7 @@ function AnuncioModal({ item: p, onClose }) {
       >
         {/* Imagen grande */}
         <div className="relative h-56 sm:h-64 flex items-center justify-center shrink-0" style={{ backgroundColor: color + '22' }}>
-          <span className="text-[7rem] select-none leading-none">{emoji}</span>
+          <AnuncioImg p={p} emojiClass="text-[7rem] leading-none" />
 
           {badge && (
             <span
@@ -321,7 +359,11 @@ function AnuncioModal({ item: p, onClose }) {
             target="_blank"
             rel="noopener noreferrer"
             className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-bold transition-all
-              ${disponible ? 'bg-[#25D366] text-white hover:bg-[#1ebe5d] active:scale-95' : 'bg-gray-100 text-gray-400 pointer-events-none'}`}
+              ${disponible
+                ? tieneNombre
+                  ? 'bg-[#25D366] text-white hover:bg-[#1ebe5d] active:scale-95'
+                  : 'bg-[#3B82F6] text-white hover:bg-[#2563EB] active:scale-95'
+                : 'bg-gray-100 text-gray-400 pointer-events-none'}`}
           >
             {disponible ? (
               <>
@@ -329,7 +371,7 @@ function AnuncioModal({ item: p, onClose }) {
                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/>
                   <path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.558 4.118 1.531 5.845L.054 23.447a.5.5 0 00.609.61l5.703-1.49A11.943 11.943 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.853 0-3.603-.498-5.11-1.371l-.363-.215-3.755.983.998-3.648-.236-.374A9.944 9.944 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
                 </svg>
-                Escribir al WhatsApp
+                {tieneNombre ? 'Escribir al WhatsApp' : 'Confirmar disponibilidad'}
               </>
             ) : 'No disponible'}
           </a>
@@ -395,6 +437,7 @@ function FeedCard({ p, onOpen }) {
   const emoji      = p.emoji      ?? '📦'
   const vendedor   = vendedorLabel(p.vendedor)
   const disponible = p.disponible !== false   // null → true
+  const tieneNombre = hasRealName(p.vendedor)
 
   const metaLine = [p.ubicacion, p.tiempo].filter(Boolean).join(' · ')
 
@@ -437,7 +480,7 @@ function FeedCard({ p, onOpen }) {
         style={{ backgroundColor: color + '18' }}
         onClick={onOpen}
       >
-        <span className="text-8xl select-none">{emoji}</span>
+        <AnuncioImg p={p} emojiClass="text-8xl" />
 
         {(() => { const b = TIPO_BADGE[p.tipo]; return b && (
           <span
@@ -478,7 +521,9 @@ function FeedCard({ p, onOpen }) {
           rel="noopener noreferrer"
           className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-bold transition-all
             ${disponible
-              ? 'bg-[#25D366] text-white hover:bg-[#1ebe5d] active:scale-95'
+              ? tieneNombre
+                ? 'bg-[#25D366] text-white hover:bg-[#1ebe5d] active:scale-95'
+                : 'bg-[#3B82F6] text-white hover:bg-[#2563EB] active:scale-95'
               : 'bg-gray-100 text-gray-400 cursor-not-allowed pointer-events-none'
             }`}
         >
@@ -488,7 +533,7 @@ function FeedCard({ p, onOpen }) {
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/>
                 <path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.558 4.118 1.531 5.845L.054 23.447a.5.5 0 00.609.61l5.703-1.49A11.943 11.943 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.853 0-3.603-.498-5.11-1.371l-.363-.215-3.755.983.998-3.648-.236-.374A9.944 9.944 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
               </svg>
-              Escribir al WhatsApp
+              {tieneNombre ? 'Escribir al WhatsApp' : 'Confirmar disponibilidad'}
             </>
           ) : 'No disponible'}
         </a>
@@ -505,6 +550,7 @@ function DesktopCard({ p, onOpen }) {
   const emoji      = p.emoji      ?? '📦'
   const vendedor   = vendedorLabel(p.vendedor)
   const disponible = p.disponible !== false   // null → true
+  const tieneNombre = hasRealName(p.vendedor)
 
   const metaLine = [p.ubicacion, p.tiempo].filter(Boolean).join(' · ')
 
@@ -542,7 +588,7 @@ function DesktopCard({ p, onOpen }) {
         style={{ backgroundColor: color + '1a' }}
         onClick={onOpen}
       >
-        <span className="text-5xl select-none">{emoji}</span>
+        <AnuncioImg p={p} emojiClass="text-5xl" />
 
         {(() => { const b = TIPO_BADGE[p.tipo]; return b && (
           <span
@@ -581,7 +627,9 @@ function DesktopCard({ p, onOpen }) {
           rel="noopener noreferrer"
           className={`flex items-center justify-center gap-1.5 w-full py-2 rounded-xl text-xs font-bold transition-all
             ${disponible
-              ? 'bg-[#25D366] text-white hover:bg-[#1ebe5d] active:scale-95'
+              ? tieneNombre
+                ? 'bg-[#25D366] text-white hover:bg-[#1ebe5d] active:scale-95'
+                : 'bg-[#3B82F6] text-white hover:bg-[#2563EB] active:scale-95'
               : 'bg-gray-100 text-gray-400 cursor-not-allowed pointer-events-none'
             }`}
         >
@@ -591,7 +639,7 @@ function DesktopCard({ p, onOpen }) {
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/>
                 <path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.558 4.118 1.531 5.845L.054 23.447a.5.5 0 00.609.61l5.703-1.49A11.943 11.943 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.853 0-3.603-.498-5.11-1.371l-.363-.215-3.755.983.998-3.648-.236-.374A9.944 9.944 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
               </svg>
-              Escribir al WhatsApp
+              {tieneNombre ? 'Escribir al WhatsApp' : 'Confirmar disponibilidad'}
             </>
           ) : 'No disponible'}
         </a>
@@ -722,7 +770,7 @@ function MobileImageGallery({ items }) {
                   className="w-[92px] h-[92px] rounded-xl overflow-hidden flex items-center justify-center active:scale-95 transition-transform"
                   style={{ backgroundColor: p.color + '22' }}
                 >
-                  <span className="text-4xl select-none">{p.emoji}</span>
+                  <AnuncioImg p={p} emojiClass="text-4xl" inline />
                 </a>
               ))}
               {group.length < 4 &&
@@ -739,31 +787,313 @@ function MobileImageGallery({ items }) {
 }
 
 // ════════════════════════════════════════════════
+// USER MENU — bottom sheet con sesión y logout
+// ════════════════════════════════════════════════
+function UserMenu({ session, onClose, onLogout }) {
+  const AUTH = { 'Authorization': `Bearer ${session.token}`, 'ngrok-skip-browser-warning': '1', 'Content-Type': 'application/json' }
+
+  const [perfil,        setPerfil]        = useState(null)
+  const [editando,      setEditando]      = useState(false)
+  const [form,          setForm]          = useState({ nombre: '', cedula: '', edad: '', direccion: '' })
+  const [coords,        setCoords]        = useState(null)   // { lat, lng, accuracy }
+  const [geoLoading,    setGeoLoading]    = useState(false)
+  const [geoError,      setGeoError]      = useState(null)
+  const [saving,        setSaving]        = useState(false)
+  const [logoutLoading, setLogoutLoading] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API_BASE}/perfil`, { headers: AUTH })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return
+        setPerfil(data)
+        setForm({ nombre: data.nombre || '', cedula: data.cedula || '', edad: data.edad || '', direccion: data.direccion || '' })
+        if (data.latitud && data.longitud) setCoords({ lat: data.latitud, lng: data.longitud, accuracy: null })
+      })
+      .catch(() => {})
+  }, [])
+
+  async function handleGeolocate() {
+    if (!navigator.geolocation) { setGeoError('Tu dispositivo no soporta geolocalización'); return }
+    setGeoLoading(true)
+    setGeoError(null)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng, accuracy } = pos.coords
+        setCoords({ lat, lng, accuracy: Math.round(accuracy) })
+        try {
+          // Reverse geocoding con Nominatim (OpenStreetMap, gratuito, sin API key)
+          const r = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
+            { headers: { 'Accept-Language': 'es' } }
+          )
+          const geo = await r.json()
+          const a = geo.address || {}
+          // Construir dirección legible priorizando datos más precisos
+          const partes = [
+            a.road || a.pedestrian || a.footway,
+            a.house_number,
+            a.neighbourhood || a.suburb || a.quarter,
+            a.city || a.town || a.village || a.municipality,
+            a.state,
+          ].filter(Boolean)
+          const direccionGeo = partes.join(', ')
+          setForm(f => ({ ...f, direccion: direccionGeo || geo.display_name || f.direccion }))
+        } catch (_) {
+          // Si falla el reverse geocoding igual guardamos las coordenadas
+        }
+        setGeoLoading(false)
+      },
+      (err) => {
+        const msgs = {
+          1: 'Permiso de ubicación denegado',
+          2: 'No se pudo obtener la ubicación',
+          3: 'Tiempo de espera agotado',
+        }
+        setGeoError(msgs[err.code] || 'Error de geolocalización')
+        setGeoLoading(false)
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    )
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const body = { ...form, ...(coords ? { latitud: coords.lat, longitud: coords.lng } : {}) }
+      const res = await fetch(`${API_BASE}/perfil`, { method: 'PUT', headers: AUTH, body: JSON.stringify(body) })
+      if (res.ok) { const d = await res.json(); setPerfil(d); setEditando(false) }
+    } catch (_) {}
+    setSaving(false)
+  }
+
+  async function handleLogout() {
+    setLogoutLoading(true)
+    try { await fetch(`${API_BASE}/auth/logout`, { method: 'POST', headers: AUTH }) } catch (_) {}
+    localStorage.removeItem('plaza_session')
+    onLogout()
+    onClose()
+  }
+
+  const perfilCompleto = perfil?.nombre && perfil?.cedula
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-end justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div
+        className="relative bg-white w-full max-w-lg rounded-t-3xl shadow-2xl max-h-[90vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Handle */}
+        <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mt-4 mb-2 shrink-0" />
+
+        <div className="overflow-y-auto px-6 pb-10 pt-2 space-y-5">
+
+          {/* Avatar + teléfono */}
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-yellow-400 flex items-center justify-center text-2xl shrink-0">
+              {perfilCompleto ? '👤' : '⚠️'}
+            </div>
+            <div>
+              <p className="font-bold text-gray-900 text-base">{perfil?.nombre || 'Sin nombre'}</p>
+              <p className="text-gray-500 text-sm">{session.whatsapp || session.telefono}</p>
+              {!perfilCompleto && (
+                <p className="text-xs text-yellow-600 font-medium mt-0.5">Completa tu perfil</p>
+              )}
+            </div>
+          </div>
+
+          {/* Perfil — vista o formulario */}
+          {editando ? (
+            <div className="space-y-3 bg-gray-50 rounded-2xl p-4">
+              <p className="font-semibold text-gray-800 text-sm mb-1">Editar perfil</p>
+              {[
+                { key: 'nombre', label: 'Nombre completo', placeholder: 'Juan Pérez',      type: 'text'   },
+                { key: 'cedula', label: 'Cédula',          placeholder: 'V-12345678',       type: 'text'   },
+                { key: 'edad',   label: 'Edad',            placeholder: '25',               type: 'number' },
+              ].map(({ key, label, placeholder, type }) => (
+                <div key={key}>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+                  <input
+                    type={type}
+                    value={form[key]}
+                    onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                    placeholder={placeholder}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-yellow-400 bg-white"
+                  />
+                </div>
+              ))}
+
+              {/* Dirección con GPS */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Dirección</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={form.direccion}
+                    onChange={e => setForm(f => ({ ...f, direccion: e.target.value }))}
+                    placeholder="Av. Principal, Mérida"
+                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-yellow-400 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleGeolocate}
+                    disabled={geoLoading}
+                    title="Usar mi ubicación"
+                    className="shrink-0 w-11 h-11 rounded-xl border-2 border-gray-200 flex items-center justify-center hover:border-yellow-400 hover:bg-yellow-50 transition-all disabled:opacity-50"
+                  >
+                    {geoLoading
+                      ? <span className="w-4 h-4 border-2 border-yellow-400/30 border-t-yellow-400 rounded-full animate-spin" />
+                      : <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    }
+                  </button>
+                </div>
+                {coords && (
+                  <p className="text-[11px] text-green-600 mt-1 flex items-center gap-1">
+                    <span>📍</span>
+                    GPS obtenido{coords.accuracy ? ` · precisión ±${coords.accuracy}m` : ''}
+                  </p>
+                )}
+                {geoError && (
+                  <p className="text-[11px] text-red-500 mt-1">{geoError}</p>
+                )}
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setEditando(false)} className="flex-1 border border-gray-200 text-gray-600 font-semibold text-sm py-2.5 rounded-xl hover:bg-gray-100 transition-colors">Cancelar</button>
+                <button onClick={handleSave} disabled={saving} className="flex-1 bg-yellow-400 text-gray-900 font-bold text-sm py-2.5 rounded-xl hover:bg-yellow-300 transition-colors disabled:opacity-50">
+                  {saving ? 'Guardando…' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
+              {[
+                { label: 'Nombre',    value: perfil?.nombre    },
+                { label: 'Cédula',    value: perfil?.cedula    },
+                { label: 'Edad',      value: perfil?.edad ? `${perfil.edad} años` : null },
+                { label: 'Dirección', value: perfil?.direccion },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex justify-between text-sm gap-2">
+                  <span className="text-gray-500 shrink-0">{label}</span>
+                  <span className={`font-medium text-right ${value ? 'text-gray-900' : 'text-gray-300'}`}>{value || '—'}</span>
+                </div>
+              ))}
+              {perfil?.latitud && perfil?.longitud && (
+                <a
+                  href={`https://www.google.com/maps?q=${perfil.latitud},${perfil.longitud}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-green-600 hover:text-green-700 mt-1"
+                >
+                  <span>📍</span>
+                  Ver en mapa · {Number(perfil.latitud).toFixed(5)}, {Number(perfil.longitud).toFixed(5)}
+                </a>
+              )}
+              <button onClick={() => setEditando(true)} className="w-full mt-2 text-yellow-600 font-semibold text-xs hover:text-yellow-700 transition-colors">
+                ✏️ Editar datos
+              </button>
+            </div>
+          )}
+
+          {/* Acciones */}
+          <div className="space-y-2">
+            <Link href="/plaza/publicar" onClick={onClose} className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-yellow-400 text-gray-900 font-semibold text-sm hover:bg-yellow-300 transition-colors">
+              <span>✏️</span> Publicar anuncio
+            </Link>
+            <Link href="/plaza/mis-anuncios" onClick={onClose} className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-gray-100 text-gray-800 font-semibold text-sm hover:bg-gray-200 transition-colors">
+              <span>📋</span> Mis anuncios
+            </Link>
+            <button onClick={handleLogout} disabled={logoutLoading} className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-red-50 text-red-600 font-semibold text-sm hover:bg-red-100 transition-colors disabled:opacity-50">
+              {logoutLoading ? <span className="w-5 h-5 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" /> : <span>🚪</span>}
+              Cerrar sesión
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════
 // PÁGINA PRINCIPAL
 // ════════════════════════════════════════════════
 export default function PlazaPage() {
-  const [catActiva, setCatActiva]     = useState('Todos')
-  const [busqueda, setBusqueda]       = useState('')
+  const [catActiva, setCatActiva]       = useState('Todos')
+  const [busqueda, setBusqueda]         = useState('')
   const [selectedItem, setSelectedItem] = useState(null)
+
+  // ── Sesión de usuario ──
+  const [session,   setSession]   = useState(null)
+  const [menuOpen,  setMenuOpen]  = useState(false)
+
+  useEffect(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('plaza_session') || 'null')
+      if (s?.token) setSession(s)
+    } catch (_) {}
+  }, [])
+
+  // ── Datos desde API ──
+  const [anuncios, setAnuncios] = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [error,    setError]    = useState(null)
+
+  // ── Lazy load mobile ──
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const sentinelRef = useRef(null)
 
   // ── Estado animación desktop ──
   const [allPaused,  setAllPaused]  = useState(false)
   const [hoveredCol, setHoveredCol] = useState(null)
   const idleTimerRef = useRef(null)
 
-  // Reinicia el temporizador de 5s de inactividad
+  // ── Fetch inicial ──
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    fetch(`${API_BASE}/anuncios`, {
+      headers: { 'ngrok-skip-browser-warning': '1' },
+    })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+      .then(data => { if (!cancelled) { if (data[0]) console.log('[Plaza] campos API:', Object.keys(data[0]), '| imagen_ref:', data[0].imagen_ref); setAnuncios(data.map(normalizeRow)); setLoading(false) } })
+      .catch(err => { if (!cancelled) { setError(err.message); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [])
+
+  // ── Categorías dinámicas ──
+  const categorias = useMemo(() => [
+    'Todos',
+    ...Object.keys(TIPO_FILTROS),
+    ...new Set(anuncios.map(p => p.categoria).filter(Boolean)),
+  ], [anuncios])
+
+  // ── Reset lazy load al cambiar filtros ──
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [catActiva, busqueda])
+
+  // ── IntersectionObserver para lazy load mobile ──
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisibleCount(c => c + PAGE_SIZE) },
+      { threshold: 0.1 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [loading, catActiva, busqueda])
+
   const resetIdleTimer = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     idleTimerRef.current = setTimeout(() => setAllPaused(false), 5000)
   }, [])
 
-  // Scroll detectado → pausa todo + inicia temporizador
   const handleDesktopWheel = useCallback(() => {
     setAllPaused(true)
     resetIdleTimer()
   }, [resetIdleTimer])
 
-  // Movimiento de mouse → reinicia temporizador si estamos pausados
   const handleDesktopMouseMove = useCallback(() => {
     if (allPaused) resetIdleTimer()
   }, [allPaused, resetIdleTimer])
@@ -772,7 +1102,8 @@ export default function PlazaPage() {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
   }, [])
 
-  const filtrados = ANUNCIOS
+  const filtrados = anuncios
+    .filter((p) => Boolean(p.whatsapp))
     .filter((p) => {
       if (catActiva === 'Todos') return true
       if (TIPO_FILTROS[catActiva]) return TIPO_FILTROS[catActiva](p)
@@ -790,6 +1121,25 @@ export default function PlazaPage() {
     filtrados.filter((_, i) => i % 3 === 1),
     filtrados.filter((_, i) => i % 3 === 2),
   ]
+
+  // Skeleton card para estado de carga
+  const SkeletonCard = () => (
+    <div className="bg-white border-b sm:border sm:rounded-2xl sm:mb-3 overflow-hidden animate-pulse">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="w-10 h-10 rounded-full bg-gray-200 shrink-0" />
+        <div className="flex-1 space-y-1.5">
+          <div className="h-3 bg-gray-200 rounded w-1/3" />
+          <div className="h-2.5 bg-gray-100 rounded w-1/4" />
+        </div>
+      </div>
+      <div className="h-52 bg-gray-100" />
+      <div className="px-4 pt-3 pb-4 space-y-2">
+        <div className="h-3 bg-gray-200 rounded w-3/4" />
+        <div className="h-5 bg-gray-200 rounded w-1/4" />
+        <div className="h-10 bg-gray-100 rounded-xl mt-3" />
+      </div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -823,11 +1173,22 @@ export default function PlazaPage() {
           >
             + Publicar
           </Link>
+
+          {/* Botón de usuario */}
+          <button
+            onClick={() => session ? setMenuOpen(true) : window.location.href = '/plaza/login'}
+            className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95 bg-gray-700 hover:bg-gray-600"
+            title={session ? 'Mi cuenta' : 'Iniciar sesión'}
+          >
+            {session
+              ? <span className="text-yellow-400 font-bold text-xs">●</span>
+              : <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            }</button>
         </div>
 
-        {/* Categorías */}
+        {/* Categorías dinámicas */}
         <div className="flex gap-2 px-4 pb-3 overflow-x-auto scrollbar-none">
-          {CATEGORIAS.map((cat) => (
+          {categorias.map((cat) => (
             <button
               key={cat}
               onClick={() => { setCatActiva(cat); setBusqueda('') }}
@@ -848,11 +1209,28 @@ export default function PlazaPage() {
       ════════════════════════════ */}
       <main className="md:hidden max-w-lg mx-auto pb-28">
 
+        {/* Error */}
+        {error && (
+          <div className="mx-4 mt-4 p-4 bg-red-50 border border-red-200 rounded-2xl text-center">
+            <p className="text-red-600 font-semibold text-sm">No se pudo conectar con el servidor</p>
+            <p className="text-red-400 text-xs mt-1">{error}</p>
+            <button
+              onClick={() => { setError(null); setLoading(true); fetch(`${API_BASE}/anuncios`, { headers: { 'ngrok-skip-browser-warning': '1' } }).then(r => r.json()).then(d => { setAnuncios(d.map(normalizeRow)); setLoading(false) }).catch(e => { setError(e.message); setLoading(false) }) }}
+              className="mt-3 text-xs font-bold text-red-600 underline"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+
+        {/* Skeleton de carga */}
+        {loading && Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
+
         {/* Galería 2×2 con scroll horizontal */}
-        {filtrados.length > 0 && <MobileImageGallery items={filtrados} />}
+        {!loading && filtrados.length > 0 && <MobileImageGallery items={filtrados} />}
 
         {/* Contador + limpiar */}
-        {(busqueda || catActiva !== 'Todos') && (
+        {!loading && (busqueda || catActiva !== 'Todos') && (
           <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-100">
             <p className="text-gray-500 text-xs">
               <span className="font-bold text-gray-900">{filtrados.length}</span> publicación{filtrados.length !== 1 && 'es'}
@@ -868,7 +1246,7 @@ export default function PlazaPage() {
         )}
 
         {/* Sin resultados */}
-        {filtrados.length === 0 && (
+        {!loading && !error && filtrados.length === 0 && (
           <div className="text-center py-24 px-8">
             <p className="text-5xl mb-4">🔍</p>
             <p className="text-gray-700 font-semibold text-lg">Sin publicaciones</p>
@@ -882,11 +1260,20 @@ export default function PlazaPage() {
           </div>
         )}
 
-        {/* Feed de tarjetas */}
-        {filtrados.map((p) => <FeedCard key={p.id} p={p} onOpen={() => setSelectedItem(p)} />)}
+        {/* Feed de tarjetas — lazy load */}
+        {filtrados.slice(0, visibleCount).map((p) => (
+          <FeedCard key={p.id} p={p} onOpen={() => setSelectedItem(p)} />
+        ))}
+
+        {/* Sentinel: al entrar en viewport carga más */}
+        {!loading && visibleCount < filtrados.length && (
+          <div ref={sentinelRef} className="flex justify-center py-6">
+            <div className="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
 
         {/* Bottom CTA */}
-        {filtrados.length > 0 && (
+        {!loading && filtrados.length > 0 && visibleCount >= filtrados.length && (
           <div className="px-4 pt-4 pb-2">
             <div className="bg-gray-900 rounded-2xl p-5 text-center">
               <p className="text-white font-bold text-base mb-1">¿Tienes algo para publicar?</p>
@@ -919,8 +1306,37 @@ export default function PlazaPage() {
         onWheel={handleDesktopWheel}
         onMouseMove={handleDesktopMouseMove}
       >
+        {/* Skeleton desktop */}
+        {loading && (
+          <div className="flex gap-4 px-6 pt-4" style={{ height: 'calc(100vh - 116px)' }}>
+            {[0, 1, 2].map(i => (
+              <div key={i} className="flex-1 space-y-3">
+                {Array.from({ length: 3 }).map((_, j) => (
+                  <div key={j} className="bg-white rounded-2xl overflow-hidden border border-gray-200 animate-pulse">
+                    <div className="h-36 bg-gray-100" />
+                    <div className="px-3 py-2 space-y-2">
+                      <div className="h-3 bg-gray-200 rounded w-3/4" />
+                      <div className="h-4 bg-gray-200 rounded w-1/4" />
+                      <div className="h-8 bg-gray-100 rounded-xl" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Error desktop */}
+        {!loading && error && (
+          <div className="flex flex-col items-center justify-center py-32">
+            <p className="text-5xl mb-4">⚠️</p>
+            <p className="text-gray-700 font-semibold text-xl">No se pudo cargar</p>
+            <p className="text-gray-400 text-sm mt-1">{error}</p>
+          </div>
+        )}
+
         {/* Filtro activo en desktop */}
-        {(busqueda || catActiva !== 'Todos') && (
+        {!loading && !error && (busqueda || catActiva !== 'Todos') && (
           <div className="flex items-center justify-between px-6 py-2 bg-white border-b border-gray-200">
             <p className="text-gray-500 text-sm">
               <span className="font-bold text-gray-900">{filtrados.length}</span> publicación{filtrados.length !== 1 && 'es'}
@@ -936,7 +1352,7 @@ export default function PlazaPage() {
         )}
 
         {/* Sin resultados desktop */}
-        {filtrados.length === 0 ? (
+        {!loading && !error && filtrados.length === 0 && (
           <div className="flex flex-col items-center justify-center py-32">
             <p className="text-6xl mb-4">🔍</p>
             <p className="text-gray-700 font-semibold text-xl">Sin publicaciones</p>
@@ -948,7 +1364,9 @@ export default function PlazaPage() {
               Crear solicitud →
             </Link>
           </div>
-        ) : (
+        )}
+
+        {!loading && !error && filtrados.length > 0 && (
           <div
             className="flex gap-4 px-6 pt-4"
             style={{ height: 'calc(100vh - 116px)', overflow: 'hidden' }}
@@ -977,6 +1395,15 @@ export default function PlazaPage() {
       {/* Modal de anuncio */}
       {selectedItem && (
         <AnuncioModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+      )}
+
+      {/* Menú de usuario */}
+      {menuOpen && session && (
+        <UserMenu
+          session={session}
+          onClose={() => setMenuOpen(false)}
+          onLogout={() => setSession(null)}
+        />
       )}
 
       <PlazaChat />
