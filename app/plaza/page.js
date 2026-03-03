@@ -58,7 +58,9 @@ function normalizeRow(row) {
     redes: Array.isArray(row.redes)
       ? row.redes
       : (() => { try { return JSON.parse(row.redes || '[]') } catch { return [] } })(),
-    pagos: row.pagos ? row.pagos.split(',').map(s => s.trim()).filter(Boolean) : [],
+    pagos: Array.isArray(row.pagos)
+      ? row.pagos
+      : (row.pagos ? row.pagos.split(',').map(s => s.trim()).filter(Boolean) : []),
     disponible: Boolean(row.disponible),
     prioridad: row.prioridad === 'alta' ? 'destacado' : (row.prioridad ?? 'media'),
   }
