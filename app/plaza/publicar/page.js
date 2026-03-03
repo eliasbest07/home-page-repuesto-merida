@@ -4,10 +4,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage'
+import { firestore, storage } from '../../../lib/firebase'
 
 const PlazaChat = dynamic(() => import('../../components/PlazaChat'), { ssr: false })
-
-const API_BASE = 'https://uncandid-overmighty-jodie.ngrok-free.dev'
 
 const CATEGORIAS = [
   'Gastronomía', 'Salud', 'Electrónica', 'Electrodomésticos',
@@ -81,47 +82,46 @@ export default function PublicarPage() {
     setFotos(prev => prev.filter((_, idx) => idx !== i))
   }
 
-  // ── Submit ──────────────────────────────────────────────────────────────────
+  // ── Submit → Firestore + Storage ────────────────────────────────────────────
   async function handleSubmit() {
-    if (!session?.token) return
+    if (!session) return
     setSending(true)
     setApiError(null)
 
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session.token}`,
-      'ngrok-skip-browser-warning': '1',
-    }
-
     try {
-      // 1. Crear anuncio
-      const res = await fetch(`${API_BASE}/mis-anuncios`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          tipo:        form.tipo,
-          titulo:      form.titulo.trim(),
-          descripcion: form.descripcion.trim(),
-          precio:      Number(form.precio),
-          categoria:   form.categoria,
-          disponible:  true,
-          prioridad:   'media',
-        }),
+      const telefono = session.whatsapp || session.telefono || ''
+
+      // 1. Crear documento en Firestore
+      const docRef = await addDoc(collection(firestore, 'anuncios'), {
+        tipo:        form.tipo,
+        titulo:      form.titulo.trim(),
+        descripcion: form.descripcion.trim(),
+        precio:      Number(form.precio),
+        categoria:   form.categoria,
+        disponible:  true,
+        prioridad:   'media',
+        telefono,
+        whatsapp:    telefono,
+        vendedor:    telefono,
+        redes:       [],
+        pagos:       [],
+        imagen_url:  null,
+        createdAt:   serverTimestamp(),
+        updatedAt:   serverTimestamp(),
       })
 
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || data.details?.join(', ') || `Error ${res.status}`)
+      setNewId(docRef.id)
 
-      const id = data.id
-      setNewId(id)
-
-      // 2. Subir primera foto si existe
+      // 2. Subir imagen a Firebase Storage si existe
       if (fotos.length > 0) {
-        await fetch(`${API_BASE}/anuncios/${id}/imagen/subir`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ dataUrl: fotos[0].dataUrl, fileName: fotos[0].name }),
-        }).catch(() => {})
+        const ext   = fotos[0].name.split('.').pop() || 'jpg'
+        const path  = `imagenes_anuncios/${docRef.id}.${ext}`
+        const imgRef = storageRef(storage, path)
+        await uploadString(imgRef, fotos[0].dataUrl, 'data_url')
+        const url = await getDownloadURL(imgRef)
+        // actualizar el campo imagen_url (import updateDoc en el bloque siguiente)
+        const { updateDoc, doc } = await import('firebase/firestore')
+        await updateDoc(doc(firestore, 'anuncios', docRef.id), { imagen_url: url })
       }
 
       setSubmitted(true)

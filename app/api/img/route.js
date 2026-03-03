@@ -1,5 +1,9 @@
-const ALLOWED_HOST = 'uncandid-overmighty-jodie.ngrok-free.dev'
-const TIMEOUT_MS   = 8000
+const ALLOWED_HOSTS = new Set([
+  'uncandid-overmighty-jodie.ngrok-free.dev',
+  'firebasestorage.googleapis.com',
+  'storage.googleapis.com',
+])
+const TIMEOUT_MS = 8000
 
 // SVG gris como placeholder cuando la imagen no carga
 const PLACEHOLDER = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
@@ -21,7 +25,7 @@ export async function GET(request) {
     return new Response('URL inválida', { status: 400 })
   }
 
-  if (parsed.hostname !== ALLOWED_HOST) {
+  if (!ALLOWED_HOSTS.has(parsed.hostname)) {
     return new Response('Host no permitido', { status: 403 })
   }
 

@@ -4,32 +4,37 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
+import { collection, getDocs } from 'firebase/firestore'
+import { firestore } from '../../lib/firebase'
 
 const PlazaChat = dynamic(() => import('../components/PlazaChat'), { ssr: false })
 
 // ════════════════════════════════════════════════
-// API — datos cargados desde el servidor
+// FUENTE DE DATOS — Firestore
 // ════════════════════════════════════════════════
-const API_BASE = 'https://uncandid-overmighty-jodie.ngrok-free.dev'
-const IMG_BASE = `${API_BASE}/public/imagenes_anuncios`
 const PAGE_SIZE = 12
 
-// Construye la URL correcta y la pasa por el proxy /api/img para evitar
-// OpaqueResponseBlocking con ngrok (el proxy añade ngrok-skip-browser-warning).
+// ngrok ya no se usa para el feed — se mantiene solo para auth
+const API_BASE = 'https://uncandid-overmighty-jodie.ngrok-free.dev'
+
+// URLs de Firebase Storage se sirven directo. Cualquier otra URL va por el proxy.
 function imgUrl(fuente) {
   if (!fuente) return null
-  let absolute
-  if (fuente.startsWith('http')) absolute = fuente
-  else if (fuente.startsWith('/')) absolute = `${API_BASE}/public${fuente}`
-  else absolute = `${IMG_BASE}/${fuente}`
-  return `/api/img?url=${encodeURIComponent(absolute)}`
+  if (fuente.startsWith('http')) {
+    try {
+      const host = new URL(fuente).hostname
+      if (host === 'firebasestorage.googleapis.com' || host.endsWith('.firebasestorage.googleapis.com')) return fuente
+    } catch (_) {}
+    return `/api/img?url=${encodeURIComponent(fuente)}`
+  }
+  return null
 }
 
 // Componente imagen con fallback al emoji cuando falla la carga
 // inline=true → sin absolute (para galería con overflow-hidden)
 function AnuncioImg({ p, emojiClass, inline = false }) {
   const [err, setErr] = useState(false)
-  const src = imgUrl(p.imagen_ref)
+  const src = imgUrl(p.imagen_url || p.imagen_ref)
   if (!src || err) return <span className={`${emojiClass} select-none`}>{p.emoji ?? '📦'}</span>
   return (
     <img
@@ -1048,16 +1053,25 @@ export default function PlazaPage() {
   const [hoveredCol, setHoveredCol] = useState(null)
   const idleTimerRef = useRef(null)
 
-  // ── Fetch inicial ──
+  // ── Fetch inicial — Firestore ──
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetch(`${API_BASE}/anuncios`, {
-      headers: { 'ngrok-skip-browser-warning': '1' },
-    })
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
-      .then(data => { if (!cancelled) { if (data[0]) console.log('[Plaza] campos API:', Object.keys(data[0]), '| imagen_ref:', data[0].imagen_ref); setAnuncios(data.map(normalizeRow)); setLoading(false) } })
+    getDocs(collection(firestore, 'anuncios'))
+      .then(snap => {
+        if (cancelled) return
+        const data = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(d => d.disponible !== false)
+          .sort((a, b) => {
+            const ta = a.creado_en?.seconds ?? 0
+            const tb = b.creado_en?.seconds ?? 0
+            return tb - ta
+          })
+        setAnuncios(data.map(normalizeRow))
+        setLoading(false)
+      })
       .catch(err => { if (!cancelled) { setError(err.message); setLoading(false) } })
     return () => { cancelled = true }
   }, [])
@@ -1215,7 +1229,7 @@ export default function PlazaPage() {
             <p className="text-red-600 font-semibold text-sm">No se pudo conectar con el servidor</p>
             <p className="text-red-400 text-xs mt-1">{error}</p>
             <button
-              onClick={() => { setError(null); setLoading(true); fetch(`${API_BASE}/anuncios`, { headers: { 'ngrok-skip-browser-warning': '1' } }).then(r => r.json()).then(d => { setAnuncios(d.map(normalizeRow)); setLoading(false) }).catch(e => { setError(e.message); setLoading(false) }) }}
+              onClick={() => { setError(null); setLoading(true); getDocs(collection(firestore, 'anuncios')).then(snap => { const data = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.disponible !== false).sort((a, b) => (b.creado_en?.seconds ?? 0) - (a.creado_en?.seconds ?? 0)); setAnuncios(data.map(normalizeRow)); setLoading(false) }).catch(e => { setError(e.message); setLoading(false) }) }}
               className="mt-3 text-xs font-bold text-red-600 underline"
             >
               Reintentar

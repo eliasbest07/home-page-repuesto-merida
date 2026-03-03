@@ -37,3 +37,6 @@ next-env.d.ts
 anuncios_extraidos.json
 anuncios_mejorados.json
 anuncios.json
+
+# Imágenes descargadas de usuarios (datos sensibles)
+/downloads/

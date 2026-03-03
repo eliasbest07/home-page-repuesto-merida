@@ -3,14 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-
-const API_BASE = 'https://uncandid-overmighty-jodie.ngrok-free.dev'
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore'
+import { firestore } from '../../../lib/firebase'
 
 function imgUrl(ref) {
   if (!ref) return null
   if (ref.startsWith('http')) return ref
-  if (ref.startsWith('/')) return `/api/img?url=${encodeURIComponent(`${API_BASE}/public${ref}`)}`
-  return `/api/img?url=${encodeURIComponent(`${API_BASE}/public/imagenes_anuncios/${ref}`)}`
+  return null
 }
 
 const TIPO_LABEL = {
@@ -41,18 +40,22 @@ export default function MisAnunciosPage() {
     }
   }, [router])
 
-  // ── Fetch anuncios ──────────────────────────────────────────────────────────
+  // ── Fetch anuncios desde Firestore ──────────────────────────────────────────
   useEffect(() => {
-    if (!session?.token) return
+    if (!session) return
+    const telefono = session.whatsapp || session.telefono || ''
+    if (!telefono) return
     setLoading(true)
-    fetch(`${API_BASE}/mis-anuncios`, {
-      headers: {
-        'Authorization': `Bearer ${session.token}`,
-        'ngrok-skip-browser-warning': '1',
-      },
-    })
-      .then(r => { if (!r.ok) throw new Error(`Error ${r.status}`); return r.json() })
-      .then(data => { setAnuncios(data); setLoading(false) })
+    const q = query(
+      collection(firestore, 'anuncios'),
+      where('telefono', '==', telefono),
+    )
+    getDocs(q)
+      .then(snap => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        setAnuncios(data)
+        setLoading(false)
+      })
       .catch(err => { setError(err.message); setLoading(false) })
   }, [session])
 
@@ -60,20 +63,12 @@ export default function MisAnunciosPage() {
   async function toggleDisponible(anuncio) {
     setToggling(anuncio.id)
     try {
-      const res = await fetch(`${API_BASE}/anuncios/${anuncio.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.token}`,
-          'ngrok-skip-browser-warning': '1',
-        },
-        body: JSON.stringify({ disponible: !anuncio.disponible }),
+      await updateDoc(doc(firestore, 'anuncios', anuncio.id), {
+        disponible: !anuncio.disponible,
       })
-      if (res.ok) {
-        setAnuncios(prev =>
-          prev.map(a => a.id === anuncio.id ? { ...a, disponible: !a.disponible } : a)
-        )
-      }
+      setAnuncios(prev =>
+        prev.map(a => a.id === anuncio.id ? { ...a, disponible: !a.disponible } : a)
+      )
     } catch (_) {}
     setToggling(null)
   }

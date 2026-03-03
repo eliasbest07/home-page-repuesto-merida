@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Anuncios: lectura pública para el feed
+    // Escritura: cualquiera que envíe los campos requeridos (auth por OTP/WhatsApp en cliente)
+    // Actualizar: solo si el telefono coincide
+    match /anuncios/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['titulo', 'tipo', 'telefono'])
+                    && request.resource.data.titulo is string
+                    && request.resource.data.titulo.size() > 0;
+      allow update: if request.resource.data.telefono == resource.data.telefono
+                    || request.auth != null;
+      allow delete: if request.auth != null;
+    }
+
+    // Imágenes y datos de verificación — solo admin
+    match /usuarios_plaza/{telefono} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
