@@ -19,13 +19,19 @@ const API_BASE = 'https://uncandid-overmighty-jodie.ngrok-free.dev'
 
 // URLs de Firebase Storage se sirven directo. Cualquier otra URL va por el proxy.
 function imgUrl(fuente) {
-  if (!fuente) return null
-  if (fuente.startsWith('http')) {
+  // Soporte para array: usa el primer elemento
+  const url = Array.isArray(fuente) ? fuente[0] : fuente
+  if (!url) return null
+  if (url.startsWith('http')) {
     try {
-      const host = new URL(fuente).hostname
-      if (host === 'firebasestorage.googleapis.com' || host.endsWith('.firebasestorage.googleapis.com')) return fuente
+      const host = new URL(url).hostname
+      if (
+        host === 'storage.googleapis.com' ||
+        host === 'firebasestorage.googleapis.com' ||
+        host.endsWith('.firebasestorage.googleapis.com')
+      ) return url
     } catch (_) {}
-    return `/api/img?url=${encodeURIComponent(fuente)}`
+    return `/api/img?url=${encodeURIComponent(url)}`
   }
   return null
 }
@@ -34,7 +40,9 @@ function imgUrl(fuente) {
 // inline=true → sin absolute (para galería con overflow-hidden)
 function AnuncioImg({ p, emojiClass, inline = false }) {
   const [err, setErr] = useState(false)
-  const src = imgUrl(p.imagen_url || p.imagen_ref)
+  // imagen_url puede ser array (nuevo) o string (legado)
+  const rawUrl = Array.isArray(p.imagen_url) ? p.imagen_url[0] : (p.imagen_url || p.imagen_ref)
+  const src = imgUrl(rawUrl)
   if (!src || err) return <span className={`${emojiClass} select-none`}>{p.emoji ?? '📦'}</span>
   return (
     <img
