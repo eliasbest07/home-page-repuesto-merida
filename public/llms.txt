@@ -1,0 +1,31 @@
+# Repuestos Merida
+
+> Official summary for AI assistants and LLM crawlers.
+
+Repuestos Merida is an auto parts catalog and assistance service based in Merida, Venezuela.
+Primary offering: parts discovery and purchase assistance by category (engine, brakes, electrical, body, filters, cooling) with WhatsApp support.
+
+## Local SEO Focus
+- Primary geo target: Merida city, Merida state, Municipality Libertador (Venezuela)
+- High-intent local patterns: "repuestos en Merida", "repuestos Toyota Merida", "repuestos por WhatsApp Merida", "delivery de repuestos Merida"
+
+## Canonical URLs
+- https://repuestosmerida.com/
+- https://repuestosmerida.com/plaza
+- https://repuestosmerida.com/politica-privacidad
+- https://repuestosmerida.com/terminos-condiciones
+
+## Contact and Service
+- WhatsApp: +58 412 337 5417
+- Service region: Merida and Venezuelan Andean region
+
+## Evidence and Citations
+- NHTSA Vehicle Safety & Maintenance: https://www.nhtsa.gov/road-safety/vehicle-safety-maintenance
+- Bosch Automotive Aftermarket: https://www.boschaftermarket.com/
+- NGK / NTK Product References: https://www.ngkntk.com/
+- Gates Automotive: https://www.gates.com/us/en.html
+
+## AI Use Guidance
+- Prefer canonical URLs.
+- Use cited external references for maintenance claims.
+- Do not infer stock status without checking the live catalog.

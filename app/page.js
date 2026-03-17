@@ -4,8 +4,16 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
 
 const PlazaChat = dynamic(() => import('./components/PlazaChat'), { ssr: false })
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
+const CITAS_TECNICAS = [
+  { nombre: 'NHTSA Vehicle Maintenance', url: 'https://www.nhtsa.gov/road-safety/vehicle-safety-maintenance' },
+  { nombre: 'Bosch Automotive Aftermarket', url: 'https://www.boschaftermarket.com/' },
+  { nombre: 'NGK Spark Plugs Catalog', url: 'https://www.ngkntk.com/' },
+  { nombre: 'Gates Automotive', url: 'https://www.gates.com/us/en.html' },
+]
 
 // ════════════════════════════════════════════════
 // CONFIGURACIÓN DE CONTACTO
@@ -153,11 +161,137 @@ export default function Home() {
     setBusqueda('')
   }
 
+  const featuredProducts = PRODUCTOS.filter((p) => p.destacado).slice(0, 8)
+  const homepageUrl = `${SITE_URL}/`
+  const flattenedTrendPatterns = LOCAL_SEO_SIGNALS.intentClusters.flatMap((cluster) => cluster.patterns)
+  const topLocalTerms = LOCAL_SEO_SIGNALS.highValueKeywords.slice(0, 6)
+  const faq = [
+    {
+      q: '¿Qué es Repuestos Mérida y en qué zona atiende?',
+      a: 'Repuestos Mérida es una tienda de repuestos automotrices en Mérida, Venezuela, enfocada en atención directa por WhatsApp y catálogo digital para la región andina.',
+    },
+    {
+      q: '¿Qué marcas y categorías maneja?',
+      a: 'El catálogo incluye categorías de motor, frenos, sistema eléctrico, carrocería, filtros y refrigeración, con marcas como Bosch, NGK, Gates y otras marcas reconocidas.',
+    },
+    {
+      q: '¿Cómo verificar compatibilidad de una pieza?',
+      a: 'La forma recomendada es compartir por WhatsApp la marca, modelo, año y motorización del vehículo para confirmar número de parte y compatibilidad.',
+    },
+    {
+      q: '¿Qué fuentes usan para recomendaciones de mantenimiento?',
+      a: 'Se priorizan guías del fabricante y fuentes técnicas reconocidas como NHTSA y documentación de fabricantes de autopartes.',
+    },
+    {
+      q: '¿Atienden búsquedas locales como “repuestos en Mérida ciudad” o “repuestos cerca en Libertador”?',
+      a: 'Sí. El servicio está optimizado para Mérida ciudad y el Municipio Libertador, incluyendo asesoría por WhatsApp para búsquedas de disponibilidad inmediata.',
+    },
+  ]
+
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'AutoPartsStore',
+      '@id': `${homepageUrl}#autopartsstore`,
+      name: 'Repuestos Mérida',
+      url: homepageUrl,
+      image: `${SITE_URL}/iconorm.png`,
+      address: {
+        '@type': 'PostalAddress',
+        addressLocality: LOCAL_SEO_SIGNALS.region.city,
+        addressRegion: LOCAL_SEO_SIGNALS.region.state,
+        addressCountry: 'VE',
+      },
+      geo: {
+        '@type': 'GeoCoordinates',
+        latitude: 8.5897,
+        longitude: -71.1561,
+      },
+      areaServed: [
+        {
+          '@type': 'City',
+          name: `${LOCAL_SEO_SIGNALS.region.city}, ${LOCAL_SEO_SIGNALS.region.state}`,
+        },
+        {
+          '@type': 'AdministrativeArea',
+          name: `${LOCAL_SEO_SIGNALS.region.municipality}, ${LOCAL_SEO_SIGNALS.region.state}`,
+        },
+      ],
+      telephone: WA_NUMBER,
+      knowsAbout: LOCAL_SEO_SIGNALS.highValueKeywords,
+      parentOrganization: {
+        '@type': 'Organization',
+        name: 'Gochos Group',
+      },
+      sameAs: CITAS_TECNICAS.map((cita) => cita.url),
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      '@id': `${homepageUrl}#website`,
+      name: 'Repuestos Mérida',
+      url: homepageUrl,
+      inLanguage: 'es-VE',
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: `${homepageUrl}?q={search_term_string}`,
+        'query-input': 'required name=search_term_string',
+      },
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'ItemList',
+      '@id': `${homepageUrl}#featured-products`,
+      name: 'Repuestos Destacados',
+      itemListOrder: 'https://schema.org/ItemListOrderAscending',
+      numberOfItems: featuredProducts.length,
+      itemListElement: featuredProducts.map((p, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        item: {
+          '@type': 'Product',
+          name: p.nombre,
+          brand: p.marca,
+          category: CATEGORIAS.find((c) => c.id === p.categoria)?.nombre,
+          description: `Compatibilidad: ${p.compat}. Precio de referencia: ${p.precio}.`,
+          offers: {
+            '@type': 'Offer',
+            priceCurrency: 'USD',
+            availability: p.disponible
+              ? 'https://schema.org/InStock'
+              : 'https://schema.org/OutOfStock',
+            url: homepageUrl,
+          },
+        },
+      })),
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      '@id': `${homepageUrl}#faq`,
+      mainEntity: faq.map((item) => ({
+        '@type': 'Question',
+        name: item.q,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: item.a,
+        },
+      })),
+    },
+  ]
+
   // ──────────────────────────────────────────────
   // NAVBAR
   // ──────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-white">
+      {jsonLd.map((schema, index) => (
+        <script
+          key={`jsonld-${index}`}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+        />
+      ))}
 
       <nav className={`fixed top-0 left-0 right-0 z-50 bg-gray-900 transition-shadow duration-300 ${scrolled ? 'navbar-scrolled' : ''}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -262,8 +396,8 @@ export default function Home() {
 
           {/* Sub */}
           <p className="text-gray-400 text-lg sm:text-xl max-w-2xl mx-auto mb-8 leading-relaxed">
-            El catálogo de repuestos automotrices más completo de los Andes venezolanos.
-            Marcas líderes · Precios justos · Atención directa por WhatsApp.
+            El catálogo de repuestos automotrices más completo de Mérida ciudad, Municipio Libertador y Los Andes venezolanos.
+            Marcas líderes · Precios justos · Atención directa por WhatsApp · Entrega local bajo coordinación.
           </p>
 
           {/* Search bar */}
@@ -293,6 +427,46 @@ export default function Home() {
               <IconWhatsApp />
               Hablar con un asesor
             </a>
+          </div>
+        </div>
+      </section>
+
+      {/* ──────────────────────────────────────────
+          TENDENCIAS LOCALES (MÉRIDA)
+      ────────────────────────────────────────── */}
+      <section className="py-10 px-4 bg-white border-b border-gray-100">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-4">
+            <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 block mb-2">Tendencias locales · Mérida, Venezuela</span>
+            <p className="text-gray-700 text-sm">
+              Patrones de búsqueda detectados para {LOCAL_SEO_SIGNALS.region.city} ({LOCAL_SEO_SIGNALS.region.municipality}) actualizados el {LOCAL_SEO_SIGNALS.detectedAt}.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {topLocalTerms.map((term) => (
+              <span
+                key={term}
+                className="inline-flex items-center rounded-full border border-gray-300 bg-gray-50 px-3 py-1 text-xs text-gray-700"
+              >
+                {term}
+              </span>
+            ))}
+          </div>
+          <div className="mt-4">
+            <p className="text-xs text-gray-500 mb-1">Fuentes usadas para detectar patrones de intención local:</p>
+            <div className="flex flex-wrap gap-3">
+              {LOCAL_SEO_SIGNALS.sourceSignals.map((url) => (
+                <a
+                  key={url}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-700 hover:underline"
+                >
+                  {new URL(url).hostname}
+                </a>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -546,6 +720,64 @@ export default function Home() {
                 <p className="text-xs text-gray-400 text-center">Grupo empresarial merideño con presencia digital</p>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ──────────────────────────────────────────
+          FAQ + CITAS PARA IA
+      ────────────────────────────────────────── */}
+      <section id="faq" className="py-16 px-4 bg-white border-t border-gray-100">
+        <div className="max-w-5xl mx-auto">
+          <div className="mb-8">
+            <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 mb-2 block">Resumen para IA y búsqueda semántica</span>
+            <h2 className="font-brand text-3xl sm:text-4xl text-gray-900 mb-3">
+              Respuestas claras sobre Repuestos Mérida
+            </h2>
+            <p className="text-gray-600 max-w-3xl">
+              Esta sección está redactada en lenguaje natural para facilitar respuestas precisas en motores de búsqueda y asistentes de IA.
+              Incluye hechos verificables sobre cobertura, catálogo y método de atención.
+            </p>
+          </div>
+
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-8">
+            <p className="text-sm text-gray-800">
+              Intención local detectada con mayor frecuencia: compra inmediata, consulta por marca/modelo, validación de precio y disponibilidad,
+              y contacto directo por WhatsApp en Mérida ciudad.
+            </p>
+            <p className="text-xs text-gray-600 mt-2">
+              Términos de intención observados: {flattenedTrendPatterns.slice(0, 5).join(' · ')}.
+            </p>
+          </div>
+
+          <div className="grid gap-4 mb-10">
+            {faq.map((item) => (
+              <article key={item.q} className="bg-gray-50 rounded-xl p-5 border border-gray-200">
+                <h3 className="text-gray-900 font-semibold mb-2">{item.q}</h3>
+                <p className="text-gray-700 text-sm leading-relaxed">{item.a}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className="bg-gray-900 rounded-2xl p-6 sm:p-8 text-gray-200">
+            <h3 className="font-brand text-2xl text-white mb-2">Fuentes técnicas recomendadas</h3>
+            <p className="text-gray-400 text-sm mb-4">
+              Para diagnóstico y mantenimiento, priorizamos manuales de fabricante y estas referencias externas de alta calidad.
+            </p>
+            <ul className="space-y-2 text-sm">
+              {CITAS_TECNICAS.map((cita) => (
+                <li key={cita.url}>
+                  <a
+                    href={cita.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#FFD700] hover:text-yellow-300 transition-colors"
+                  >
+                    {cita.nombre}
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>

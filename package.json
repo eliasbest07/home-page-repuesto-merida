@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "seo:audit": "node scripts/technical-seo-audit.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

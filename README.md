@@ -20,6 +20,22 @@ You can start editing the page by modifying `app/page.js`. The page auto-updates
 
 This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
 
+## Technical SEO Audit
+
+Run the automated technical SEO audit:
+
+```bash
+npm run seo:audit -- --url https://your-domain.com
+```
+
+Optional flags:
+
+```bash
+npm run seo:audit -- --url https://your-domain.com --max-pages 80 --timeout-ms 20000
+```
+
+The report is returned as JSON and covers crawlability, indexability, security, URL structure, mobile checks, Core Web Vitals proxy diagnostics, structured data, JavaScript rendering, and AI crawler policy guidance (GPTBot, ChatGPT-User, ClaudeBot, PerplexityBot, Bytespider, Google-Extended).
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
