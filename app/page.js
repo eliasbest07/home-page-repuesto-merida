@@ -5,6 +5,9 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
+import { collection, getDocs } from 'firebase/firestore'
+import { get, ref } from 'firebase/database'
+import { firestore, rtdb } from '@/lib/firebase'
 
 const PlazaChat = dynamic(() => import('./components/PlazaChat'), { ssr: false })
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
@@ -85,6 +88,104 @@ const PRODUCTOS = [
   { id: 39, nombre: 'Tapa de Radiador (Presión)',        categoria: 'refrigeracion', precio: '$5 – $15',    marca: 'Stant / OEM',         compat: 'Universal',                            disponible: true,  destacado: false },
 ]
 
+const HOME_CATEGORY_KEYWORDS = [
+  { id: 'motor', terms: ['motor', 'transmision', 'transmisión', 'correa', 'empaque', 'culata', 'reten', 'retén'] },
+  { id: 'frenos', terms: ['freno', 'suspension', 'suspensión', 'amortiguador', 'rotula', 'rótula', 'muñon', 'muñón', 'disco'] },
+  { id: 'electrico', terms: ['electr', 'bateria', 'batería', 'alternador', 'arranque', 'sensor', 'bujia', 'bujía', 'bobina'] },
+  { id: 'carroceria', terms: ['carroceria', 'carrocería', 'parachoque', 'faro', 'retrovisor', 'guardafango', 'stop', 'espejo'] },
+  { id: 'filtros', terms: ['filtro', 'aceite', 'lubric', 'liquido', 'liquido', 'líquido', 'grasa'] },
+  { id: 'refrigeracion', terms: ['radiador', 'refriger', 'termostato', 'bomba de agua', 'manguera', 'anticongelante'] },
+]
+
+function normalizeText(value = '') {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function inferHomeCategory(item) {
+  const haystack = normalizeText([
+    item.categoria,
+    item.marca,
+    item.descripcion,
+    item.modelos,
+    item.vehiculo,
+  ].filter(Boolean).join(' '))
+
+  for (const category of HOME_CATEGORY_KEYWORDS) {
+    if (category.terms.some((term) => haystack.includes(term))) {
+      return category.id
+    }
+  }
+
+  return 'motor'
+}
+
+function formatPrice(value) {
+  if (value === null || value === undefined || value === '') return 'Consultar'
+  const raw = String(value).trim()
+  if (!raw) return 'Consultar'
+  if (raw.startsWith('$')) return raw
+  const number = Number(raw.replace(/[^\d.]/g, ''))
+  if (!Number.isFinite(number) || number <= 0) return raw
+  return `$${number}`
+}
+
+function normalizeHomeProduct(item, id) {
+  const img = Array.isArray(item.img) ? item.img[0] : item.img
+  const nombre =
+    item.marca ||
+    item.categoria ||
+    item.descripcion ||
+    item.vehiculo ||
+    'Repuesto'
+
+  const compat =
+    item.modelos ||
+    item.vehiculo ||
+    item.descripcion ||
+    'Consulta compatibilidad por WhatsApp'
+
+  return {
+    id,
+    nombre,
+    categoria: inferHomeCategory(item),
+    precio: formatPrice(item.precio),
+    marca: item.categoria || item.vehiculo || 'Catálogo Mérida',
+    compat: String(compat).slice(0, 120),
+    disponible: item.publicado !== 'agotado' && item.estado !== 'agotado',
+    destacado: item.relevancia === '0' || item.relevancia === 0,
+    imagen: typeof img === 'string' ? img : '',
+    whatsapp: item.whatsapp || WA_NUMBER,
+    descripcion: item.descripcion || '',
+    userID: item.userID || '',
+  }
+}
+
+function buildSellerMapUrl(user = {}) {
+  if (user.googleMapsUrl) return user.googleMapsUrl
+
+  const query = [
+    user.ubicacion,
+    user.zona,
+    user.ciudad,
+  ].filter(Boolean).join(', ')
+
+  if (!query) return 'https://maps.google.com/'
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+}
+
+function openOsoForProduct(producto) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('plaza-chat:open-prompt', {
+    detail: {
+      prompt: `Consulta repuesto: ${producto.nombre}`,
+    },
+  }))
+}
+
 // ════════════════════════════════════════════════
 // ÍCONOS SVG INLINE
 // ════════════════════════════════════════════════
@@ -130,6 +231,11 @@ const IconShield = () => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
   </svg>
 )
+const IconStore = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9.5 4.5 4h15L21 9.5M5 10v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8M9 19v-5h6v5M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0" />
+  </svg>
+)
 
 // ════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -139,6 +245,10 @@ export default function Home() {
   const [busqueda, setBusqueda]     = useState('')
   const [scrolled, setScrolled]     = useState(false)
   const [menuOpen, setMenuOpen]     = useState(false)
+  const [catalogo, setCatalogo]     = useState(PRODUCTOS)
+  const [catalogoError, setCatalogoError] = useState('')
+  const [usersById, setUsersById]   = useState({})
+  const [rutaTienda, setRutaTienda] = useState(null)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60)
@@ -146,13 +256,61 @@ export default function Home() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  const productosFiltrados = PRODUCTOS.filter((p) => {
+  useEffect(() => {
+    let cancelled = false
+
+    getDocs(collection(firestore, 'merida'))
+      .then((snap) => {
+        if (cancelled) return
+
+        const items = snap.docs
+          .map((doc) => normalizeHomeProduct(doc.data(), doc.id))
+          .filter((item) => item.imagen)
+
+        if (items.length > 0) {
+          setCatalogo(items)
+          setCatalogoError('')
+        } else {
+          setCatalogo(PRODUCTOS)
+          setCatalogoError('La colección de repuestos no devolvió imágenes visibles.')
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        setCatalogo(PRODUCTOS)
+        setCatalogoError('No se pudo cargar el catálogo de repuestos desde Firebase.')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    get(ref(rtdb, 'users'))
+      .then((snapshot) => {
+        if (cancelled) return
+        setUsersById(snapshot.exists() ? snapshot.val() : {})
+      })
+      .catch(() => {
+        if (!cancelled) setUsersById({})
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const productosFiltrados = catalogo.filter((p) => {
     const matchCat    = catActiva === 'todos' || p.categoria === catActiva
     const q           = busqueda.toLowerCase()
     const matchSearch = !q ||
       p.nombre.toLowerCase().includes(q) ||
       p.marca.toLowerCase().includes(q)  ||
-      p.compat.toLowerCase().includes(q)
+      p.compat.toLowerCase().includes(q) ||
+      (p.descripcion || '').toLowerCase().includes(q)
     return matchCat && matchSearch
   })
 
@@ -161,7 +319,7 @@ export default function Home() {
     setBusqueda('')
   }
 
-  const featuredProducts = PRODUCTOS.filter((p) => p.destacado).slice(0, 8)
+  const featuredProducts = catalogo.filter((p) => p.destacado).slice(0, 8)
   const homepageUrl = `${SITE_URL}/`
   const flattenedTrendPatterns = LOCAL_SEO_SIGNALS.intentClusters.flatMap((cluster) => cluster.patterns)
   const topLocalTerms = LOCAL_SEO_SIGNALS.highValueKeywords.slice(0, 6)
@@ -187,6 +345,16 @@ export default function Home() {
       a: 'Sí. El servicio está optimizado para Mérida ciudad y el Municipio Libertador, incluyendo asesoría por WhatsApp para búsquedas de disponibilidad inmediata.',
     },
   ]
+
+  function openStoreRoute(producto) {
+    const user = usersById?.[producto.userID] || null
+    setRutaTienda({
+      producto,
+      user,
+      mapUrl: buildSellerMapUrl(user || {}),
+      routeImage: user?.rutaImg || user?.routeImage || '/ruta-tienda.jpg',
+    })
+  }
 
   const jsonLd = [
     {
@@ -318,6 +486,7 @@ export default function Home() {
               <a href="#categorias" className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Categorías</a>
               <a href="#catalogo"   className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Catálogo</a>
               <a href="#nosotros"   className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Nosotros</a>
+              <a href="#servicios"  className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Servicios</a>
               <Link href="/plaza"   className="text-sm font-bold px-3 py-1.5 rounded-lg bg-[#FFD700] text-gray-900 hover:bg-yellow-300 transition-colors">
                 Plaza 🏪
               </Link>
@@ -347,23 +516,32 @@ export default function Home() {
         {/* Menú móvil */}
         {menuOpen && (
           <div className="md:hidden bg-gray-800 border-t border-gray-700 px-4 py-4 space-y-3">
-            {['#categorias','#catalogo','#nosotros','#contacto'].map((href, i) => (
+            {['#categorias','#catalogo','#nosotros','#contacto','#servicios'].map((href, i) => (
               <a
                 key={href}
                 href={href}
                 onClick={() => setMenuOpen(false)}
                 className="block text-gray-300 hover:text-[#FFD700] text-sm font-medium py-2 transition-colors"
               >
-                {['Categorías','Catálogo','Nosotros','Contacto'][i]}
+                {['Categorías','Catálogo','Nosotros','Contacto','Servicios'][i]}
               </a>
             ))}
-            <Link
-              href="/plaza"
-              onClick={() => setMenuOpen(false)}
-              className="flex items-center gap-2 bg-[#FFD700] text-gray-900 font-bold text-sm px-4 py-2.5 rounded-lg"
-            >
-              🏪 Ir a Plaza
-            </Link>
+            <div className="flex gap-2 pt-1">
+              <Link
+                href="/plaza"
+                onClick={() => setMenuOpen(false)}
+                className="flex-1 flex items-center justify-center gap-2 bg-[#FFD700] text-gray-900 font-bold text-sm px-4 py-2.5 rounded-lg"
+              >
+                🏪 Plaza
+              </Link>
+              <Link
+                href="/bingo"
+                onClick={() => setMenuOpen(false)}
+                className="flex-1 flex items-center justify-center gap-2 bg-gray-700 text-white font-bold text-sm px-4 py-2.5 rounded-lg border border-gray-600"
+              >
+                🎱 Bingo
+              </Link>
+            </div>
             <a
               href={waUrl('consulta general')}
               target="_blank" rel="noopener noreferrer"
@@ -452,22 +630,7 @@ export default function Home() {
               </span>
             ))}
           </div>
-          <div className="mt-4">
-            <p className="text-xs text-gray-500 mb-1">Fuentes usadas para detectar patrones de intención local:</p>
-            <div className="flex flex-wrap gap-3">
-              {LOCAL_SEO_SIGNALS.sourceSignals.map((url) => (
-                <a
-                  key={url}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-700 hover:underline"
-                >
-                  {new URL(url).hostname}
-                </a>
-              ))}
-            </div>
-          </div>
+          
         </div>
       </section>
 
@@ -541,6 +704,9 @@ export default function Home() {
                 {productosFiltrados.length} repuesto{productosFiltrados.length !== 1 ? 's' : ''} encontrado{productosFiltrados.length !== 1 ? 's' : ''}
                 {busqueda && ` para "${busqueda}"`}
               </p>
+              {catalogoError && (
+                <p className="text-amber-600 text-xs mt-2">{catalogoError}</p>
+              )}
             </div>
 
             {/* Búsqueda inline */}
@@ -574,10 +740,24 @@ export default function Home() {
               {productosFiltrados.map((p) => (
                 <div key={p.id} className="product-card flex flex-col">
 
+                  <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+                    {p.imagen ? (
+                      <img
+                        src={p.imagen}
+                        alt={p.nombre}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-5xl">📦</div>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
+                      <p className="line-clamp-2 text-sm font-semibold text-white">{p.nombre}</p>
+                    </div>
+                  </div>
+
                   {/* Card header */}
                   <div className="bg-gray-50 px-4 py-5 border-b border-gray-100 flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm leading-tight">{p.nombre}</p>
                       <p className="text-gray-500 text-xs mt-1">{p.marca}</p>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
@@ -614,10 +794,13 @@ export default function Home() {
                   </div>
 
                   {/* Card footer - CTA */}
-                  <div className="px-4 pb-4">
+                  <div className="px-4 pb-4 space-y-2">
                     <a
-                      href={waUrl(p.nombre)}
-                      target="_blank" rel="noopener noreferrer"
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        openOsoForProduct(p)
+                      }}
                       className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold transition-all duration-200
                         ${p.disponible
                           ? 'bg-[#25D366] text-white hover:bg-[#128C7E] hover:shadow-md'
@@ -628,6 +811,14 @@ export default function Home() {
                       <IconWhatsApp />
                       {p.disponible ? 'Consultar precio' : 'No disponible'}
                     </a>
+                    <button
+                      type="button"
+                      onClick={() => openStoreRoute(p)}
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300"
+                    >
+                      <IconStore />
+                      Mostrar dirección de tienda
+                    </button>
                   </div>
                 </div>
               ))}
@@ -661,6 +852,102 @@ export default function Home() {
             <span className="flex items-center gap-1.5"><IconClock />  Lun–Sáb · 8am–6pm</span>
             <span className="flex items-center gap-1.5"><IconMapPin /> Mérida, Venezuela</span>
             <span className="flex items-center gap-1.5"><IconShield /> Garantía en cada repuesto</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ──────────────────────────────────────────
+          SERVICIOS
+      ────────────────────────────────────────── */}
+      <section id="servicios" className="py-16 px-4 bg-white">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 mb-2 block">
+              Plataforma
+            </span>
+            <h2 className="font-brand text-3xl sm:text-4xl text-gray-900 mb-3">
+              Nuestros servicios online
+            </h2>
+            <p className="text-gray-500 max-w-md mx-auto text-sm">
+              Más allá del catálogo, te ofrecemos herramientas digitales para la comunidad.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+            {/* ── Plaza ── */}
+            <Link
+              href="/plaza"
+              className="group relative flex flex-col gap-4 bg-gray-900 rounded-2xl p-6 border border-gray-800 hover:border-[#FFD700]/60 hover:shadow-xl hover:shadow-yellow-500/10 transition-all duration-300 overflow-hidden"
+            >
+              {/* Fondo decorativo */}
+              <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+              <div className="flex items-start gap-4 relative">
+                <div className="w-14 h-14 rounded-xl bg-[#FFD700]/10 border border-[#FFD700]/20 flex items-center justify-center text-3xl shrink-0 group-hover:scale-110 transition-transform">
+                  🏪
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-brand text-xl font-bold text-white">Plaza</h3>
+                  <p className="text-gray-400 text-sm mt-1 leading-relaxed">
+                    Marketplace de repuestos. Publica, compra y vende piezas directamente con la comunidad.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 relative">
+                {['Publicar anuncio','Buscar repuestos','Contacto directo'].map(t => (
+                  <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
+                    {t}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[#FFD700] text-sm font-semibold relative">
+                Ir a Plaza
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
+                  className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeLinecap="round">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              </div>
+            </Link>
+
+            {/* ── Bingo ── */}
+            <Link
+              href="/bingo"
+              className="group relative flex flex-col gap-4 bg-gray-900 rounded-2xl p-6 border border-gray-800 hover:border-[#22C55E]/60 hover:shadow-xl hover:shadow-green-500/10 transition-all duration-300 overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+              <div className="flex items-start gap-4 relative">
+                <div className="w-14 h-14 rounded-xl bg-[#22C55E]/10 border border-[#22C55E]/20 flex items-center justify-center text-3xl shrink-0 group-hover:scale-110 transition-transform">
+                  🎱
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-brand text-xl font-bold text-white">Bingo</h3>
+                  <p className="text-gray-400 text-sm mt-1 leading-relaxed">
+                    Juego de bingo multijugador en tiempo real. Crea o únete a una sala con un código.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 relative">
+                {['Crear sala','Unirse con código','Tiempo real'].map(t => (
+                  <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
+                    {t}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[#22C55E] text-sm font-semibold relative">
+                Jugar ahora
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
+                  className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeLinecap="round">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              </div>
+            </Link>
+
           </div>
         </div>
       </section>
@@ -706,14 +993,20 @@ export default function Home() {
 
             {/* Logos */}
             <div className="flex flex-col items-center gap-8">
-              <div className="bg-white rounded-2xl shadow-card p-8 flex flex-col items-center gap-2">
+              <a
+                href="https://play.google.com/store/apps/details?id=com.btmstudio.rep_merida"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Descargar Repuestos Mérida en Google Play"
+                className="bg-white rounded-2xl shadow-card p-8 flex flex-col items-center gap-2 transition-transform duration-200 hover:-translate-y-1 hover:shadow-xl"
+              >
                 <Image src="/iconorm.png" alt="Repuestos Mérida" width={120} height={120} className="rounded-xl" />
                 <p className="font-brand text-gray-900 mt-2 text-lg">Repuestos Mérida</p>
                 <div className="flex items-center gap-1">
                   {[...Array(5)].map((_, i) => <IconStar key={i} />)}
                   <span className="text-xs text-gray-500 ml-1">App disponible</span>
                 </div>
-              </div>
+              </a>
               <div className="bg-white rounded-2xl shadow-card p-6 flex flex-col items-center gap-2 w-full max-w-xs">
                 <Image src="/gochosgroup.png" alt="Gochos Group" width={80} height={80} className="rounded-full" />
                 <p className="font-medium text-gray-700 text-sm">Parte de Gochos Group</p>
@@ -811,6 +1104,20 @@ export default function Home() {
                 <li><a href="#catalogo"   className="hover:text-[#FFD700] transition-colors">Catálogo</a></li>
                 <li><a href="#nosotros"   className="hover:text-[#FFD700] transition-colors">Nosotros</a></li>
                 <li><a href="#contacto"   className="hover:text-[#FFD700] transition-colors">Contacto</a></li>
+                <li><a href="#servicios"  className="hover:text-[#FFD700] transition-colors">Servicios</a></li>
+              </ul>
+              <p className="text-white font-semibold text-sm mt-5 mb-3">Servicios</p>
+              <ul className="space-y-2 text-sm">
+                <li>
+                  <Link href="/plaza" className="hover:text-[#FFD700] transition-colors flex items-center gap-1.5">
+                    🏪 Plaza
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/bingo" className="hover:text-[#22C55E] transition-colors flex items-center gap-1.5">
+                    🎱 Bingo
+                  </Link>
+                </li>
               </ul>
             </div>
 
@@ -854,6 +1161,67 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {rutaTienda && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+          <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gray-500">Ubicación</p>
+                <h3 className="mt-1 text-xl font-bold text-gray-900">Dirección de la tienda</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRutaTienda(null)}
+                className="rounded-full p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Cerrar"
+              >
+                <IconX />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
+                <img
+                  src={rutaTienda.routeImage}
+                  alt="Ruta hacia la tienda"
+                  className="h-auto w-full object-cover"
+                />
+              </div>
+
+              <div className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-700">
+                <p className="font-semibold text-gray-900">
+                  {rutaTienda.user?.google_nombre || rutaTienda.user?.nombre || 'Tienda'}
+                </p>
+                {rutaTienda.user?.tipovender && (
+                  <p className="mt-1 text-gray-500">Tipo: {rutaTienda.user.tipovender}</p>
+                )}
+                <p className="mt-2">
+                  {[
+                    rutaTienda.user?.ubicacion,
+                    rutaTienda.user?.zona,
+                    rutaTienda.user?.ciudad,
+                  ].filter(Boolean).join(', ') || 'Dirección no disponible'}
+                </p>
+              </div>
+
+              <p className="text-sm leading-relaxed text-gray-600">
+                Aquí puedes ver la referencia visual de la ruta. También puedes abrir la ubicación exacta en Google Maps.
+              </p>
+
+              <a
+                href={rutaTienda.mapUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 font-semibold text-white transition hover:bg-gray-800"
+              >
+                <IconMapPin />
+                Ver ruta a la tienda
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Plaza AI Chat Widget ── */}
       <PlazaChat />

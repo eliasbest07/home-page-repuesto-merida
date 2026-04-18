@@ -59,6 +59,20 @@ export default function PlazaChat() {
     }
   }, [open, messages])
 
+  useEffect(() => {
+    const handleOpenPrompt = (event) => {
+      const prompt = event.detail?.prompt?.trim()
+      if (!prompt) return
+      setOpen(true)
+      setTimeout(() => {
+        sendMessage(prompt)
+      }, 120)
+    }
+
+    window.addEventListener('plaza-chat:open-prompt', handleOpenPrompt)
+    return () => window.removeEventListener('plaza-chat:open-prompt', handleOpenPrompt)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const goToMenu = () => {
     setMessages([INITIAL_MSG])
     setInput('')
@@ -80,6 +94,22 @@ export default function PlazaChat() {
         setMessages((prev) => [...prev, { role: 'assistant', content: predefined.text, action: predefined.action }])
         if (!open) setHasNew(true)
       }, 350) // pequeño delay para que se sienta natural
+      return
+    }
+
+    if (msg.startsWith('Consulta repuesto:')) {
+      setLoading(true)
+      setTimeout(() => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: 'Estoy revisando ese repuesto. ¿Lo quieres comprar o qué información quieres saber?',
+          },
+        ])
+        if (!open) setHasNew(true)
+        setLoading(false)
+      }, 700)
       return
     }
 

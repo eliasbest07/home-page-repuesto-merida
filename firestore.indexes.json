@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "bingo_salas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "codigo", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "anuncios",
       "queryScope": "COLLECTION",
       "fields": [

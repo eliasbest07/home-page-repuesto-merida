@@ -15,6 +15,30 @@ service cloud.firestore {
       allow delete: if request.auth != null;
     }
 
+    // ── Bingo ─────────────────────────────────────────────────────────────────
+    match /bingo_salas/{salaId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['codigo', 'host_session', 'estado'])
+                    && request.resource.data.codigo is string
+                    && request.resource.data.codigo.size() == 6;
+      allow update: if true;  // MVP: sin auth, control en cliente
+
+      match /jugadores/{jugadorId} {
+        allow read: if true;
+        allow create: if request.resource.data.keys().hasAll(['nombre', 'session_id', 'carton'])
+                      && request.resource.data.nombre is string
+                      && request.resource.data.nombre.size() > 0;
+        allow update: if true;
+        allow delete: if false;
+      }
+    }
+
+    // Catálogo público de repuestos para la home.
+    match /merida/{id} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
     // Imágenes y datos de verificación — solo admin
     match /usuarios_plaza/{telefono} {
       allow read, write: if request.auth != null;
