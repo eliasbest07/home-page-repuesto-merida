@@ -45,9 +45,12 @@ function AnuncioImg({ p, emojiClass, inline = false }) {
   const src = imgUrl(rawUrl)
   if (!src || err) return <span className={`${emojiClass} select-none`}>{p.emoji ?? '📦'}</span>
   return (
-    <img
+    <Image
       src={src}
       alt={p.titulo ?? ''}
+      fill
+      unoptimized
+      sizes={inline ? '160px' : '(max-width: 768px) 100vw, 33vw'}
       className={inline ? 'w-full h-full object-cover' : 'absolute inset-0 w-full h-full object-cover'}
       onError={() => setErr(true)}
     />
@@ -805,7 +808,11 @@ function MobileImageGallery({ items }) {
 // USER MENU — bottom sheet con sesión y logout
 // ════════════════════════════════════════════════
 function UserMenu({ session, onClose, onLogout }) {
-  const AUTH = { 'Authorization': `Bearer ${session.token}`, 'ngrok-skip-browser-warning': '1', 'Content-Type': 'application/json' }
+  const AUTH = useMemo(() => ({
+    'Authorization': `Bearer ${session.token}`,
+    'ngrok-skip-browser-warning': '1',
+    'Content-Type': 'application/json',
+  }), [session.token])
 
   const [perfil,        setPerfil]        = useState(null)
   const [editando,      setEditando]      = useState(false)
@@ -826,7 +833,7 @@ function UserMenu({ session, onClose, onLogout }) {
         if (data.latitud && data.longitud) setCoords({ lat: data.latitud, lng: data.longitud, accuracy: null })
       })
       .catch(() => {})
-  }, [])
+  }, [AUTH])
 
   async function handleGeolocate() {
     if (!navigator.geolocation) { setGeoError('Tu dispositivo no soporta geolocalización'); return }

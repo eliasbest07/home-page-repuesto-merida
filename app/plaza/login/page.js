@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 
 const API_BASE = 'https://uncandid-overmighty-jodie.ngrok-free.dev'
 const HEADERS  = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1' }
@@ -97,7 +98,7 @@ export default function LoginPage() {
 
           {/* Logo */}
           <div className="text-center mb-8">
-            <img src="/iconorm.png" alt="Logo" className="w-16 h-16 rounded-2xl mx-auto mb-3 shadow" />
+            <Image src="/iconorm.png" alt="Logo" width={64} height={64} className="w-16 h-16 rounded-2xl mx-auto mb-3 shadow" />
             <h1 className="font-bold text-xl text-gray-900">Inicia sesión en Plaza</h1>
             <p className="text-gray-500 text-sm mt-1">
               {step === 'phone' && 'Verificamos tu número por WhatsApp'}

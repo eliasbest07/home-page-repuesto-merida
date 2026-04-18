@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage'
@@ -226,7 +227,7 @@ export default function PublicarPage() {
             <p className="text-gray-500 text-sm mb-6">Completa los datos de tu anuncio.</p>
 
             <div className="border-2 border-yellow-400 bg-yellow-50 rounded-xl px-4 py-3 mb-6 flex gap-2.5 items-start">
-              <img src="/iconorm.png" alt="Oso" className="w-8 h-8 rounded-full shrink-0 object-cover" />
+              <Image src="/iconorm.png" alt="Oso" width={32} height={32} className="w-8 h-8 rounded-full shrink-0 object-cover" />
               <p className="text-sm text-yellow-900">
                 <strong>Oso Frontino Brain:</strong> Los títulos descriptivos consiguen más respuestas.
                 Ejemplo: <em>&ldquo;iPhone 12 128GB negro — excelente estado&rdquo;</em>
@@ -333,7 +334,7 @@ export default function PublicarPage() {
                 <div className="grid grid-cols-3 gap-3 mt-2">
                   {fotos.map((f, i) => (
                     <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200">
-                      <img src={f.dataUrl} alt="" className="w-full h-full object-cover" />
+                      <Image src={f.dataUrl} alt="" fill unoptimized sizes="(max-width: 768px) 33vw, 160px" className="object-cover" />
                       <button
                         onClick={() => removePhoto(i)}
                         className="absolute top-1 right-1 w-6 h-6 bg-black/60 text-white rounded-full text-xs flex items-center justify-center hover:bg-black/80"

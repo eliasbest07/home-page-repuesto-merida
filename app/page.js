@@ -742,10 +742,13 @@ export default function Home() {
 
                   <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                     {p.imagen ? (
-                      <img
+                      <Image
                         src={p.imagen}
                         alt={p.nombre}
-                        className="h-full w-full object-cover"
+                        fill
+                        unoptimized
+                        sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
+                        className="object-cover"
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-5xl">📦</div>
@@ -1182,9 +1185,12 @@ export default function Home() {
 
             <div className="space-y-4 p-5">
               <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
-                <img
+                <Image
                   src={rutaTienda.routeImage}
                   alt="Ruta hacia la tienda"
+                  width={1200}
+                  height={800}
+                  unoptimized
                   className="h-auto w-full object-cover"
                 />
               </div>

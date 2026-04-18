@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase'
 
@@ -154,7 +155,7 @@ export default function MisAnunciosPage() {
                       style={{ backgroundColor: (a.color ?? '#9CA3AF') + '22' }}
                     >
                       {imgSrc
-                        ? <img src={imgSrc} alt="" className="w-full h-full object-cover" />
+                        ? <Image src={imgSrc} alt="" width={80} height={80} unoptimized className="w-full h-full object-cover" />
                         : <span>{a.emoji ?? '📦'}</span>
                       }
                     </div>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import dynamic from 'next/dynamic'
 
 const PlazaChat = dynamic(() => import('../../components/PlazaChat'), { ssr: false })
@@ -90,7 +91,7 @@ export default function SolicitarPage() {
 
         {/* Tip Oso */}
         <div className="border-2 border-yellow-400 bg-yellow-50 rounded-xl px-4 py-3 mb-6 flex gap-2.5 items-start">
-          <img src="/iconorm.png" alt="Oso" className="w-8 h-8 rounded-full shrink-0 object-cover" />
+          <Image src="/iconorm.png" alt="Oso" width={32} height={32} className="w-8 h-8 rounded-full shrink-0 object-cover" />
           <p className="text-sm text-yellow-900">
             <strong>Oso Frontino Brain:</strong> Cuanto más detallada sea tu solicitud, más rápido recibirás respuestas. Incluye modelo, color, presupuesto u otras características clave.
           </p>
