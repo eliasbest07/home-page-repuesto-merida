@@ -326,7 +326,7 @@ export default function Home() {
   const faq = [
     {
       q: '¿Qué es Repuestos Mérida y en qué zona atiende?',
-      a: 'Repuestos Mérida es una tienda de repuestos automotrices en Mérida, Venezuela, enfocada en atención directa por WhatsApp y catálogo digital para la región andina.',
+      a: 'Repuestos Mérida es una plataforma de intercambio de necesidades con servicios. Entre esos servicios tenemos un catálogo de repuestos disponibles en tiendas físicas en Mérida y, por ahora, en la zona andina.',
     },
     {
       q: '¿Qué marcas y categorías maneja?',
