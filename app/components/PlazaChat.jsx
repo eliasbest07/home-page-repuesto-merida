@@ -36,9 +36,20 @@ const NAV_ACTIONS = [
 const QUICK_QUESTIONS = Object.keys(ANSWERS).map((q) => ({ label: q, msg: q }))
 
 const INITIAL_MSG = {
+  id: 'initial-assistant',
   role: 'assistant',
   content: '¡Hola! Soy Oso Frontino Brain 🐻\n\nTu asistente de Plaza. Puedo ayudarte a publicar, buscar o solicitar repuestos. ¿Qué necesitas?',
 }
+
+const WA_NUMBER = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '+584123375417').replace(/\D/g, '')
+const buildOsoWhatsAppUrl = (context = '') =>
+  `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(
+    context
+      ? `Hola Oso Frontino Brain, necesito ayuda con esto en Plaza: ${context}`
+      : 'Hola Oso Frontino Brain, necesito ayuda en Plaza.'
+  )}`
+
+const randomWhatsappDelay = () => 3000 + Math.floor(Math.random() * 12001)
 
 export default function PlazaChat() {
   const [open, setOpen]         = useState(false)
@@ -48,6 +59,7 @@ export default function PlazaChat() {
   const [hasNew, setHasNew]     = useState(false)
   const bottomRef = useRef(null)
   const inputRef  = useRef(null)
+  const timeoutsRef = useRef([])
 
   useEffect(() => {
     if (open) {
@@ -73,6 +85,44 @@ export default function PlazaChat() {
     return () => window.removeEventListener('plaza-chat:open-prompt', handleOpenPrompt)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    return () => {
+      timeoutsRef.current.forEach(clearTimeout)
+    }
+  }, [])
+
+  const queueWhatsAppCta = (messageId) => {
+    const timeoutId = setTimeout(() => {
+      setMessages((prev) => prev.map((message) => ({
+        ...message,
+        showWhatsAppCta: message.id === messageId,
+      })))
+    }, randomWhatsappDelay())
+
+    timeoutsRef.current.push(timeoutId)
+  }
+
+  const appendAssistantMessage = ({ content, action = null, whatsappContext = '', showWhatsappCta = false }) => {
+    const id = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    setMessages((prev) => [
+      ...prev.map((message) => (
+        message.role === 'assistant'
+          ? { ...message, showWhatsAppCta: false }
+          : message
+      )),
+      {
+        id,
+        role: 'assistant',
+        content,
+        action,
+        showWhatsAppCta: showWhatsappCta,
+        whatsappHref: buildOsoWhatsAppUrl(whatsappContext || content),
+      },
+    ])
+    queueWhatsAppCta(id)
+    if (!open) setHasNew(true)
+  }
+
   const goToMenu = () => {
     setMessages([INITIAL_MSG])
     setInput('')
@@ -83,7 +133,7 @@ export default function PlazaChat() {
     if (!msg || loading) return
 
     setInput('')
-    const userMessage  = { role: 'user', content: msg }
+    const userMessage  = { id: `user-${Date.now()}`, role: 'user', content: msg }
     const nextMessages = [...messages, userMessage]
     setMessages(nextMessages)
 
@@ -91,8 +141,11 @@ export default function PlazaChat() {
     const predefined = ANSWERS[msg]
     if (predefined) {
       setTimeout(() => {
-        setMessages((prev) => [...prev, { role: 'assistant', content: predefined.text, action: predefined.action }])
-        if (!open) setHasNew(true)
+        appendAssistantMessage({
+          content: predefined.text,
+          action: predefined.action,
+          whatsappContext: msg,
+        })
       }, 350) // pequeño delay para que se sienta natural
       return
     }
@@ -100,14 +153,10 @@ export default function PlazaChat() {
     if (msg.startsWith('Consulta repuesto:')) {
       setLoading(true)
       setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: 'Estoy revisando ese repuesto. ¿Lo quieres comprar o qué información quieres saber?',
-          },
-        ])
-        if (!open) setHasNew(true)
+        appendAssistantMessage({
+          content: 'Estoy revisando ese repuesto. ¿Lo quieres comprar o qué información quieres saber?',
+          whatsappContext: msg,
+        })
         setLoading(false)
       }, 700)
       return
@@ -124,16 +173,15 @@ export default function PlazaChat() {
         }),
       })
       const data = await res.json()
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: data.content || data.error || 'Error al responder.' },
-      ])
-      if (!open) setHasNew(true)
+      appendAssistantMessage({
+        content: data.content || data.error || 'Error al responder.',
+        whatsappContext: msg,
+      })
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Error de conexión. Verifica tu internet e intenta de nuevo.' },
-      ])
+      appendAssistantMessage({
+        content: 'Error de conexión. Verifica tu internet e intenta de nuevo.',
+        whatsappContext: msg,
+      })
     } finally {
       setLoading(false)
     }
@@ -155,16 +203,17 @@ export default function PlazaChat() {
         onClick={() => setOpen(true)}
         aria-label="Abrir Oso Frontino Brain"
         style={{ zIndex: 9999 }}
-        className={`fixed bottom-6 right-5 w-16 h-16 rounded-full shadow-2xl flex items-center justify-center
-          transition-all duration-300 hover:scale-110 group bg-yellow-400 border-4 border-yellow-300
+        className={`fixed bottom-6 right-5 w-16 h-16 rounded-none shadow-2xl flex items-center justify-center overflow-visible
+          transition-all duration-300 hover:scale-110 group bg-transparent border-0
           ${open ? 'opacity-0 pointer-events-none scale-90' : 'opacity-100 scale-100'}`}
       >
+        <span className="absolute -inset-[15%] rounded-full bg-yellow-400 scale-0 opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
         <Image
-          src="/iconorm.png"
+          src="/chat_icono.png"
           alt="Oso Frontino Brain"
-          width={44}
-          height={44}
-          className="rounded-full object-cover"
+          width={64}
+          height={64}
+          className="relative z-10 w-full h-full object-contain"
         />
         {hasNew && (
           <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white animate-pulse" />
@@ -252,6 +301,22 @@ export default function PlazaChat() {
                   >
                     {m.action.label} →
                   </Link>
+                </div>
+              )}
+
+              {m.role === 'assistant' && m.showWhatsAppCta && m.whatsappHref && (
+                <div className="ml-8">
+                  <a
+                    href={m.whatsappHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 bg-green-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl hover:bg-green-600 transition-all shadow-sm"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M20.52 3.48A11.86 11.86 0 0 0 12.07 0C5.5 0 .16 5.34.16 11.91c0 2.1.55 4.15 1.59 5.96L0 24l6.3-1.65a11.9 11.9 0 0 0 5.77 1.48h.01c6.57 0 11.91-5.34 11.91-11.91 0-3.18-1.24-6.17-3.47-8.44ZM12.08 21.8h-.01a9.88 9.88 0 0 1-5.04-1.38l-.36-.21-3.74.98 1-3.65-.24-.38a9.86 9.86 0 0 1-1.52-5.25c0-5.46 4.45-9.91 9.92-9.91 2.65 0 5.14 1.03 7.01 2.91a9.86 9.86 0 0 1 2.9 7c0 5.46-4.45 9.9-9.91 9.9Zm5.44-7.42c-.3-.15-1.77-.87-2.05-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.95 1.17-.17.2-.35.22-.65.07-.3-.15-1.27-.47-2.42-1.5-.9-.8-1.5-1.8-1.68-2.1-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.62-.92-2.22-.24-.58-.48-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.05 1.02-1.05 2.49 0 1.47 1.08 2.9 1.23 3.1.15.2 2.12 3.24 5.13 4.54.72.31 1.28.5 1.71.64.72.23 1.37.2 1.88.12.57-.08 1.77-.72 2.02-1.41.25-.7.25-1.29.17-1.42-.07-.13-.27-.2-.57-.35Z" />
+                    </svg>
+                    Escribir al Oso
+                  </a>
                 </div>
               )}
 

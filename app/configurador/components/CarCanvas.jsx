@@ -1,7 +1,7 @@
 'use client'
 import { useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
+import { OrbitControls } from '@react-three/drei/core/OrbitControls'
 import * as THREE from 'three'
 import CarModel from './CarModel'
 
