@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -29,6 +29,14 @@ export function isLoggedIn()   { return Boolean(getSession()?.token) }
 const FIELD = 'border border-gray-200 rounded-xl px-4 py-3 text-sm w-full focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100 transition-all bg-white'
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginPageContent />
+    </Suspense>
+  )
+}
+
+function LoginPageContent() {
   const router        = useRouter()
   const searchParams  = useSearchParams()
   const redirect      = searchParams.get('redirect') || '/plaza/publicar'
@@ -198,6 +206,37 @@ export default function LoginPage() {
             </div>
           )}
 
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LoginFallback() {
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-gray-900 h-14 flex items-center px-4 shadow-lg">
+        <Link href="/plaza" className="text-gray-400 hover:text-white flex items-center gap-1.5 text-sm">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
+          </svg>
+          Plaza
+        </Link>
+      </nav>
+
+      <div className="flex-1 flex items-center justify-center px-4 pt-14">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <Image src="/iconorm.png" alt="Logo" width={64} height={64} className="w-16 h-16 rounded-2xl mx-auto mb-3 shadow" />
+            <h1 className="font-bold text-xl text-gray-900">Inicia sesión en Plaza</h1>
+            <p className="text-gray-500 text-sm mt-1">Cargando acceso…</p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <div className="flex items-center justify-center py-6">
+              <span className="w-6 h-6 border-2 border-yellow-400/30 border-t-yellow-400 rounded-full animate-spin" />
+            </div>
+          </div>
         </div>
       </div>
     </div>
