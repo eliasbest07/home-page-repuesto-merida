@@ -74,10 +74,11 @@ export default function PlazaChat() {
   useEffect(() => {
     const handleOpenPrompt = (event) => {
       const prompt = event.detail?.prompt?.trim()
+      const selectedProduct = event.detail?.product || null
       if (!prompt) return
       setOpen(true)
       setTimeout(() => {
-        sendMessage(prompt)
+        sendMessage(prompt, { selectedProduct })
       }, 120)
     }
 
@@ -128,9 +129,37 @@ export default function PlazaChat() {
     setInput('')
   }
 
-  const sendMessage = async (text) => {
+  const handleActionClick = (action) => {
+    if (!action) return
+
+    if (action.type === 'product-details' && action.productId) {
+      setOpen(false)
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('plaza-chat:open-product-details', {
+            detail: { productId: action.productId },
+          }))
+        }, 120)
+      })
+      return
+    }
+
+    if (action.targetId) {
+      setOpen(false)
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const target = document.getElementById(action.targetId)
+          target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 120)
+      })
+      return
+    }
+  }
+
+  const sendMessage = async (text, options = {}) => {
     const msg = (text || input).trim()
     if (!msg || loading) return
+    const selectedProduct = options.selectedProduct || null
 
     setInput('')
     const userMessage  = { id: `user-${Date.now()}`, role: 'user', content: msg }
@@ -155,6 +184,15 @@ export default function PlazaChat() {
       setTimeout(() => {
         appendAssistantMessage({
           content: 'Estoy revisando ese repuesto. ¿Lo quieres comprar o qué información quieres saber?',
+          action: selectedProduct
+            ? {
+                label: 'Ver más información',
+                href: `/#producto-${selectedProduct.id}`,
+                targetId: `producto-${selectedProduct.id}`,
+                type: 'product-details',
+                productId: selectedProduct.id,
+              }
+            : null,
           whatsappContext: msg,
         })
         setLoading(false)
@@ -295,12 +333,22 @@ export default function PlazaChat() {
               {/* Botón de acción inline si la respuesta lo tiene */}
               {m.role === 'assistant' && m.action && (
                 <div className="ml-8">
-                  <Link
-                    href={m.action.href}
-                    className="inline-flex items-center gap-1.5 bg-yellow-400 text-gray-900 font-bold text-xs px-3 py-1.5 rounded-lg hover:bg-yellow-300 transition-all"
-                  >
-                    {m.action.label} →
-                  </Link>
+                  {m.action.targetId ? (
+                    <button
+                      type="button"
+                      onClick={() => handleActionClick(m.action)}
+                      className="inline-flex items-center gap-1.5 bg-yellow-400 text-gray-900 font-bold text-xs px-3 py-1.5 rounded-lg hover:bg-yellow-300 transition-all"
+                    >
+                      {m.action.label} →
+                    </button>
+                  ) : (
+                    <Link
+                      href={m.action.href}
+                      className="inline-flex items-center gap-1.5 bg-yellow-400 text-gray-900 font-bold text-xs px-3 py-1.5 rounded-lg hover:bg-yellow-300 transition-all"
+                    >
+                      {m.action.label} →
+                    </Link>
+                  )}
                 </div>
               )}
 

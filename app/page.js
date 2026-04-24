@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
-import { collection, getDocs } from 'firebase/firestore'
+import { collection, getDocs, addDoc, query, where, limit, serverTimestamp } from 'firebase/firestore'
 import { get, ref } from 'firebase/database'
 import { firestore, rtdb } from '@/lib/firebase'
 
@@ -25,6 +25,10 @@ const WA_NUMBER = '+584123375417' // <— Reemplazar con número real
 const waUrl = (producto) =>
   `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(
     `Hola, me interesa el repuesto: *${producto}*. ¿Está disponible y cuál es el precio?`
+  )}`
+const waCustomUrl = (producto, mensaje = '') =>
+  `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(
+    mensaje.trim() || `Hola, me interesa el repuesto: *${producto}*. ¿Está disponible y cuál es el precio?`
   )}`
 
 // ════════════════════════════════════════════════
@@ -182,8 +186,29 @@ function openOsoForProduct(producto) {
   window.dispatchEvent(new CustomEvent('plaza-chat:open-prompt', {
     detail: {
       prompt: `Consulta repuesto: ${producto.nombre}`,
+      product: {
+        id: producto.id,
+        nombre: producto.nombre,
+      },
     },
   }))
+}
+
+function resolveResponseTime(producto, user) {
+  return (
+    producto?.tiempo ||
+    user?.tiempo ||
+    user?.responseTime ||
+    'Tiempo de respuesta por confirmar'
+  )
+}
+
+function isPhysicalStore(user = {}) {
+  const type = String(user?.tipovender || user?.tipo || '').toLowerCase()
+  if (!type) return null
+  if (/(tienda|local|fisica|física|comercio)/.test(type)) return true
+  if (/(online|virtual|delivery|sin tienda|sin local)/.test(type)) return false
+  return null
 }
 
 // ════════════════════════════════════════════════
@@ -249,6 +274,11 @@ export default function Home() {
   const [catalogoError, setCatalogoError] = useState('')
   const [usersById, setUsersById]   = useState({})
   const [rutaTienda, setRutaTienda] = useState(null)
+  const [detalleRepuesto, setDetalleRepuesto] = useState(null)
+  const [detalleNota, setDetalleNota] = useState('')
+  const [detallePreguntas, setDetallePreguntas] = useState('')
+  const [detalleGuardado, setDetalleGuardado] = useState('')
+  const [detalleQA, setDetalleQA] = useState([])
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60)
@@ -285,6 +315,57 @@ export default function Home() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    const handleOpenProductDetails = (event) => {
+      const productId = String(event.detail?.productId || '')
+      if (!productId) return
+      const producto = catalogo.find((item) => String(item.id) === productId)
+      openDetallePara(producto)
+    }
+
+    window.addEventListener('plaza-chat:open-product-details', handleOpenProductDetails)
+    return () => window.removeEventListener('plaza-chat:open-product-details', handleOpenProductDetails)
+  }, [catalogo, usersById]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!detalleRepuesto) return
+    const onKey = (e) => { if (e.key === 'Escape') setDetalleRepuesto(null) }
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [detalleRepuesto])
+
+  useEffect(() => {
+    const productId = detalleRepuesto?.producto?.id
+    if (!productId) {
+      setDetalleQA([])
+      return
+    }
+    let cancelled = false
+    getDocs(query(
+      collection(firestore, 'preguntas_repuestos'),
+      where('producto_id', '==', String(productId)),
+      limit(50),
+    ))
+      .then((snap) => {
+        if (cancelled) return
+        const rows = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((r) => r.respondida === true && r.respuesta)
+          .sort((a, b) => (b.creado_en?.toMillis?.() || 0) - (a.creado_en?.toMillis?.() || 0))
+          .slice(0, 10)
+        setDetalleQA(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setDetalleQA([])
+      })
+    return () => { cancelled = true }
+  }, [detalleRepuesto?.producto?.id])
 
   useEffect(() => {
     let cancelled = false
@@ -346,6 +427,21 @@ export default function Home() {
     },
   ]
 
+  function openDetallePara(producto) {
+    if (!producto) return
+    const user = usersById?.[producto.userID] || null
+    setDetalleRepuesto({
+      producto,
+      user,
+      mapUrl: buildSellerMapUrl(user || {}),
+      isPhysicalStore: isPhysicalStore(user),
+      responseTime: resolveResponseTime(producto, user),
+    })
+    setDetalleNota('')
+    setDetallePreguntas(`Hola, me interesa ${producto.nombre}. ¿Sigue disponible?\n¿Precio final?\n¿Compatibilidad exacta?\n¿Horario de entrega o retiro?`)
+    setDetalleGuardado('')
+  }
+
   function openStoreRoute(producto) {
     const user = usersById?.[producto.userID] || null
     setRutaTienda({
@@ -354,6 +450,60 @@ export default function Home() {
       mapUrl: buildSellerMapUrl(user || {}),
       routeImage: user?.rutaImg || user?.routeImage || '/ruta-tienda.jpg',
     })
+  }
+
+  function saveProductToDirectory() {
+    if (typeof window === 'undefined' || !detalleRepuesto) return
+
+    const directoryKey = 'repuestos-merida-directorio'
+    const current = (() => {
+      try {
+        return JSON.parse(window.localStorage.getItem(directoryKey) || '[]')
+      } catch {
+        return []
+      }
+    })()
+
+    const entry = {
+      id: detalleRepuesto.producto.id,
+      nombre: detalleRepuesto.producto.nombre,
+      precio: detalleRepuesto.producto.precio,
+      marca: detalleRepuesto.producto.marca,
+      compat: detalleRepuesto.producto.compat,
+      imagen: detalleRepuesto.producto.imagen || '',
+      nota: detalleNota.trim(),
+      preguntas: detallePreguntas.trim(),
+      comercio: detalleRepuesto.user?.google_nombre || detalleRepuesto.user?.nombre || 'Comercio afiliado',
+      ubicacion: [
+        detalleRepuesto.user?.ubicacion,
+        detalleRepuesto.user?.zona,
+        detalleRepuesto.user?.ciudad,
+      ].filter(Boolean).join(', '),
+      savedAt: Date.now(),
+    }
+
+    const next = [
+      entry,
+      ...current.filter((item) => String(item.id) !== String(entry.id)),
+    ]
+
+    window.localStorage.setItem(directoryKey, JSON.stringify(next))
+    setDetalleGuardado('Guardado en tu directorio.')
+  }
+
+  function registrarPreguntaEnFirestore() {
+    if (!detalleRepuesto) return
+    const pregunta = detallePreguntas.trim()
+    if (!pregunta) return
+    addDoc(collection(firestore, 'preguntas_repuestos'), {
+      producto_id: String(detalleRepuesto.producto.id),
+      producto_nombre: detalleRepuesto.producto.nombre || '',
+      vendedor_id: detalleRepuesto.producto.userID || '',
+      pregunta,
+      respuesta: '',
+      respondida: false,
+      creado_en: serverTimestamp(),
+    }).catch(() => {})
   }
 
   const jsonLd = [
@@ -738,7 +888,20 @@ export default function Home() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
               {productosFiltrados.map((p) => (
-                <div key={p.id} className="product-card flex flex-col">
+                <div
+                  key={p.id}
+                  id={`producto-${p.id}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openDetallePara(p)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      openDetallePara(p)
+                    }
+                  }}
+                  className="product-card group flex flex-col scroll-mt-24 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-2"
+                >
 
                   <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                     {p.imagen ? (
@@ -748,7 +911,7 @@ export default function Home() {
                         fill
                         unoptimized
                         sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
-                        className="object-cover"
+                        className="object-cover transition-transform duration-300 group-hover:scale-105"
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-5xl">📦</div>
@@ -756,6 +919,12 @@ export default function Home() {
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
                       <p className="line-clamp-2 text-sm font-semibold text-white">{p.nombre}</p>
                     </div>
+                    <span className="pointer-events-none absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-800 opacity-0 shadow backdrop-blur transition-opacity group-hover:opacity-100">
+                      Ver detalles
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </span>
                   </div>
 
                   {/* Card header */}
@@ -802,21 +971,25 @@ export default function Home() {
                       href="#"
                       onClick={(e) => {
                         e.preventDefault()
+                        e.stopPropagation()
+                        if (!p.disponible) return
                         openOsoForProduct(p)
                       }}
                       className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold transition-all duration-200
                         ${p.disponible
                           ? 'bg-[#25D366] text-white hover:bg-[#128C7E] hover:shadow-md'
-                          : 'bg-gray-100 text-gray-500 cursor-default pointer-events-none'
+                          : 'bg-gray-100 text-gray-500 cursor-default'
                         }`}
-                      {...(!p.disponible && { onClick: (e) => e.preventDefault() })}
                     >
                       <IconWhatsApp />
                       {p.disponible ? 'Consultar precio' : 'No disponible'}
                     </a>
                     <button
                       type="button"
-                      onClick={() => openStoreRoute(p)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openStoreRoute(p)
+                      }}
                       className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300"
                     >
                       <IconStore />
@@ -1224,6 +1397,262 @@ export default function Home() {
                 <IconMapPin />
                 Ver ruta a la tienda
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detalleRepuesto && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm sm:p-6 animate-fade-in"
+          onClick={() => setDetalleRepuesto(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="detalle-title"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative flex w-full max-w-3xl max-h-[94vh] flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl animate-slide-up"
+          >
+            <button
+              type="button"
+              onClick={() => setDetalleRepuesto(null)}
+              aria-label="Cerrar"
+              className="absolute top-3 right-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-700 shadow-md backdrop-blur transition hover:bg-white hover:text-gray-900 hover:scale-105"
+            >
+              <IconX />
+            </button>
+
+            <div className="flex-1 overflow-y-auto overscroll-contain">
+              <div className="md:grid md:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+
+                <div className="relative bg-gradient-to-br from-gray-100 to-gray-200 md:h-full md:min-h-[560px]">
+                  <div className="relative aspect-[4/3] overflow-hidden md:aspect-auto md:h-full md:min-h-[560px]">
+                    {detalleRepuesto.producto.imagen ? (
+                      <Image
+                        src={detalleRepuesto.producto.imagen}
+                        alt={detalleRepuesto.producto.nombre}
+                        fill
+                        unoptimized
+                        sizes="(max-width: 768px) 100vw, 50vw"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-7xl text-gray-300">📦</div>
+                    )}
+
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+
+                    <span className="absolute top-4 left-4 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-800 shadow-sm backdrop-blur">
+                      <span className="h-1.5 w-1.5 rounded-full bg-yellow-400" />
+                      {CATEGORIAS.find((c) => c.id === detalleRepuesto.producto.categoria)?.nombre || 'Repuesto'}
+                    </span>
+
+                    <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/80">Precio</p>
+                        <p className="mt-0.5 truncate text-2xl font-extrabold text-white drop-shadow sm:text-3xl">
+                          {detalleRepuesto.producto.precio}
+                        </p>
+                      </div>
+                      <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-green-500/95 px-3 py-1.5 text-[11px] font-bold text-white shadow">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                        {detalleRepuesto.responseTime}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-5 p-5 sm:p-6">
+                  <div>
+                    <h3 id="detalle-title" className="text-2xl font-extrabold leading-tight tracking-tight text-gray-900">
+                      {detalleRepuesto.producto.nombre}
+                    </h3>
+                    <p className="mt-1 text-sm font-medium text-gray-500">
+                      {detalleRepuesto.producto.marca}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-yellow-50/50 p-4">
+                    <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-amber-700">
+                      <IconShield />
+                      Compatible con
+                    </div>
+                    <p className="mt-2 text-sm leading-relaxed text-gray-800">
+                      {detalleRepuesto.producto.compat}
+                    </p>
+                  </div>
+
+                  {detalleRepuesto.producto.descripcion && (
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                        Descripción
+                      </p>
+                      <p className="mt-2 text-sm leading-relaxed text-gray-700">
+                        {detalleRepuesto.producto.descripcion}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="rounded-2xl bg-gray-900 p-4 text-white shadow-lg ring-1 ring-gray-800">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-yellow-400 text-gray-900">
+                        <IconStore />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Comercio</p>
+                        <p className="mt-0.5 text-base font-bold leading-snug">
+                          {detalleRepuesto.user?.google_nombre || detalleRepuesto.user?.nombre || 'Comercio afiliado'}
+                        </p>
+                        {detalleRepuesto.user?.tipovender && (
+                          <p className="mt-0.5 text-xs text-gray-400">{detalleRepuesto.user.tipovender}</p>
+                        )}
+                        <p className="mt-2 flex items-start gap-1.5 text-xs text-gray-300">
+                          <span className="mt-0.5 shrink-0 text-gray-400"><IconMapPin /></span>
+                          <span className="leading-snug">
+                            {[
+                              detalleRepuesto.user?.ubicacion,
+                              detalleRepuesto.user?.zona,
+                              detalleRepuesto.user?.ciudad,
+                            ].filter(Boolean).join(', ') || 'Ubicación no detallada'}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                    {detalleRepuesto.isPhysicalStore === false && (
+                      <div className="mt-3 rounded-lg bg-yellow-500/15 px-3 py-2 text-[11px] font-semibold text-yellow-300">
+                        Opera en Mérida, pero no indica tienda física abierta al público.
+                      </div>
+                    )}
+                    {detalleRepuesto.isPhysicalStore === true && (
+                      <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-green-500/15 px-3 py-2 text-[11px] font-semibold text-green-300">
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Comercio con referencia de tienda física.
+                      </div>
+                    )}
+                  </div>
+
+                  {detalleQA.length > 0 && (
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4">
+                      <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-emerald-700">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+                        </svg>
+                        Preguntas respondidas por el vendedor
+                        <span className="ml-auto rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                          {detalleQA.length}
+                        </span>
+                      </div>
+                      <div className="mt-3 space-y-2.5">
+                        {detalleQA.map((qa) => (
+                          <div key={qa.id} className="rounded-xl border border-emerald-100 bg-white p-3">
+                            <div className="flex items-start gap-2">
+                              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-700">P</span>
+                              <p className="flex-1 text-sm leading-snug text-gray-900">{qa.pregunta}</p>
+                            </div>
+                            <div className="mt-2 flex items-start gap-2">
+                              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white">R</span>
+                              <p className="flex-1 text-sm leading-snug font-medium text-gray-700">{qa.respuesta}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                      Mensaje al vendedor
+                    </label>
+                    <textarea
+                      value={detallePreguntas}
+                      onChange={(e) => setDetallePreguntas(e.target.value)}
+                      rows={4}
+                      placeholder="Escribe aquí el mensaje o las preguntas que quieres enviar."
+                      className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm text-gray-800 outline-none transition focus:border-yellow-400 focus:bg-white focus:ring-4 focus:ring-yellow-100"
+                    />
+                    <p className="mt-1.5 text-[11px] text-gray-400">
+                      Precio, compatibilidad, entrega o garantía — lo que necesites.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                      Nota privada (solo para ti)
+                    </label>
+                    <textarea
+                      value={detalleNota}
+                      onChange={(e) => setDetalleNota(e.target.value)}
+                      rows={2}
+                      placeholder="Nota rápida sobre este repuesto o vendedor."
+                      className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm text-gray-800 outline-none transition focus:border-yellow-400 focus:bg-white focus:ring-4 focus:ring-yellow-100"
+                    />
+                  </div>
+
+                  <div className="rounded-2xl border border-yellow-200 bg-gradient-to-br from-yellow-50 to-amber-50/50 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-yellow-400 text-gray-900">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-4-7 4V5z" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-gray-900">Guarda este repuesto</p>
+                        <p className="mt-0.5 text-xs leading-snug text-gray-600">
+                          Lo encontrarás después en tu directorio personal junto con tu nota y preguntas.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={saveProductToDirectory}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-400 px-4 py-3 text-sm font-bold text-gray-900 transition hover:bg-yellow-300"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-4-7 4V5z" />
+                      </svg>
+                      Guardar en mi directorio
+                    </button>
+                    {detalleGuardado && (
+                      <p className="mt-2 flex items-center justify-center gap-1.5 text-center text-[11px] font-semibold text-green-600">
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        {detalleGuardado}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-gray-100 bg-white/95 px-4 py-3 shadow-[0_-8px_20px_-10px_rgba(0,0,0,0.08)] backdrop-blur sm:px-6">
+              <div className="flex items-stretch gap-2">
+                {detalleRepuesto.user && (
+                  <a
+                    href={detalleRepuesto.mapUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Ver ubicación del comercio"
+                    aria-label="Ver ubicación del comercio"
+                    className="inline-flex shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-3 text-gray-700 transition hover:border-yellow-400 hover:bg-yellow-50 hover:text-yellow-700"
+                  >
+                    <IconMapPin />
+                  </a>
+                )}
+                <a
+                  href={waCustomUrl(detalleRepuesto.producto.nombre, detallePreguntas)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={registrarPreguntaEnFirestore}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 font-bold text-white shadow-md shadow-green-500/20 transition hover:bg-[#128C7E]"
+                >
+                  <IconWhatsApp />
+                  Consultar por WhatsApp
+                </a>
+              </div>
             </div>
           </div>
         </div>
