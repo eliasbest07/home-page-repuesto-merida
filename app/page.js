@@ -181,11 +181,36 @@ function buildSellerMapUrl(user = {}) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
 }
 
+function buildOsoConsultaPrompt(producto) {
+  const lines = [`Consulta repuesto: ${producto.nombre || 'Repuesto'}`]
+  const isCatalogoFallback = (v) => !v || v === 'Catálogo Mérida' || /consulta compatibilidad/i.test(String(v))
+
+  if (producto.marca && !isCatalogoFallback(producto.marca)) {
+    lines.push(`Marca: ${producto.marca}`)
+  }
+  if (producto.compat && !isCatalogoFallback(producto.compat)) {
+    lines.push(`Compatible: ${producto.compat}`)
+  }
+  if (producto.año || producto.anio || producto.year) {
+    lines.push(`Año: ${producto.año || producto.anio || producto.year}`)
+  }
+  if (producto.modelo) {
+    lines.push(`Modelo: ${producto.modelo}`)
+  }
+  if (producto.precio && producto.precio !== 'Consultar') {
+    lines.push(`Precio referencial: ${producto.precio}`)
+  }
+  if (producto.id != null) {
+    lines.push(`Ref: ${producto.id}`)
+  }
+  return lines.join('\n')
+}
+
 function openOsoForProduct(producto) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent('plaza-chat:open-prompt', {
     detail: {
-      prompt: `Consulta repuesto: ${producto.nombre}`,
+      prompt: buildOsoConsultaPrompt(producto),
       product: {
         id: producto.id,
         nombre: producto.nombre,
@@ -278,6 +303,7 @@ export default function Home() {
   const [detalleNota, setDetalleNota] = useState('')
   const [detallePreguntas, setDetallePreguntas] = useState('')
   const [detalleGuardado, setDetalleGuardado] = useState('')
+  const [imagenAmpliada, setImagenAmpliada] = useState(false)
   const [detalleQA, setDetalleQA] = useState([])
 
   useEffect(() => {
@@ -440,6 +466,7 @@ export default function Home() {
     setDetalleNota('')
     setDetallePreguntas(`Hola, me interesa ${producto.nombre}. ¿Sigue disponible?\n¿Precio final?\n¿Compatibilidad exacta?\n¿Horario de entrega o retiro?`)
     setDetalleGuardado('')
+    setImagenAmpliada(false)
   }
 
   function openStoreRoute(producto) {
@@ -1429,14 +1456,27 @@ export default function Home() {
                 <div className="relative bg-gradient-to-br from-gray-100 to-gray-200 md:h-full md:min-h-[560px]">
                   <div className="relative aspect-[4/3] overflow-hidden md:aspect-auto md:h-full md:min-h-[560px]">
                     {detalleRepuesto.producto.imagen ? (
-                      <Image
-                        src={detalleRepuesto.producto.imagen}
-                        alt={detalleRepuesto.producto.nombre}
-                        fill
-                        unoptimized
-                        sizes="(max-width: 768px) 100vw, 50vw"
-                        className="object-cover"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => setImagenAmpliada(true)}
+                        aria-label="Ver imagen completa"
+                        className="group absolute inset-0 block cursor-zoom-in"
+                      >
+                        <Image
+                          src={detalleRepuesto.producto.imagen}
+                          alt={detalleRepuesto.producto.nombre}
+                          fill
+                          unoptimized
+                          sizes="(max-width: 768px) 100vw, 50vw"
+                          className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                        />
+                        <span className="pointer-events-none absolute top-4 right-4 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/65 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white opacity-0 backdrop-blur transition group-hover:opacity-100">
+                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 8v6M8 11h6M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0z" />
+                          </svg>
+                          Ampliar
+                        </span>
+                      </button>
                     ) : (
                       <div className="flex h-full items-center justify-center text-7xl text-gray-300">📦</div>
                     )}
@@ -1573,6 +1613,18 @@ export default function Home() {
                       placeholder="Escribe aquí el mensaje o las preguntas que quieres enviar."
                       className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm text-gray-800 outline-none transition focus:border-yellow-400 focus:bg-white focus:ring-4 focus:ring-yellow-100"
                     />
+                    <a
+                      href={waCustomUrl(detalleRepuesto.producto.nombre, detallePreguntas)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={registrarPreguntaEnFirestore}
+                      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-bold text-white shadow-sm shadow-green-500/20 transition hover:bg-[#128C7E]"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
+                      </svg>
+                      Enviar mensaje por WhatsApp
+                    </a>
                     <p className="mt-1.5 text-[11px] text-gray-400">
                       Precio, compatibilidad, entrega o garantía — lo que necesites.
                     </p>
@@ -1616,12 +1668,26 @@ export default function Home() {
                       Guardar en mi directorio
                     </button>
                     {detalleGuardado && (
-                      <p className="mt-2 flex items-center justify-center gap-1.5 text-center text-[11px] font-semibold text-green-600">
-                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                        {detalleGuardado}
-                      </p>
+                      <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-3">
+                        <p className="flex items-center justify-center gap-1.5 text-center text-xs font-bold text-green-700">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                          {detalleGuardado}
+                        </p>
+                        <Link
+                          href="/directorio"
+                          className="mt-2.5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h18M3 12h18M3 17h12" />
+                          </svg>
+                          Ir a mi directorio
+                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                          </svg>
+                        </Link>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1654,6 +1720,38 @@ export default function Home() {
                 </a>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {imagenAmpliada && detalleRepuesto?.producto?.imagen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/95 p-4 animate-fade-in"
+          onClick={() => setImagenAmpliada(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Imagen ampliada"
+        >
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setImagenAmpliada(false) }}
+            aria-label="Cerrar imagen"
+            className="absolute top-4 right-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-gray-900 shadow-lg backdrop-blur transition hover:bg-white hover:scale-105"
+          >
+            <IconX />
+          </button>
+          <div
+            className="relative h-full w-full max-w-5xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Image
+              src={detalleRepuesto.producto.imagen}
+              alt={detalleRepuesto.producto.nombre}
+              fill
+              unoptimized
+              sizes="100vw"
+              className="object-contain"
+            />
           </div>
         </div>
       )}
