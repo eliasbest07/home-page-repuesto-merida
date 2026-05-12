@@ -1,4 +1,5 @@
 import './globals.css'
+import Script from 'next/script'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
@@ -55,7 +56,15 @@ export default function RootLayout({ children }) {
         <meta name="theme-color" content="#111827" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6503077569219292"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
+        />
+      </body>
     </html>
   )
 }
