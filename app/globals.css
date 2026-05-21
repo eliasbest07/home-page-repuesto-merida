@@ -50,21 +50,23 @@ body {
 }
 
 /* ─── Botón WhatsApp ─── */
-.btn-whatsapp {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  background-color: #25D366;
-  color: white;
-  font-weight: 600;
-  padding: 0.625rem 1.25rem;
-  border-radius: 0.5rem;
-  transition: background-color 0.2s ease, transform 0.2s ease;
-  white-space: nowrap;
-}
-.btn-whatsapp:hover {
-  background-color: #128C7E;
-  transform: translateY(-1px);
+@layer components {
+  .btn-whatsapp {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: #25D366;
+    color: white;
+    font-weight: 600;
+    padding: 0.625rem 1.25rem;
+    border-radius: 0.5rem;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    white-space: nowrap;
+  }
+  .btn-whatsapp:hover {
+    background-color: #128C7E;
+    transform: translateY(-1px);
+  }
 }
 
 /* ─── Card de producto ─── */
