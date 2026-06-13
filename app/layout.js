@@ -1,6 +1,7 @@
 import './globals.css'
-import Script from 'next/script'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
+import CookieConsent from '@/app/components/CookieConsent'
+import GlobalLegalLinks from '@/app/components/GlobalLegalLinks'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
 const localKeywordText = LOCAL_SEO_SIGNALS.highValueKeywords.join(', ')
@@ -9,6 +10,9 @@ export const metadata = {
   title: 'Repuestos Mérida Ciudad | Catálogo de Repuestos Automotrices en Mérida, Venezuela',
   description: 'Repuestos automotrices en Mérida ciudad (Municipio Libertador), estado Mérida, Venezuela. Atención por WhatsApp, compatibilidad por modelo y disponibilidad rápida.',
   keywords: `repuestos Mérida ciudad, repuestos Municipio Libertador, repuestos estado Mérida, repuestos automotrices Venezuela, ${localKeywordText}`,
+  other: {
+    'google-adsense-account': 'ca-pub-6503077569219292',
+  },
   metadataBase: new URL(SITE_URL),
   alternates: {
     canonical: '/',
@@ -58,12 +62,8 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         {children}
-        <Script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6503077569219292"
-          crossOrigin="anonymous"
-          strategy="afterInteractive"
-        />
+        <GlobalLegalLinks />
+        <CookieConsent />
       </body>
     </html>
   )

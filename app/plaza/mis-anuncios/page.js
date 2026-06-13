@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase'
+import { ensureSession } from '@/lib/rifaSession'
 
 function imgUrl(ref) {
   if (!ref) return null
@@ -32,13 +33,13 @@ export default function MisAnunciosPage() {
 
   // ── Auth guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem('plaza_session') || 'null')
-      if (!s?.token) { router.replace('/plaza/login?redirect=/plaza/mis-anuncios'); return }
-      setSession(s)
-    } catch {
-      router.replace('/plaza/login?redirect=/plaza/mis-anuncios')
-    }
+    ensureSession().then((s) => {
+      if (!s?.telefono) {
+        router.replace('/login?redirect=' + encodeURIComponent('/plaza/mis-anuncios'))
+        return
+      }
+      setSession({ ...s, whatsapp: s.telefono })
+    })
   }, [router])
 
   // ── Fetch anuncios desde Firestore ──────────────────────────────────────────

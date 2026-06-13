@@ -782,10 +782,10 @@ function MobileImageGallery({ items }) {
               {group.map((p) => (
                 <a
                   key={p.id}
-                  href={p.disponible ? waUrl(p.titulo) : undefined}
+                  href={p.disponible ? waUrl(p) : undefined}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-[92px] h-[92px] rounded-xl overflow-hidden flex items-center justify-center active:scale-95 transition-transform"
+                  className="relative w-[92px] h-[92px] rounded-xl overflow-hidden flex items-center justify-center active:scale-95 transition-transform"
                   style={{ backgroundColor: p.color + '22' }}
                 >
                   <AnuncioImg p={p} emojiClass="text-4xl" inline />
@@ -893,6 +893,7 @@ function UserMenu({ session, onClose, onLogout }) {
     setLogoutLoading(true)
     try { await fetch(`${API_BASE}/auth/logout`, { method: 'POST', headers: AUTH }) } catch (_) {}
     localStorage.removeItem('plaza_session')
+    localStorage.removeItem('rifa_session')
     onLogout()
     onClose()
   }
@@ -1050,10 +1051,11 @@ export default function PlazaPage() {
   const [menuOpen,  setMenuOpen]  = useState(false)
 
   useEffect(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem('plaza_session') || 'null')
-      if (s?.token) setSession(s)
-    } catch (_) {}
+    import('@/lib/rifaSession').then(({ ensureSession }) => {
+      ensureSession().then((s) => {
+        if (s?.telefono) setSession({ ...s, whatsapp: s.telefono, token: s.token })
+      })
+    })
   }, [])
 
   // ── Datos desde API ──
@@ -1152,6 +1154,7 @@ export default function PlazaPage() {
     filtrados.filter((_, i) => i % 3 === 1),
     filtrados.filter((_, i) => i % 3 === 2),
   ]
+  const desktopScrollPaused = allPaused || hoveredCol !== null
 
   // Skeleton card para estado de carga
   const SkeletonCard = () => (
@@ -1207,7 +1210,7 @@ export default function PlazaPage() {
 
           {/* Botón de usuario */}
           <button
-            onClick={() => session ? setMenuOpen(true) : window.location.href = '/plaza/login'}
+            onClick={() => session ? setMenuOpen(true) : window.location.href = '/login?redirect=' + encodeURIComponent('/plaza')}
             className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95 bg-gray-700 hover:bg-gray-600"
             title={session ? 'Mi cuenta' : 'Iniciar sesión'}
           >
@@ -1328,9 +1331,10 @@ export default function PlazaPage() {
 
       {/* ════════════════════════════
           DESKTOP — 3 columnas auto-scroll
+          · Hover en cualquier columna → todas pausan
           · Scroll en cualquier columna → todas pausan
           · Solo la columna con hover acepta scroll manual
-          · 5s sin mover el mouse → reanudan todas
+          · Tras scroll, 5s sin mover el mouse y sin hover → reanudan todas
       ════════════════════════════ */}
       <div
         className="hidden md:block"
@@ -1412,7 +1416,7 @@ export default function PlazaPage() {
                 items={cols[i]}
                 direction={dir}
                 pps={pps}
-                paused={allPaused}
+                paused={desktopScrollPaused}
                 isHovered={hoveredCol === i}
                 onMouseEnter={() => setHoveredCol(i)}
                 onMouseLeave={() => setHoveredCol(null)}

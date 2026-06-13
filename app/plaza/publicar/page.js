@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage'
 import { firestore, storage } from '../../../lib/firebase'
+import { ensureSession } from '@/lib/rifaSession'
 
 const PlazaChat = dynamic(() => import('../../components/PlazaChat'), { ssr: false })
 
@@ -45,14 +46,18 @@ export default function PublicarPage() {
   const [authChecked, setAuthChecked] = useState(false)
 
   useEffect(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem('plaza_session') || 'null')
-      if (!s?.token) { router.replace('/plaza/login?redirect=/plaza/publicar'); return }
-      setSession(s)
-    } catch {
-      router.replace('/plaza/login?redirect=/plaza/publicar'); return
-    }
-    setAuthChecked(true)
+    ensureSession().then((s) => {
+      if (!s?.telefono) {
+        router.replace('/login?redirect=' + encodeURIComponent('/plaza/publicar'))
+        return
+      }
+      if (!s.perfil) {
+        router.replace('/registro?redirect=' + encodeURIComponent('/plaza/publicar'))
+        return
+      }
+      setSession({ ...s, whatsapp: s.telefono })
+      setAuthChecked(true)
+    })
   }, [router])
 
   // ── Form state ──────────────────────────────────────────────────────────────

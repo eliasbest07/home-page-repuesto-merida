@@ -44,6 +44,62 @@ const CATEGORIAS = [
   { id: 'refrigeracion', nombre: 'Refrigeración',      emoji: '💧', bg: 'bg-cyan-100',   text: 'text-cyan-900' },
 ]
 
+const MOBILE_CATEGORIES = [
+  { id: 'filtros', nombre: 'Filtros', icon: '/mobile-catalog/categories/filtro.png' },
+  { id: 'frenos', nombre: 'Frenos', icon: '/mobile-catalog/categories/freno.png' },
+  { id: 'motor', nombre: 'Motor', icon: '/mobile-catalog/categories/motor.png' },
+  { id: 'frenos', nombre: 'Suspensión', icon: '/mobile-catalog/categories/amortiguador.png' },
+  { id: 'electrico', nombre: 'Eléctricos', icon: '/mobile-catalog/categories/bateria.png' },
+  { id: 'todos', nombre: 'Más', icon: '/mobile-catalog/categories/otro.png' },
+]
+
+const MOBILE_FEATURED = [
+  {
+    productId: 1,
+    category: 'filtros',
+    label: 'Filtro de Aceite',
+    brand: 'Toyota',
+    model: 'Corolla',
+    years: '2014 - 2019',
+    price: '$18.50',
+    brandIcon: '/mobile-catalog/brands/toyota.png',
+    fallbackIcon: '/mobile-catalog/categories/filtro.png',
+  },
+  {
+    productId: 9,
+    category: 'frenos',
+    label: 'Pastillas de Freno',
+    brand: 'Chevrolet',
+    model: 'Aveo',
+    years: '2006 - 2011',
+    price: '$22.00',
+    brandIcon: '/mobile-catalog/brands/chevrolet.png',
+    fallbackIcon: '/mobile-catalog/categories/freno.png',
+  },
+  {
+    productId: 18,
+    category: 'electrico',
+    label: 'Bujía',
+    brand: 'Ford',
+    model: 'Fiesta',
+    years: '2011 - 2017',
+    price: '$6.80',
+    brandIcon: '/mobile-catalog/brands/ford.png',
+    fallbackIcon: '/mobile-catalog/categories/electricidad.png',
+  },
+  {
+    productId: 2,
+    category: 'motor',
+    label: 'Correa de Tiempo',
+    brand: 'Hyundai',
+    model: 'Elantra',
+    years: '2012 - 2016',
+    price: '$28.00',
+    brandIcon: '/mobile-catalog/brands/hyundai.png',
+    fallbackIcon: '/mobile-catalog/categories/motor.png',
+  },
+]
+
 const PRODUCTOS = [
   // ── Motor y Transmisión ──
   { id: 1,  nombre: 'Filtro de Aceite Universal',       categoria: 'motor',         precio: '$4 – $12',    marca: 'Mann / Bosch',        compat: 'Toyota · Ford · Chevrolet · Kia',      disponible: true,  destacado: true  },
@@ -427,6 +483,19 @@ export default function Home() {
   }
 
   const featuredProducts = catalogo.filter((p) => p.destacado).slice(0, 8)
+  const mobileFeaturedProducts = MOBILE_FEATURED.map((item) => {
+    const exactProduct = catalogo.find((product) => String(product.id) === String(item.productId))
+    const productWithImage =
+      exactProduct?.imagen
+        ? exactProduct
+        : catalogo.find((product) => product.categoria === item.category && product.imagen)
+    return {
+      ...item,
+      product: exactProduct || PRODUCTOS.find((product) => product.id === item.productId),
+      image: productWithImage?.imagen || item.fallbackIcon,
+      isFallbackImage: !productWithImage?.imagen,
+    }
+  })
   const homepageUrl = `${SITE_URL}/`
   const flattenedTrendPatterns = LOCAL_SEO_SIGNALS.intentClusters.flatMap((cluster) => cluster.patterns)
   const topLocalTerms = LOCAL_SEO_SIGNALS.highValueKeywords.slice(0, 6)
@@ -639,21 +708,21 @@ export default function Home() {
       ))}
 
       <nav className={`fixed top-0 left-0 right-0 z-50 bg-gray-900 transition-shadow duration-300 ${scrolled ? 'navbar-scrolled' : ''}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
 
             {/* Logo */}
-            <a href="#inicio" className="flex items-center gap-3">
+            <a href="#inicio" className="flex min-w-0 items-center gap-2 sm:gap-3">
               <Image
                 src="/iconorm.png"
                 alt="Repuestos Mérida"
                 width={40}
                 height={40}
-                className="rounded-lg"
+                className="h-9 w-9 shrink-0 rounded-lg sm:h-10 sm:w-10"
               />
-              <div>
-                <span className="font-brand text-white text-lg leading-none">Repuestos</span>
-                <span className="font-brand text-[#FFD700] text-lg leading-none ml-1">Mérida</span>
+              <div className="whitespace-nowrap">
+                <span className="font-brand text-white text-[16px] leading-none sm:text-lg">Repuestos</span>
+                <span className="font-brand text-[#FFD700] text-[16px] leading-none ml-1 sm:text-lg">Mérida</span>
                 <p className="text-gray-400 text-xs leading-none mt-0.5 hidden sm:block">Gochos Group</p>
               </div>
             </a>
@@ -662,6 +731,7 @@ export default function Home() {
             <div className="hidden md:flex items-center gap-6">
               <a href="#categorias" className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Categorías</a>
               <a href="#catalogo"   className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Catálogo</a>
+              <Link href="/solicitados" className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Solicitados</Link>
               <a href="#nosotros"   className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Nosotros</a>
               <a href="#servicios"  className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Servicios</a>
               <Link href="/plaza"   className="text-sm font-bold px-3 py-1.5 rounded-lg bg-[#FFD700] text-gray-900 hover:bg-yellow-300 transition-colors">
@@ -673,16 +743,26 @@ export default function Home() {
             <a
               href={waUrl('consulta general')}
               target="_blank" rel="noopener noreferrer"
-              className="hidden md:inline-flex btn-whatsapp text-sm"
+              className="desktop-nav-whatsapp btn-whatsapp text-sm"
             >
               <IconWhatsApp />
               Consultar ahora
             </a>
 
+            <a
+              href={waUrl('consulta general')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mobile-nav-whatsapp md:hidden"
+            >
+              <IconWhatsApp />
+              <span>Consultar ahora</span>
+            </a>
+
             {/* Menú hamburger – móvil */}
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="md:hidden text-gray-300 hover:text-white p-1"
+              className="md:hidden shrink-0 text-gray-300 hover:text-white p-1"
               aria-label="Menú"
             >
               {menuOpen ? <IconX /> : <IconMenu />}
@@ -693,6 +773,13 @@ export default function Home() {
         {/* Menú móvil */}
         {menuOpen && (
           <div className="md:hidden bg-gray-800 border-t border-gray-700 px-4 py-4 space-y-3">
+            <Link
+              href="/solicitados"
+              onClick={() => setMenuOpen(false)}
+              className="block text-gray-300 hover:text-[#FFD700] text-sm font-medium py-2 transition-colors"
+            >
+              Repuestos solicitados
+            </Link>
             {['#categorias','#catalogo','#nosotros','#contacto','#servicios'].map((href, i) => (
               <a
                 key={href}
@@ -734,7 +821,7 @@ export default function Home() {
       {/* ──────────────────────────────────────────
           HERO
       ────────────────────────────────────────── */}
-      <section id="inicio" className="bg-gray-900 bg-hero-pattern pt-24 pb-16 px-4">
+      <section id="inicio" className="mobile-home-hero bg-gray-900 bg-hero-pattern pt-24 pb-16 px-4">
         <div className="max-w-5xl mx-auto text-center">
 
           {/* Eyebrow */}
@@ -744,15 +831,18 @@ export default function Home() {
           </div>
 
           {/* Headline */}
-          <h1 className="font-brand text-4xl sm:text-5xl lg:text-6xl text-white leading-tight mb-4">
+          <h1 className="mobile-hero-title font-brand text-4xl sm:text-5xl lg:text-6xl text-white leading-tight mb-4">
             Tu repuesto,{' '}
             <span className="text-gradient-brand">disponible ahora</span>
           </h1>
 
           {/* Sub */}
-          <p className="text-gray-400 text-lg sm:text-xl max-w-2xl mx-auto mb-8 leading-relaxed">
-            El catálogo de repuestos automotrices más completo de Mérida ciudad, Municipio Libertador y Los Andes venezolanos.
-            Marcas líderes · Precios justos · Atención directa por WhatsApp · Entrega local bajo coordinación.
+          <p className="mobile-hero-copy text-gray-400 text-lg sm:text-xl max-w-2xl mx-auto mb-8 leading-relaxed">
+            <span className="md:hidden">El catálogo de repuestos automotrices más completo de Mérida ciudad, Municipio Libertador y Los Andes venezolanos.</span>
+            <span className="hidden md:inline">
+              El catálogo de repuestos automotrices más completo de Mérida ciudad, Municipio Libertador y Los Andes venezolanos.
+              Marcas líderes · Precios justos · Atención directa por WhatsApp · Entrega local bajo coordinación.
+            </span>
           </p>
 
           {/* Search bar */}
@@ -770,8 +860,11 @@ export default function Home() {
           </div>
 
           {/* CTAs */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="#catalogo" className="btn-brand text-base px-8 py-3">
+          <div className="mobile-hero-actions flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="#catalogo" className="btn-brand justify-center text-base px-8 py-3">
+              <svg className="md:hidden h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v17H6.5A2.5 2.5 0 0 0 4 22V5.5Zm16 0A2.5 2.5 0 0 0 17.5 3H13v17h4.5A2.5 2.5 0 0 1 20 22V5.5Z" />
+              </svg>
               Ver catálogo completo
             </a>
             <a
@@ -786,10 +879,105 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="mobile-home-dashboard md:hidden" aria-label="Accesos rápidos al catálogo">
+        <div className="mobile-featured-heading">
+          <h2>
+            <span aria-hidden="true">★</span>
+            Repuestos destacados
+          </h2>
+          <a href="#catalogo">
+            Ver todos
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m9 5 7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+        <div className="mobile-featured-scroller scrollbar-none">
+          {mobileFeaturedProducts.map((item) => (
+            <button
+              type="button"
+              key={item.label}
+              className="mobile-featured-card"
+              onClick={() => openDetallePara(item.product)}
+            >
+              <span className={`mobile-featured-image ${item.isFallbackImage ? 'is-icon' : ''}`}>
+                <Image
+                  src={item.image}
+                  alt={item.label}
+                  fill
+                  unoptimized={!item.isFallbackImage}
+                  sizes="104px"
+                  className="object-contain"
+                />
+              </span>
+              <span className="mobile-product-label">{item.label}</span>
+              <span className="mobile-product-brand">
+                <Image src={item.brandIcon} alt="" width={17} height={17} />
+                {item.brand}
+              </span>
+              <span className="mobile-product-model">{item.model}</span>
+              <span className="mobile-product-years">{item.years}</span>
+              <span className="mobile-product-price">{item.price}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="mobile-carousel-dots" aria-hidden="true">
+          <span className="active" />
+          <span />
+          <span />
+        </div>
+
+        <div className="mobile-category-block">
+          <h2>Explora por categoría</h2>
+          <div className="mobile-category-grid">
+            {MOBILE_CATEGORIES.map((category) => (
+              <button
+                type="button"
+                key={`${category.nombre}-${category.id}`}
+                onClick={() => {
+                  handleCat(category.id)
+                  document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' })
+                }}
+              >
+                <Image src={category.icon} alt="" width={36} height={36} />
+                <span>{category.nombre}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mobile-help-card">
+          <span className="mobile-help-icon"><IconWhatsApp /></span>
+          <span className="mobile-help-copy">
+            <strong>¿No encuentras lo que buscas?</strong>
+            <small>Nuestro asistente de plaza te ayuda a publicar o solicitar cualquier repuesto.</small>
+          </span>
+          <button type="button" onClick={() => openOsoForProduct({ nombre: 'un repuesto' })}>
+            Chatear ahora
+          </button>
+        </div>
+
+        <div className="mobile-trends-card">
+          <span className="mobile-trends-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m4 16 6-6 4 4 6-7M15 7h5v5" />
+            </svg>
+          </span>
+          <span>
+            <strong>Tendencias locales</strong>
+            <small>
+              Patrones de búsqueda detectados en Mérida (Libertador) actualizados el {LOCAL_SEO_SIGNALS.detectedAt}.
+            </small>
+          </span>
+        </div>
+      </section>
+
       {/* ──────────────────────────────────────────
           TENDENCIAS LOCALES (MÉRIDA)
       ────────────────────────────────────────── */}
-      <section className="py-10 px-4 bg-white border-b border-gray-100">
+      <section className="hidden py-10 px-4 bg-white border-b border-gray-100 md:block">
         <div className="max-w-6xl mx-auto">
           <div className="mb-4">
             <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 block mb-2">Tendencias locales · Mérida, Venezuela</span>
@@ -812,7 +1000,7 @@ export default function Home() {
       </section>
 
       {/* ── Stats bar ── */}
-      <div className="bg-[#FFD700]">
+      <div className="hidden bg-[#FFD700] md:block">
         <div className="max-w-5xl mx-auto px-4 py-4 grid grid-cols-3 gap-4 text-center">
           {[
             { valor: '39+',  label: 'Repuestos disponibles' },
@@ -830,7 +1018,7 @@ export default function Home() {
       {/* ──────────────────────────────────────────
           CATEGORÍAS
       ────────────────────────────────────────── */}
-      <section id="categorias" className="py-16 bg-gray-50 px-4">
+      <section id="categorias" className="hidden py-16 bg-gray-50 px-4 md:block">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-10">
             <h2 className="font-brand text-3xl sm:text-4xl text-gray-900 mb-2">
@@ -1305,6 +1493,7 @@ export default function Home() {
               <ul className="space-y-2 text-sm">
                 <li><a href="#categorias" className="hover:text-[#FFD700] transition-colors">Categorías</a></li>
                 <li><a href="#catalogo"   className="hover:text-[#FFD700] transition-colors">Catálogo</a></li>
+                <li><Link href="/solicitados" className="hover:text-[#FFD700] transition-colors">Repuestos solicitados</Link></li>
                 <li><a href="#nosotros"   className="hover:text-[#FFD700] transition-colors">Nosotros</a></li>
                 <li><a href="#contacto"   className="hover:text-[#FFD700] transition-colors">Contacto</a></li>
                 <li><a href="#servicios"  className="hover:text-[#FFD700] transition-colors">Servicios</a></li>
@@ -1344,6 +1533,8 @@ export default function Home() {
               <p className="text-white font-semibold text-sm mb-4">Legal</p>
               <ul className="space-y-2 text-sm">
                 <li><Link href="/politica-privacidad"  className="hover:text-[#FFD700] transition-colors">Política de Privacidad</Link></li>
+                <li><Link href="/aviso-legal"          className="hover:text-[#FFD700] transition-colors">Aviso Legal</Link></li>
+                <li><Link href="/politica-cookies"     className="hover:text-[#FFD700] transition-colors">Política de Cookies</Link></li>
                 <li><Link href="/terminos-condiciones" className="hover:text-[#FFD700] transition-colors">Términos y Condiciones</Link></li>
                 <li><Link href="/eliminar-datos"       className="hover:text-[#FFD700] transition-colors">Eliminar mis datos</Link></li>
               </ul>
@@ -1757,7 +1948,7 @@ export default function Home() {
       )}
 
       {/* ── Plaza AI Chat Widget ── */}
-      <PlazaChat />
+      <PlazaChat hideMobileLauncher />
 
     </div>
   )

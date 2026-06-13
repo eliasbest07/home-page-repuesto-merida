@@ -24,6 +24,11 @@ export async function POST(request) {
     const roomName = String(body.nombreSala || '').trim();
     const modo = VALID_MODES.has(body.modo) ? body.modo : 'linea';
     const intervaloSeg = Math.max(3, Math.min(20, Number(body.intervalo) || 6));
+    const premio = Math.max(0, Math.min(1_000_000_000, Math.round(Number(body.premio) || 0)));
+    const precioCarton = Math.max(0, Math.min(1_000_000_000, Math.round(Number(body.precioCarton) || 0)));
+    // Minutos hasta el inicio programado (0 = sin horario, máx 7 días)
+    const enMinutos = Math.max(0, Math.min(10080, Math.round(Number(body.enMinutos) || 0)));
+    const comienzaEn = enMinutos > 0 ? Date.now() + enMinutos * 60_000 : null;
 
     if (!hostName) {
       return NextResponse.json({ error: 'Ingresa tu nombre para crear la sala.' }, { status: 400 });
@@ -40,6 +45,9 @@ export async function POST(request) {
       hostPhone: session.phone,
       modo,
       intervaloSeg,
+      premio,
+      precioCarton,
+      comienzaEn,
     });
 
     await set(roomRef, room);

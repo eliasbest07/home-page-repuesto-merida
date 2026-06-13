@@ -51,7 +51,7 @@ const buildOsoWhatsAppUrl = (context = '') =>
 
 const randomWhatsappDelay = () => 3000 + Math.floor(Math.random() * 12001)
 
-export default function PlazaChat() {
+export default function PlazaChat({ hideMobileLauncher = false }) {
   const [open, setOpen]         = useState(false)
   const [messages, setMessages] = useState([INITIAL_MSG])
   const [input, setInput]       = useState('')
@@ -241,8 +241,9 @@ export default function PlazaChat() {
         onClick={() => setOpen(true)}
         aria-label="Abrir Oso Frontino Brain"
         style={{ zIndex: 9999 }}
-        className={`fixed bottom-6 right-5 w-16 h-16 rounded-none shadow-2xl flex items-center justify-center overflow-visible
+        className={`fixed bottom-6 right-5 w-16 h-16 rounded-none shadow-2xl items-center justify-center overflow-visible
           transition-all duration-300 hover:scale-110 group bg-transparent border-0
+          ${hideMobileLauncher ? 'hidden md:flex' : 'flex'}
           ${open ? 'opacity-0 pointer-events-none scale-90' : 'opacity-100 scale-100'}`}
       >
         <span className="absolute -inset-[15%] rounded-full bg-yellow-400 scale-0 opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />

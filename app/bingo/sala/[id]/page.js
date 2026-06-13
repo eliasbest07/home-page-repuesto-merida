@@ -9,6 +9,7 @@ import ListaJugadores from '../../components/ListaJugadores';
 import ModalGanador from '../../components/ModalGanador';
 import TableroCantadas from '../../components/TableroCantadas';
 import { normalizePlayersMap, roomPath } from '@/lib/bingoRealtime';
+import { playerCartones } from '@/lib/bingo';
 import { rtdb } from '@/lib/firebase';
 import { phoneKey } from '@/lib/whatsappAuth';
 
@@ -98,6 +99,7 @@ export default function SalaBingo() {
 
   const miJugadorId = session?.phone ? phoneKey(session.phone) : '';
   const miJugador = jugadores.find((player) => player.id === miJugadorId) || null;
+  const misCartones = playerCartones(miJugador);
   const esHost = room?.hostPlayerId === miJugadorId;
   const cantadas = room?.numerosCantados || [];
   const esTuGanador = Boolean(ganadorModal && ganadorModal.jugadorId === miJugadorId);
@@ -227,36 +229,40 @@ export default function SalaBingo() {
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-2 lg:grid lg:grid-cols-2 lg:overflow-visible">
-        {jugadores.map((player) => (
-          <div
-            key={player.id}
-            className={`min-w-[190px] rounded-2xl border p-3 ${
-              player.id === miJugadorId
-                ? 'border-brand-yellow bg-yellow-500/10'
-                : player.gano
-                ? 'border-green-500/40 bg-green-500/10'
-                : 'border-gray-800 bg-gray-900'
-            }`}
-          >
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-white">
-                  {player.nombre}
-                  {player.id === miJugadorId ? ' (tú)' : ''}
-                </p>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
-                  {player.isHost ? 'Anfitrión' : 'Jugador'}
-                </p>
+        {jugadores.flatMap((player) => {
+          const cartones = playerCartones(player);
+          return cartones.map((entry, index) => (
+            <div
+              key={`${player.id}-${entry.id}`}
+              className={`min-w-[190px] rounded-2xl border p-3 ${
+                player.id === miJugadorId
+                  ? 'border-brand-yellow bg-yellow-500/10'
+                  : player.gano
+                  ? 'border-green-500/40 bg-green-500/10'
+                  : 'border-gray-800 bg-gray-900'
+              }`}
+            >
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-white">
+                    {player.nombre}
+                    {player.id === miJugadorId ? ' (tú)' : ''}
+                  </p>
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
+                    {player.isHost ? 'Anfitrión' : 'Jugador'}
+                    {cartones.length > 1 ? ` · ${index + 1}/${cartones.length}` : ''}
+                  </p>
+                </div>
+                {player.gano && (
+                  <span className="rounded-full bg-brand-yellow px-2 py-1 text-[10px] font-bold text-gray-900">
+                    BINGO
+                  </span>
+                )}
               </div>
-              {player.gano && (
-                <span className="rounded-full bg-brand-yellow px-2 py-1 text-[10px] font-bold text-gray-900">
-                  BINGO
-                </span>
-              )}
+              <Carton carton={entry.carton} cantadas={cantadas} ultimoNum={room.ultimoNumero} soloVer compact />
             </div>
-            <Carton carton={player.carton} cantadas={cantadas} ultimoNum={room.ultimoNumero} soloVer compact />
-          </div>
-        ))}
+          ));
+        })}
       </div>
     </section>
   );
@@ -373,7 +379,9 @@ export default function SalaBingo() {
               <div className="rounded-3xl border border-gray-800 bg-gray-900 p-5">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-gray-500">Tu cartón</p>
+                    <p className="text-xs uppercase tracking-[0.25em] text-gray-500">
+                      {misCartones.length > 1 ? `Tus cartones (${misCartones.length})` : 'Tu cartón'}
+                    </p>
                     <p className="text-lg font-semibold text-white">{miJugador?.nombre || getStoredName()}</p>
                   </div>
                   {miJugador?.gano && (
@@ -384,7 +392,18 @@ export default function SalaBingo() {
                 </div>
 
                 {miJugador ? (
-                  <Carton carton={miJugador.carton} cantadas={cantadas} ultimoNum={room.ultimoNumero} />
+                  <div className="space-y-6">
+                    {misCartones.map((entry) => (
+                      <div key={entry.id}>
+                        {misCartones.length > 1 && (
+                          <p className="mb-2 text-center text-xs font-bold text-brand-yellow">
+                            Cartón #{entry.id}
+                          </p>
+                        )}
+                        <Carton carton={entry.carton} cantadas={cantadas} ultimoNum={room.ultimoNumero} />
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <p className="text-center text-sm text-gray-500">Aún no apareces en esta sala.</p>
                 )}

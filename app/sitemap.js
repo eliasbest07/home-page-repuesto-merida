@@ -16,6 +16,12 @@ export default function sitemap() {
       priority: 0.9,
     },
     {
+      url: `${SITE_URL}/solicitados`,
+      lastModified: now,
+      changeFrequency: 'daily',
+      priority: 0.9,
+    },
+    {
       url: `${SITE_URL}/politica-privacidad`,
       lastModified: now,
       changeFrequency: 'monthly',
@@ -23,6 +29,18 @@ export default function sitemap() {
     },
     {
       url: `${SITE_URL}/terminos-condiciones`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    {
+      url: `${SITE_URL}/aviso-legal`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    {
+      url: `${SITE_URL}/politica-cookies`,
       lastModified: now,
       changeFrequency: 'monthly',
       priority: 0.5,

@@ -39,6 +39,29 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
+    // Comentarios públicos en la lista de repuestos solicitados.
+    match /solicitudes_comentarios/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly([
+                      'solicitud_id',
+                      'autor',
+                      'texto',
+                      'whatsapp',
+                      'creado_en'
+                    ])
+                    && request.resource.data.solicitud_id is int
+                    && request.resource.data.autor is string
+                    && request.resource.data.autor.size() > 0
+                    && request.resource.data.autor.size() <= 50
+                    && request.resource.data.texto is string
+                    && request.resource.data.texto.size() > 0
+                    && request.resource.data.texto.size() <= 500
+                    && request.resource.data.whatsapp is string
+                    && request.resource.data.whatsapp.size() <= 18
+                    && request.resource.data.creado_en == request.time;
+      allow update, delete: if false;
+    }
+
     // Imágenes y datos de verificación — solo admin
     match /usuarios_plaza/{telefono} {
       allow read, write: if request.auth != null;

@@ -1,0 +1,57 @@
+{
+  "rules": {
+    "anuncios": { ".read": true, ".write": true },
+    "users":             { ".read": true, ".write": true },
+    "verificarCedula":   { ".read": true, ".write": true },
+
+    "rifas_otps": {
+      ".read": false,
+      "$tel": {
+        ".read": false,
+        ".write": true,
+        ".validate": "newData.hasChildren(['codigo','expira_en','tipo','telefono','intent','intentos']) && newData.child('codigo').isString() && newData.child('codigo').val().length >= 40 && newData.child('intentos').isNumber() && newData.child('intentos').val() >= 0 && newData.child('intentos').val() <= 5"
+      }
+    },
+
+    "rifas_usuarios": {
+      ".read": true,
+      "$tel": {
+        ".write": true,
+        ".validate": "newData.hasChildren(['telefono','nombre'])"
+      }
+    },
+
+    "rifas": {
+      ".read": true,
+      ".indexOn": ["creador_key"],
+      "$rifa": {
+        ".write": true,
+        ".validate": "newData.hasChildren(['titulo','premio','creador','creador_key','precio_numero']) || data.exists()",
+        "numeros": {
+          ".read": true,
+          "$num": {
+            ".write": true
+          }
+        },
+        "vendedores": {
+          ".read": true,
+          "$vk": { ".write": true }
+        }
+      }
+    },
+
+    "vendedor_index": {
+      "$tel": {
+        ".read": true,
+        ".write": true
+      }
+    },
+
+    "creador_index": {
+      "$tel": {
+        ".read": true,
+        ".write": true
+      }
+    }
+  }
+}

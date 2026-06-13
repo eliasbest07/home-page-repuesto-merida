@@ -4,11 +4,12 @@ import { ref, update } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
 import {
   createPlayerId,
+  newCartonEntry,
   readRoom,
   resolveRoomIdByCode,
   roomPath,
 } from '@/lib/bingoRealtime';
-import { generateCarton } from '@/lib/bingo';
+import { generateCartonId } from '@/lib/bingo';
 import { BINGO_SESSION_COOKIE, readBingoSession } from '@/lib/bingoSession';
 
 export async function POST(request) {
@@ -20,16 +21,17 @@ export async function POST(request) {
 
     const body = await request.json();
     const codigo = String(body.codigo || '').trim().toUpperCase();
+    const directRoomId = String(body.roomId || '').trim();
     const nombre = String(body.nombreJugador || '').trim();
 
-    if (codigo.length !== 6) {
+    if (!directRoomId && codigo.length !== 6) {
       return NextResponse.json({ error: 'El código de sala debe tener 6 caracteres.' }, { status: 400 });
     }
     if (!nombre) {
       return NextResponse.json({ error: 'Ingresa tu nombre.' }, { status: 400 });
     }
 
-    const roomId = await resolveRoomIdByCode(codigo);
+    const roomId = directRoomId || (await resolveRoomIdByCode(codigo));
     if (!roomId) {
       return NextResponse.json({ error: 'Sala no encontrada.' }, { status: 404 });
     }
@@ -47,7 +49,7 @@ export async function POST(request) {
     const player = existing || {
       nombre,
       telefono: session.phone,
-      carton: generateCarton(),
+      cartones: { [generateCartonId()]: newCartonEntry() },
       gano: false,
       isHost: false,
       joinedAt: Date.now(),

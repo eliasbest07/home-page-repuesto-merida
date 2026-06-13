@@ -3,9 +3,11 @@ import { NextResponse } from 'next/server';
 import { ref, runTransaction } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
 import {
+  addCartonState,
   claimBingoState,
   createPlayerId,
   drawNextNumberState,
+  removeCartonState,
   restartRoomState,
   roomPath,
   startRoomState,
@@ -23,7 +25,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
     }
 
-    const { action } = await request.json();
+    const { action, cartonId } = await request.json();
     const playerId = createPlayerId(session.phone);
     const targetRef = ref(rtdb, roomPath(params.id));
 
@@ -54,6 +56,12 @@ export async function POST(request, { params }) {
         case 'claim':
           if (!room.players?.[playerId]) throw new Error('__PLAYER_REQUIRED__');
           return claimBingoState(room, playerId);
+        case 'add-carton':
+          if (!room.players?.[playerId]) throw new Error('__PLAYER_REQUIRED__');
+          return addCartonState(room, playerId);
+        case 'remove-carton':
+          if (!room.players?.[playerId]) throw new Error('__PLAYER_REQUIRED__');
+          return removeCartonState(room, playerId, String(cartonId || ''));
         default:
           throw new Error('__INVALID_ACTION__');
       }
