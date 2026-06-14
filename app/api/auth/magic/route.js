@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server'
-import { rtdb } from '@/lib/firebase'
+import { firestore, rtdb } from '@/lib/firebase'
+import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { ref, get } from 'firebase/database'
-import {
-  getWhatsAppAuthBase,
-  getWhatsAppAuthHeaders,
-  phoneKey,
-} from '@/lib/whatsappAuth'
+import { phoneKey } from '@/lib/whatsappAuth'
 import { signRifaToken } from '@/lib/rifaJwt'
 
-// Consume el enlace mágico: el BOT valida el token (un solo uso) contra
-// Firebase; si es válido, esta API emite el JWT de sesión para ese número y
-// devuelve a dónde redirigir (el debate de la solicitud).
+// Consume el enlace mágico leyendo Firebase DIRECTAMENTE (no llama al bot).
+// El bot ya escribió en Firestore (magic_links/{token}) la autorización para
+// ese número. Aquí la web comprueba esa autorización, marca el token como
+// usado (un solo uso) y emite el JWT de sesión.
 export async function POST(request) {
   try {
     const { token } = await request.json()
@@ -18,27 +16,28 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Enlace inválido.' }, { status: 400 })
     }
 
-    let response
-    try {
-      response = await fetch(`${getWhatsAppAuthBase()}/auth/consumir-magic`, {
-        method: 'POST',
-        headers: getWhatsAppAuthHeaders(),
-        body: JSON.stringify({ token }),
-        cache: 'no-store',
-      })
-    } catch {
-      return NextResponse.json({ error: 'No se pudo contactar el servicio de WhatsApp.' }, { status: 502 })
+    const linkRef = doc(firestore, 'magic_links', token)
+    const snap = await getDoc(linkRef)
+    if (!snap.exists()) {
+      return NextResponse.json({ error: 'Enlace inválido.' }, { status: 404 })
+    }
+    const data = snap.data() || {}
+
+    if (data.usado) {
+      return NextResponse.json({ error: 'Este enlace ya fue usado.' }, { status: 410 })
+    }
+    if (Date.now() > Number(data.expira_en || 0)) {
+      return NextResponse.json({ error: 'El enlace expiró. Pide uno nuevo por WhatsApp.' }, { status: 410 })
     }
 
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok || !data.ok || !data.telefono) {
-      return NextResponse.json(
-        { error: data.error || 'No se pudo validar el enlace.' },
-        { status: response.status === 200 ? 401 : response.status }
-      )
+    const telefono = data.telefono || data.numero || ''
+    const key = phoneKey(telefono)
+    if (!key) {
+      return NextResponse.json({ error: 'Enlace inválido.' }, { status: 400 })
     }
 
-    const key = phoneKey(data.telefono)
+    // Un solo uso: marcar usado (la regla solo permite tocar usado/usado_en).
+    await updateDoc(linkRef, { usado: true, usado_en: Date.now() })
 
     let perfil = null
     const perfilSnap = await get(ref(rtdb, `rifas_usuarios/${key}`))
@@ -48,16 +47,16 @@ export async function POST(request) {
     const vendSnap = await get(ref(rtdb, `vendedor_index/${key}`))
     if (vendSnap.exists()) rifasVendedor = Object.keys(vendSnap.val() || {})
 
-    const { token: jwt, expiresAt } = signRifaToken({ tel: key, telefono: data.telefono })
+    const { token: jwt, expiresAt } = signRifaToken({ tel: key, telefono })
 
     return NextResponse.json({
       ok: true,
-      telefono: data.telefono,
+      telefono,
       perfil,
       rifas_vendedor: rifasVendedor,
       token: jwt,
       expiresAt,
-      redirect: data.redirect || '/solicitados',
+      redirect: data.redirect || '/',
     })
   } catch (err) {
     return NextResponse.json({ error: err?.message || 'Error inesperado.' }, { status: 500 })

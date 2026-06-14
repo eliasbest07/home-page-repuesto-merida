@@ -62,6 +62,17 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Enlaces mágicos de login: SOLO el bot (admin SDK) los crea/borra. La web
+    // los lee por su token (id secreto de 256 bits, sin 'list') y solo puede
+    // marcarlos como usados. No se puede enumerar ni crear desde el cliente.
+    match /magic_links/{token} {
+      allow get: if true;
+      allow list, create, delete: if false;
+      allow update: if request.resource.data.usado == true
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['usado', 'usado_en']);
+    }
+
     // Imágenes y datos de verificación — solo admin
     match /usuarios_plaza/{telefono} {
       allow read, write: if request.auth != null;

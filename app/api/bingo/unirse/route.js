@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { ref, update } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
 import {
@@ -10,16 +9,17 @@ import {
   roomPath,
 } from '@/lib/bingoRealtime';
 import { generateCartonId } from '@/lib/bingo';
-import { BINGO_SESSION_COOKIE, readBingoSession } from '@/lib/bingoSession';
+import { verifyRifaToken } from '@/lib/rifaJwt';
 
 export async function POST(request) {
   try {
-    const session = readBingoSession(cookies().get(BINGO_SESSION_COOKIE)?.value);
-    if (!session?.phone) {
+    const body = await request.json();
+    const session = verifyRifaToken(body.token);
+    const phone = session?.telefono || session?.tel;
+    if (!phone) {
       return NextResponse.json({ error: 'Debes verificar tu WhatsApp para entrar a una sala.' }, { status: 401 });
     }
-
-    const body = await request.json();
+    session.phone = phone;
     const codigo = String(body.codigo || '').trim().toUpperCase();
     const directRoomId = String(body.roomId || '').trim();
     const nombre = String(body.nombreJugador || '').trim();

@@ -1,4 +1,3 @@
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { ref, runTransaction } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
@@ -12,7 +11,7 @@ import {
   roomPath,
   startRoomState,
 } from '@/lib/bingoRealtime';
-import { BINGO_SESSION_COOKIE, readBingoSession } from '@/lib/bingoSession';
+import { verifyRifaToken } from '@/lib/rifaJwt';
 
 function unauthorized(message) {
   return NextResponse.json({ error: message }, { status: 403 });
@@ -20,13 +19,13 @@ function unauthorized(message) {
 
 export async function POST(request, { params }) {
   try {
-    const session = readBingoSession(cookies().get(BINGO_SESSION_COOKIE)?.value);
-    if (!session?.phone) {
+    const { token, action, cartonId } = await request.json();
+    const session = verifyRifaToken(token);
+    const phone = session?.telefono || session?.tel;
+    if (!phone) {
       return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
     }
-
-    const { action, cartonId } = await request.json();
-    const playerId = createPlayerId(session.phone);
+    const playerId = createPlayerId(phone);
     const targetRef = ref(rtdb, roomPath(params.id));
 
     const tx = await runTransaction(targetRef, (room) => {

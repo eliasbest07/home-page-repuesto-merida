@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { push, ref, set, update } from 'firebase/database';
-import { cookies } from 'next/headers';
 import { rtdb } from '@/lib/firebase';
 import {
   buildRoom,
@@ -8,18 +7,20 @@ import {
   finalizeRoomCode,
   roomPath,
 } from '@/lib/bingoRealtime';
-import { BINGO_SESSION_COOKIE, readBingoSession } from '@/lib/bingoSession';
+import { verifyRifaToken } from '@/lib/rifaJwt';
 
 const VALID_MODES = new Set(['linea', 'L', 'T', 'lleno']);
 
 export async function POST(request) {
   try {
-    const session = readBingoSession(cookies().get(BINGO_SESSION_COOKIE)?.value);
-    if (!session?.phone) {
+    const body = await request.json();
+    // Sesión = JWT que dejó el enlace mágico (sin dependencia del bot).
+    const session = verifyRifaToken(body.token);
+    const phone = session?.telefono || session?.tel;
+    if (!phone) {
       return NextResponse.json({ error: 'Debes verificar tu WhatsApp para crear una sala.' }, { status: 401 });
     }
-
-    const body = await request.json();
+    session.phone = phone;
     const hostName = String(body.nombreJugador || '').trim();
     const roomName = String(body.nombreSala || '').trim();
     const modo = VALID_MODES.has(body.modo) ? body.modo : 'linea';

@@ -4,10 +4,14 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { saveSession, ensureSession } from '@/lib/rifaSession'
-import { buildWhatsAppRequest } from '@/lib/whatsappClient'
+import { ensureSession } from '@/lib/rifaSession'
 
-const FIELD = 'border border-gray-200 rounded-xl px-4 py-3 text-base w-full focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100 transition-all bg-white'
+// WhatsApp oficial del bot (donde el Oso escucha y responde el enlace).
+const WA_OFICIAL = '584123375417'
+const MSG_LOGIN = 'Hola Oso, quiero iniciar sesión en Repuestos Mérida. Mándame el link, por favor.'
+function waOficialUrl(mensaje) {
+  return `https://wa.me/${WA_OFICIAL}?text=${encodeURIComponent(mensaje)}`
+}
 
 function safeRedirect(value) {
   if (!value || typeof value !== 'string') return '/'
@@ -28,12 +32,6 @@ function LoginInner() {
   const searchParams  = useSearchParams()
   const redirect      = safeRedirect(searchParams.get('redirect'))
 
-  const [step, setStep]       = useState('phone')
-  const [phone, setPhone]     = useState('')
-  const [otp, setOtp]         = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState(null)
-
   useEffect(() => {
     ensureSession().then((s) => {
       if (!s?.telefono) return
@@ -41,53 +39,6 @@ function LoginInner() {
       else router.replace(redirect)
     })
   }, [router, redirect])
-
-  async function pedirCodigo() {
-    setError(null); setLoading(true)
-    try {
-      const res = await fetch('/api/rifa/enviar-codigo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(await buildWhatsAppRequest({
-          telefono: phone.trim(),
-          intent: 'login',
-        })),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'No se pudo enviar el código.')
-      setStep('otp')
-    } catch (e) { setError(e.message) }
-    finally     { setLoading(false) }
-  }
-
-  async function verificarCodigo() {
-    setError(null); setLoading(true)
-    try {
-      const res = await fetch('/api/rifa/verificar-codigo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(await buildWhatsAppRequest({
-          telefono: phone.trim(),
-          codigo: otp.trim(),
-          intent: 'login',
-        })),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Error')
-
-      saveSession({
-        telefono: data.telefono,
-        perfil: data.perfil,
-        rifas_vendedor: data.rifas_vendedor || [],
-        token: data.token,
-        expiresAt: data.expiresAt,
-      })
-
-      if (!data.perfil) router.replace(`/registro?redirect=${encodeURIComponent(redirect)}`)
-      else router.replace(redirect)
-    } catch (e) { setError(e.message) }
-    finally     { setLoading(false) }
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-white to-emerald-50 flex flex-col">
@@ -105,101 +56,31 @@ function LoginInner() {
           <div className="flex flex-col items-center text-center mb-6">
             <Image src="/iconorm.png" alt="Repuestos Mérida" width={80} height={80} className="rounded-2xl shadow-md mb-3" />
             <h1 className="text-2xl sm:text-3xl font-bold font-brand text-gray-900">Repuestos Mérida</h1>
-            <p className="text-sm text-gray-500 mt-1">Ingresa con tu WhatsApp para continuar.</p>
+            <p className="text-sm text-gray-500 mt-1">Inicia sesión con tu WhatsApp.</p>
           </div>
 
-          {step === 'phone' && (
-            <div className="space-y-4">
-              <label className="block">
-                <span className="text-sm font-semibold text-gray-700 mb-1.5 block">Tu número de WhatsApp</span>
-                <input
-                  type="tel"
-                  inputMode="tel"
-                  placeholder="+58 424 1234567"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className={FIELD}
-                  autoFocus
-                />
-              </label>
-              <button
-                onClick={pedirCodigo}
-                disabled={loading || !phone.trim()}
-                className="btn-brand w-full justify-center gap-2"
-              >
-                {loading && <Spinner />}
-                {loading ? 'Enviando código…' : 'Recibir código por WhatsApp'}
-              </button>
-            </div>
-          )}
-
-          {step === 'otp' && (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Te enviamos un código de 4 dígitos por WhatsApp al <b>{phone.trim()}</b>. Escríbelo aquí para entrar.
-              </p>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="••••"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                className={`${FIELD} text-center tracking-[0.5em] text-3xl font-bold`}
-                autoFocus
-              />
-              <button
-                onClick={verificarCodigo}
-                disabled={loading || otp.length !== 4}
-                className="btn-brand w-full justify-center gap-2"
-              >
-                {loading && <Spinner />}
-                {loading ? 'Verificando...' : 'Verificar y entrar'}
-              </button>
-              <button
-                onClick={() => { setStep('phone'); setOtp(''); setError(null) }}
-                className="w-full text-sm text-gray-500 hover:text-gray-700"
-              >
-                Cambiar número
-              </button>
-              <button
-                onClick={pedirCodigo}
-                disabled={loading}
-                className="block w-full text-center text-sm font-semibold text-green-600 hover:text-green-700 disabled:opacity-50"
-              >
-                Reenviar código
-              </button>
-            </div>
-          )}
-
-          {error && (
-            <div className="mt-4 bg-red-50 text-red-700 text-sm rounded-xl px-4 py-3 border border-red-100">
-              {error}
-            </div>
-          )}
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Pulsa el botón: se abrirá WhatsApp con un mensaje listo. Envíalo y el
+              Oso te responderá con un enlace. Ábrelo y entrarás automáticamente.
+            </p>
+            <a
+              href={waOficialUrl(MSG_LOGIN)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-3 font-semibold text-white transition hover:bg-green-500"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.82 11.82 0 018.413 3.488 11.82 11.82 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.978-1.207zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.247-.694.247-1.289.173-1.413z" />
+              </svg>
+              Iniciar sesión por WhatsApp
+            </a>
+            <p className="text-xs text-gray-500 text-center">
+              Se abrirá un chat con nuestro WhatsApp oficial (+{WA_OFICIAL}).
+            </p>
+          </div>
         </div>
       </main>
-
-      {loading && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 pointer-events-none">
-          <div className="bg-white rounded-2xl px-6 py-5 shadow-2xl flex items-center gap-3 max-w-xs">
-            <Spinner big />
-            <div className="text-sm font-semibold text-gray-800">
-              Verificando código…
-            </div>
-          </div>
-        </div>
-      )}
     </div>
-  )
-}
-
-function Spinner({ big }) {
-  const sz = big ? 'w-6 h-6' : 'w-5 h-5'
-  return (
-    <svg className={`${sz} animate-spin`} viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="4"/>
-      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" strokeLinecap="round"/>
-    </svg>
   )
 }
