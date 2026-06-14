@@ -33,11 +33,22 @@ function LoginInner() {
   const redirect      = safeRedirect(searchParams.get('redirect'))
 
   useEffect(() => {
-    ensureSession().then((s) => {
+    let cancelled = false
+
+    const checkSession = () => ensureSession().then((s) => {
+      if (cancelled) return
       if (!s?.telefono) return
       if (!s.perfil) router.replace(`/registro?redirect=${encodeURIComponent(redirect)}`)
       else router.replace(redirect)
     })
+
+    checkSession()
+    const intervalId = window.setInterval(checkSession, 2000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
   }, [router, redirect])
 
   return (

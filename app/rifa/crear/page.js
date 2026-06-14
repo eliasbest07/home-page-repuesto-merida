@@ -76,10 +76,13 @@ export default function RifaCrearPage() {
       for (let i = 0; i < 100; i++) {
         numeros[String(i).padStart(2, '0')] = { estado: 'disponible' }
       }
+      // `numeros` va DENTRO del nodo de la rifa: Firebase rechaza un update
+      // multi-path donde un path (rifas/{id}) es ancestro de otro
+      // (rifas/{id}/numeros).
+      baseRifa.numeros = numeros
 
       await update(dbRef(rtdb), {
         [`rifas/${rifaId}`]: baseRifa,
-        [`rifas/${rifaId}/numeros`]: numeros,
         [`creador_index/${key}/${rifaId}`]: true,
       })
 

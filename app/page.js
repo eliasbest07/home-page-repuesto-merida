@@ -8,9 +8,11 @@ import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
 import { collection, getDocs, addDoc, query, where, limit, serverTimestamp } from 'firebase/firestore'
 import { get, ref } from 'firebase/database'
 import { firestore, rtdb } from '@/lib/firebase'
+import { ensureSession } from '@/lib/rifaSession'
 
 const PlazaChat = dynamic(() => import('./components/PlazaChat'), { ssr: false })
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
+const REQUEST_DRAFT_KEY = 'repuestos-merida-solicitud-borrador'
 const CITAS_TECNICAS = [
   { nombre: 'NHTSA Vehicle Maintenance', url: 'https://www.nhtsa.gov/road-safety/vehicle-safety-maintenance' },
   { nombre: 'Bosch Automotive Aftermarket', url: 'https://www.boschaftermarket.com/' },
@@ -51,6 +53,19 @@ const MOBILE_CATEGORIES = [
   { id: 'frenos', nombre: 'Suspensión', icon: '/mobile-catalog/categories/amortiguador.png' },
   { id: 'electrico', nombre: 'Eléctricos', icon: '/mobile-catalog/categories/bateria.png' },
   { id: 'todos', nombre: 'Más', icon: '/mobile-catalog/categories/otro.png' },
+]
+
+const HOME_BRANDS = [
+  { name: 'Chevrolet', icon: '/mobile-catalog/brands/chevrolet.png' },
+  { name: 'Daihatsu', icon: '/mobile-catalog/brands/Daihatsu.png' },
+  { name: 'Ford', icon: '/mobile-catalog/brands/ford.png' },
+  { name: 'Toyota', icon: '/mobile-catalog/brands/toyota.png' },
+  { name: 'Hyundai', icon: '/mobile-catalog/brands/hyundai.png' },
+  { name: 'Mazda', icon: '/mobile-catalog/brands/mazda.png' },
+  { name: 'Mitsubishi', icon: '/mobile-catalog/brands/mitsubishi.png' },
+  { name: 'Renault', icon: '/mobile-catalog/brands/renault.png' },
+  { name: 'Suzuki', icon: '/mobile-catalog/brands/suzuki.png' },
+  { name: 'Volkswagen', icon: '/mobile-catalog/brands/volkswagen.png' },
 ]
 
 const MOBILE_FEATURED = [
@@ -349,6 +364,18 @@ const IconStore = () => (
 export default function Home() {
   const [catActiva, setCatActiva]   = useState('todos')
   const [busqueda, setBusqueda]     = useState('')
+  const [selectedBrand, setSelectedBrand] = useState('')
+  const [requestFormOpen, setRequestFormOpen] = useState(false)
+  const [requestForm, setRequestForm] = useState({
+    tipoVehiculo: 'carro',
+    modelo: '',
+    anio: '',
+    repuesto: '',
+  })
+  const [requestSession, setRequestSession] = useState(null)
+  const [requestSessionLoading, setRequestSessionLoading] = useState(true)
+  const [requestSending, setRequestSending] = useState(false)
+  const [requestMessage, setRequestMessage] = useState('')
   const [scrolled, setScrolled]     = useState(false)
   const [menuOpen, setMenuOpen]     = useState(false)
   const [catalogo, setCatalogo]     = useState(PRODUCTOS)
@@ -366,6 +393,40 @@ export default function Home() {
     const onScroll = () => setScrolled(window.scrollY > 60)
     window.addEventListener('scroll', onScroll)
     return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    ensureSession()
+      .then((session) => {
+        if (cancelled) return
+        setRequestSession(session?.telefono ? session : null)
+
+        try {
+          const draft = JSON.parse(window.localStorage.getItem(REQUEST_DRAFT_KEY) || 'null')
+          if (!draft) return
+          setSelectedBrand(draft.selectedBrand || '')
+          setBusqueda(draft.busqueda || '')
+          setRequestForm({
+            tipoVehiculo: draft.requestForm?.tipoVehiculo || 'carro',
+            modelo: draft.requestForm?.modelo || '',
+            anio: draft.requestForm?.anio || '',
+            repuesto: draft.requestForm?.repuesto || '',
+          })
+          setRequestFormOpen(true)
+          window.localStorage.removeItem(REQUEST_DRAFT_KEY)
+        } catch {
+          window.localStorage.removeItem(REQUEST_DRAFT_KEY)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRequestSessionLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -602,6 +663,71 @@ export default function Home() {
     }).catch(() => {})
   }
 
+  async function publishPartRequest(event) {
+    event.preventDefault()
+
+    const marca = selectedBrand.trim().toLowerCase()
+    const modelo = requestForm.modelo.trim().slice(0, 80)
+    const anio = requestForm.anio.trim().slice(0, 4)
+    const repuesto = requestForm.repuesto.trim().slice(0, 120)
+    const numero = String(requestSession?.telefono || '').replace(/\D/g, '').slice(0, 18)
+
+    if (!requestSession?.telefono) {
+      try {
+        window.localStorage.setItem(REQUEST_DRAFT_KEY, JSON.stringify({
+          selectedBrand,
+          busqueda,
+          requestForm,
+        }))
+      } catch {}
+      window.location.href = '/login?redirect=%2F%3Fcrear-solicitud%3D1'
+      return
+    }
+
+    if (!marca || !modelo || !anio || !repuesto || numero.length < 10) {
+      setRequestMessage('Selecciona una marca y completa todos los datos.')
+      return
+    }
+
+    setRequestSending(true)
+    setRequestMessage('')
+
+    try {
+      const requestId = Date.now()
+      await addDoc(collection(firestore, 'solicitudes_repuestos'), {
+        id: requestId,
+        contacto_id: numero,
+        repuesto,
+        tipo_vehiculo: requestForm.tipoVehiculo,
+        marca,
+        modelo,
+        anio,
+        cantidad: '',
+        estado: 'solicitado',
+        confianza: 1,
+        falta_info: '',
+        destacada: false,
+        notas: '',
+        creado_en: serverTimestamp(),
+        title: `+${numero}`,
+        numero,
+      })
+
+      setRequestForm({
+        tipoVehiculo: 'carro',
+        modelo: '',
+        anio: '',
+        repuesto: '',
+      })
+      setBusqueda('')
+      setRequestMessage('Solicitud publicada correctamente.')
+    } catch {
+      setRequestMessage('No se pudo publicar la solicitud. Intenta nuevamente.')
+    } finally {
+      setRequestSending(false)
+    }
+  }
+
   const jsonLd = [
     {
       '@context': 'https://schema.org',
@@ -727,42 +853,18 @@ export default function Home() {
               </div>
             </a>
 
-            {/* Nav links – desktop */}
-            <div className="hidden md:flex items-center gap-6">
-              <a href="#categorias" className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Categorías</a>
-              <a href="#catalogo"   className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Catálogo</a>
-              <Link href="/solicitados" className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Solicitados</Link>
-              <a href="#nosotros"   className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Nosotros</a>
-              <a href="#servicios"  className="text-gray-300 hover:text-[#FFD700] text-sm font-medium transition-colors">Servicios</a>
-              <Link href="/plaza"   className="text-sm font-bold px-3 py-1.5 rounded-lg bg-[#FFD700] text-gray-900 hover:bg-yellow-300 transition-colors">
-                Plaza 🏪
-              </Link>
-            </div>
-
-            {/* WhatsApp CTA – desktop */}
             <a
               href={waUrl('consulta general')}
               target="_blank" rel="noopener noreferrer"
-              className="desktop-nav-whatsapp btn-whatsapp text-sm"
-            >
-              <IconWhatsApp />
-              Consultar ahora
-            </a>
-
-            <a
-              href={waUrl('consulta general')}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mobile-nav-whatsapp md:hidden"
+              className="mobile-nav-whatsapp"
             >
               <IconWhatsApp />
               <span>Consultar ahora</span>
             </a>
 
-            {/* Menú hamburger – móvil */}
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="md:hidden shrink-0 text-gray-300 hover:text-white p-1"
+              className="shrink-0 text-gray-300 hover:text-white p-1"
               aria-label="Menú"
             >
               {menuOpen ? <IconX /> : <IconMenu />}
@@ -772,7 +874,7 @@ export default function Home() {
 
         {/* Menú móvil */}
         {menuOpen && (
-          <div className="md:hidden bg-gray-800 border-t border-gray-700 px-4 py-4 space-y-3">
+          <div className="bg-gray-800 border-t border-gray-700 px-4 py-4 space-y-3">
             <Link
               href="/solicitados"
               onClick={() => setMenuOpen(false)}
@@ -821,48 +923,142 @@ export default function Home() {
       {/* ──────────────────────────────────────────
           HERO
       ────────────────────────────────────────── */}
-      <section id="inicio" className="mobile-home-hero bg-gray-900 bg-hero-pattern pt-24 pb-16 px-4">
-        <div className="max-w-5xl mx-auto text-center">
+      <section id="inicio" className="mobile-home-hero bg-gray-900 bg-hero-pattern">
+        <div className="home-shell">
 
-          {/* Eyebrow */}
-          <div className="inline-flex items-center gap-2 bg-gray-800 text-gray-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-6 border border-gray-700">
+          <div className="home-status">
             <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse-slow inline-block"></span>
             Catálogo actualizado · Mérida, Venezuela
           </div>
 
-          {/* Headline */}
-          <h1 className="mobile-hero-title font-brand text-4xl sm:text-5xl lg:text-6xl text-white leading-tight mb-4">
-            Tu repuesto,{' '}
-            <span className="text-gradient-brand">disponible ahora</span>
+          <h1 className="home-request-title">
+            Solicita el repuesto que necesitas para carro, moto o bicicleta
           </h1>
 
-          {/* Sub */}
-          <p className="mobile-hero-copy text-gray-400 text-lg sm:text-xl max-w-2xl mx-auto mb-8 leading-relaxed">
-            <span className="md:hidden">El catálogo de repuestos automotrices más completo de Mérida ciudad, Municipio Libertador y Los Andes venezolanos.</span>
-            <span className="hidden md:inline">
-              El catálogo de repuestos automotrices más completo de Mérida ciudad, Municipio Libertador y Los Andes venezolanos.
-              Marcas líderes · Precios justos · Atención directa por WhatsApp · Entrega local bajo coordinación.
-            </span>
-          </p>
-
-          {/* Search bar */}
-          <div className="relative max-w-xl mx-auto mb-8">
-            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400">
-              <IconSearch />
-            </div>
-            <input
-              type="text"
-              placeholder="Busca por repuesto, marca o vehículo…"
-              value={busqueda}
-              onChange={(e) => { setBusqueda(e.target.value); setCatActiva('todos') }}
-              className="search-input pl-12 text-sm"
-            />
+          <div className="home-brand-rail scrollbar-none" aria-label="Marcas disponibles">
+            {HOME_BRANDS.map((brand) => (
+              <button
+                type="button"
+                key={brand.name}
+                aria-pressed={selectedBrand === brand.name}
+                className={`home-brand-card ${selectedBrand === brand.name ? 'is-active' : ''}`}
+                onClick={() => setSelectedBrand(brand.name)}
+              >
+                <span className="home-brand-logo">
+                  <Image src={brand.icon} alt="" width={54} height={54} />
+                </span>
+                <span>{brand.name}</span>
+              </button>
+            ))}
           </div>
 
-          {/* CTAs */}
-          <div className="mobile-hero-actions flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="#catalogo" className="btn-brand justify-center text-base px-8 py-3">
-              <svg className="md:hidden h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+          <div
+            className={`home-request-form ${requestFormOpen ? 'is-open' : ''}`}
+            onFocus={() => setRequestFormOpen(true)}
+            onBlur={(event) => {
+              const hasData = Object.entries(requestForm)
+                .some(([key, value]) => key !== 'tipoVehiculo' && value.trim())
+              if (!event.currentTarget.contains(event.relatedTarget) && !hasData && !requestMessage) {
+                setRequestFormOpen(false)
+              }
+            }}
+          >
+            <div className="home-search-wrap">
+              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400">
+                <IconSearch />
+              </div>
+              <input
+                type="text"
+                placeholder="Selecciona la marca y busca un repuesto o crea una solicitud"
+                value={busqueda}
+                onFocus={() => setRequestFormOpen(true)}
+                onChange={(e) => { setBusqueda(e.target.value); setCatActiva('todos') }}
+                className="search-input pl-12 text-sm"
+              />
+            </div>
+
+            {requestFormOpen && (
+              <form className="home-request-fields" onSubmit={publishPartRequest}>
+                <div className="home-request-grid">
+                  <label>
+                    <span>Tipo</span>
+                    <select
+                      value={requestForm.tipoVehiculo}
+                      onChange={(event) => setRequestForm((current) => ({ ...current, tipoVehiculo: event.target.value }))}
+                    >
+                      <option value="carro">Carro</option>
+                      <option value="moto">Moto</option>
+                      <option value="bicicleta">Bicicleta</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Modelo</span>
+                    <input
+                      value={requestForm.modelo}
+                      onChange={(event) => setRequestForm((current) => ({ ...current, modelo: event.target.value }))}
+                      placeholder="Ej: Aveo"
+                      maxLength={80}
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>Año</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="1900"
+                      max="2100"
+                      value={requestForm.anio}
+                      onChange={(event) => setRequestForm((current) => ({ ...current, anio: event.target.value }))}
+                      placeholder="2012"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>Repuesto, pieza o servicio</span>
+                    <input
+                      value={requestForm.repuesto}
+                      onChange={(event) => setRequestForm((current) => ({ ...current, repuesto: event.target.value }))}
+                      placeholder="Ej: bomba de gasolina"
+                      maxLength={120}
+                      required
+                    />
+                  </label>
+                </div>
+
+                <div className="home-request-submit">
+                  <div>
+                    <p>
+                      {selectedBrand
+                        ? `Marca seleccionada: ${selectedBrand}`
+                        : 'Selecciona una marca arriba para publicar.'}
+                    </p>
+                    {requestSession?.telefono && (
+                      <p className="home-request-session">
+                        WhatsApp verificado: {requestSession.telefono}
+                      </p>
+                    )}
+                  </div>
+                  <button type="submit" disabled={requestSending || requestSessionLoading || !selectedBrand}>
+                    {requestSending
+                      ? 'Publicando...'
+                      : requestSession?.telefono
+                        ? 'Crear solicitud de repuesto'
+                        : 'Verificar WhatsApp para publicar'}
+                  </button>
+                </div>
+                {requestMessage && (
+                  <p className={`home-request-message ${requestMessage.includes('correctamente') ? 'is-success' : ''}`}>
+                    {requestMessage}
+                  </p>
+                )}
+              </form>
+            )}
+          </div>
+
+          <div className="mobile-hero-actions">
+            <a href="#catalogo" className="btn-brand justify-center">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v17H6.5A2.5 2.5 0 0 0 4 22V5.5Zm16 0A2.5 2.5 0 0 0 17.5 3H13v17h4.5A2.5 2.5 0 0 1 20 22V5.5Z" />
               </svg>
               Ver catálogo completo
@@ -870,7 +1066,7 @@ export default function Home() {
             <a
               href={waUrl('consulta general')}
               target="_blank" rel="noopener noreferrer"
-              className="btn-whatsapp text-base px-8 py-3"
+              className="btn-whatsapp justify-center"
             >
               <IconWhatsApp />
               Hablar con un asesor
@@ -879,7 +1075,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mobile-home-dashboard md:hidden" aria-label="Accesos rápidos al catálogo">
+      <section className="mobile-home-dashboard" aria-label="Accesos rápidos al catálogo">
         <div className="mobile-featured-heading">
           <h2>
             <span aria-hidden="true">★</span>
@@ -977,7 +1173,7 @@ export default function Home() {
       {/* ──────────────────────────────────────────
           TENDENCIAS LOCALES (MÉRIDA)
       ────────────────────────────────────────── */}
-      <section className="hidden py-10 px-4 bg-white border-b border-gray-100 md:block">
+      <section className="hidden py-10 px-4 bg-white border-b border-gray-100">
         <div className="max-w-6xl mx-auto">
           <div className="mb-4">
             <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 block mb-2">Tendencias locales · Mérida, Venezuela</span>
@@ -1000,7 +1196,7 @@ export default function Home() {
       </section>
 
       {/* ── Stats bar ── */}
-      <div className="hidden bg-[#FFD700] md:block">
+      <div className="hidden bg-[#FFD700]">
         <div className="max-w-5xl mx-auto px-4 py-4 grid grid-cols-3 gap-4 text-center">
           {[
             { valor: '39+',  label: 'Repuestos disponibles' },
@@ -1018,7 +1214,7 @@ export default function Home() {
       {/* ──────────────────────────────────────────
           CATEGORÍAS
       ────────────────────────────────────────── */}
-      <section id="categorias" className="hidden py-16 bg-gray-50 px-4 md:block">
+      <section id="categorias" className="hidden py-16 bg-gray-50 px-4">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-10">
             <h2 className="font-brand text-3xl sm:text-4xl text-gray-900 mb-2">

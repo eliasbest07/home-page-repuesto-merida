@@ -13,6 +13,7 @@ import { firestore } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
 
 const COMMENT_COLLECTION = 'solicitudes_comentarios'
+const REQUEST_COLLECTION = 'solicitudes_repuestos'
 const LOGIN_URL = '/login?redirect=%2Fsolicitados'
 
 const BRAND_ICONS = {
@@ -403,7 +404,7 @@ function RequestCard({ request, comments, onCommentAdded, session, sessionLoadin
 }
 
 export default function SolicitudesClient({ data }) {
-  const requests = useMemo(() => data?.solicitudes || [], [data])
+  const [firebaseRequests, setFirebaseRequests] = useState([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('todos')
   const [brandFilter, setBrandFilter] = useState('todas')
@@ -411,6 +412,17 @@ export default function SolicitudesClient({ data }) {
   const [commentsLoading, setCommentsLoading] = useState(true)
   const [session, setSession] = useState(null)
   const [sessionLoading, setSessionLoading] = useState(true)
+  const requests = useMemo(() => {
+    const combined = [...firebaseRequests, ...(data?.solicitudes || [])]
+    const unique = new Map()
+
+    combined.forEach((request) => {
+      const key = String(request.id)
+      if (!unique.has(key)) unique.set(key, request)
+    })
+
+    return [...unique.values()].sort((a, b) => Number(b.creado_en || 0) - Number(a.creado_en || 0))
+  }, [data, firebaseRequests])
 
   // Solicitud destacada por enlace (/solicitados?solicitud=161): se abre su
   // debate y se hace scroll hasta su tarjeta.
@@ -436,6 +448,31 @@ export default function SolicitudesClient({ data }) {
       })
       .finally(() => {
         if (!cancelled) setSessionLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    getDocs(collection(firestore, REQUEST_COLLECTION))
+      .then((snapshot) => {
+        if (cancelled) return
+        const rows = snapshot.docs.map((document) => {
+          const request = document.data()
+          return {
+            ...request,
+            id: request.id || document.id,
+            creado_en: request.creado_en?.toMillis?.() || request.creado_en || Date.now(),
+          }
+        })
+        setFirebaseRequests(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setFirebaseRequests([])
       })
 
     return () => {

@@ -62,6 +62,48 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Solicitudes creadas desde la portada.
+    match /solicitudes_repuestos/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly([
+                      'id',
+                      'contacto_id',
+                      'repuesto',
+                      'tipo_vehiculo',
+                      'marca',
+                      'modelo',
+                      'anio',
+                      'cantidad',
+                      'estado',
+                      'confianza',
+                      'falta_info',
+                      'destacada',
+                      'notas',
+                      'creado_en',
+                      'title',
+                      'numero'
+                    ])
+                    && request.resource.data.id is int
+                    && request.resource.data.repuesto is string
+                    && request.resource.data.repuesto.size() > 0
+                    && request.resource.data.repuesto.size() <= 120
+                    && request.resource.data.tipo_vehiculo in ['carro', 'moto', 'bicicleta']
+                    && request.resource.data.marca is string
+                    && request.resource.data.marca.size() > 0
+                    && request.resource.data.modelo is string
+                    && request.resource.data.modelo.size() > 0
+                    && request.resource.data.modelo.size() <= 80
+                    && request.resource.data.anio is string
+                    && request.resource.data.anio.size() == 4
+                    && request.resource.data.numero is string
+                    && request.resource.data.numero.size() >= 10
+                    && request.resource.data.numero.size() <= 18
+                    && request.resource.data.estado == 'solicitado'
+                    && request.resource.data.destacada == false
+                    && request.resource.data.creado_en == request.time;
+      allow update, delete: if false;
+    }
+
     // Enlaces mágicos de login: SOLO el bot (admin SDK) los crea/borra. La web
     // los lee por su token (id secreto de 256 bits, sin 'list') y solo puede
     // marcarlos como usados. No se puede enumerar ni crear desde el cliente.

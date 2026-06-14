@@ -8,7 +8,11 @@ import { ref as dbRef, onValue, update, remove, serverTimestamp } from 'firebase
 import { phoneKey, ensureSession } from '@/lib/rifaSession'
 import { descargarPngEstadoRifa } from '@/lib/rifaCanvas'
 import { normalizePhone } from '@/lib/whatsappAuth'
-import { buildWhatsAppRequest } from '@/lib/whatsappClient'
+
+// WhatsApp oficial del bot: el vendedor le escribe para recibir su enlace de
+// inicio de sesión (magic link), sin depender del servidor del bot por HTTP.
+const WA_OFICIAL = '584123375417'
+const MSG_VENDEDOR = 'Hola Oso, quiero iniciar sesión para vender en una rifa de Repuestos Mérida. Mándame el link, por favor.'
 
 const ESTADO_COLOR = {
   disponible: 'bg-white border-gray-200 text-gray-800 hover:border-yellow-400',
@@ -83,21 +87,7 @@ export default function RifaDetallePage() {
       if (!vNombre.trim()) throw new Error('Ingresa un nombre')
       const key = phoneKey(tel)
 
-      // Llamar API para enviar OTP de vendedor
-      const res = await fetch('/api/rifa/enviar-codigo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(await buildWhatsAppRequest({
-          telefono: tel,
-          intent: 'rifa_vendedor',
-          rifa_id: id,
-          sessionToken: session.token,
-        })),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'No se pudo enviar el código')
-
-      // Registrar vendedor pendiente y crear índice
+      // Registrar el vendedor directamente en Firebase (sin depender del bot).
       await update(dbRef(rtdb), {
         [`rifas/${id}/vendedores/${key}`]: {
           nombre: vNombre.trim(),
@@ -107,7 +97,10 @@ export default function RifaDetallePage() {
         [`vendedor_index/${key}/${id}`]: true,
       })
 
-      setVMsg(`✓ Código enviado a ${tel}. El vendedor ya aparece en la lista.`)
+      // El vendedor inicia sesión con el enlace mágico (escribe al Oso por
+      // WhatsApp y recibe su link). Le pasamos el wa.me listo para compartir.
+      const waVendedor = `https://wa.me/${WA_OFICIAL}?text=${encodeURIComponent(MSG_VENDEDOR)}`
+      setVMsg(`✓ ${vNombre.trim()} quedó registrado como vendedor. Comparte este enlace para que inicie sesión: ${waVendedor}`)
       setVNombre(''); setVTel('')
     } catch (e) {
       setVError(e.message)
