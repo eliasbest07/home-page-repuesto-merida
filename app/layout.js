@@ -77,6 +77,15 @@ export default function RootLayout({ children }) {
             `,
           }}
         />
+        {/* Fragmento de código de AdSense — debe estar en el <head> del HTML del
+            servidor para que el verificador de Google lo encuentre. Carga el
+            loader una sola vez; AdSenseBlock luego hace adsbygoogle.push({}).
+            Consent Mode v2 (script de arriba) ya está configurado antes. */}
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7506182169131280"
+          crossOrigin="anonymous"
+        />
         <link rel="icon" href="/iconorm.png" type="image/png" />
         <meta name="theme-color" content="#111827" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

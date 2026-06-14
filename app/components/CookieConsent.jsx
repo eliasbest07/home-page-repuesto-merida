@@ -1,12 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import Script from 'next/script'
 import { useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'repuestos-merida-cookie-consent'
 const CONSENT_EVENT = 'repuestos-merida:cookie-consent'
-const ADSENSE_READY_EVENT = 'repuestos-merida:adsense-ready'
 
 // Consent Mode v2 — actualiza las señales de Google según la decisión del usuario.
 // El estado por defecto (denied) se fija en app/layout.js antes de cargar AdSense.
@@ -55,16 +53,8 @@ export default function CookieConsent() {
 
   return (
     <>
-      {/* AdSense carga siempre (Consent Mode avanzado): sirve anuncios no
-          personalizados sin consentimiento y personalizados tras aceptar. */}
-      <Script
-        async
-        src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7506182169131280"
-        crossOrigin="anonymous"
-        strategy="afterInteractive"
-        onLoad={() => window.dispatchEvent(new Event(ADSENSE_READY_EVENT))}
-      />
-
+      {/* El loader de AdSense se carga desde el <head> en app/layout.js (necesario
+          para la verificación de propiedad). Aquí solo gestionamos el consentimiento. */}
       {showDialog && (
         <section
           className="fixed inset-x-4 bottom-4 z-[100] mx-auto max-w-3xl rounded-2xl border border-gray-700 bg-gray-950 p-5 text-white shadow-2xl"
