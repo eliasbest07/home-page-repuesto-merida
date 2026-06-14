@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore'
 import { firestore } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
+import AdSenseBlock from '@/app/components/AdSenseBlock'
 
 const COMMENT_COLLECTION = 'solicitudes_comentarios'
 const REQUEST_COLLECTION = 'solicitudes_repuestos'
@@ -702,6 +703,11 @@ export default function SolicitudesClient({ data }) {
             {commentsLoading ? 'Cargando conversaciones...' : `${commentCount} conversación${commentCount === 1 ? '' : 'es'}`}
           </p>
         </div>
+
+        <AdSenseBlock
+          slot="9388951189"
+          className="requests-adsense-placement"
+        />
 
         {filteredRequests.length > 0 ? (
           <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">

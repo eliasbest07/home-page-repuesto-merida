@@ -198,6 +198,57 @@ section[id] {
   gap: 1rem;
 }
 
+/* ─── Google AdSense ─── */
+.adsense-placement {
+  position: relative;
+  width: min(100% - 28px, 1280px);
+  min-height: 110px;
+  margin: 20px auto;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 20px 8px 8px;
+  text-align: center;
+}
+
+.adsense-label {
+  position: absolute;
+  top: 5px;
+  left: 0;
+  right: 0;
+  color: #94a3b8;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.adsense-placement .adsbygoogle {
+  min-height: 82px;
+}
+
+.home-adsense-placement {
+  margin-block: 14px;
+}
+
+.requests-adsense-placement {
+  width: 100%;
+  margin-block: 18px 4px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.multiplex-adsense-placement {
+  min-height: 280px;
+  margin-block: 24px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  padding-top: 24px;
+}
+
+.multiplex-adsense-placement .adsbygoogle {
+  min-height: 240px;
+}
+
 /* ─── Home móvil ─── */
 .mobile-nav-whatsapp {
   display: inline-flex;

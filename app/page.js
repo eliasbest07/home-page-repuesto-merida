@@ -9,6 +9,7 @@ import { collection, getDocs, addDoc, query, where, limit, serverTimestamp } fro
 import { get, ref } from 'firebase/database'
 import { firestore, rtdb } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
+import AdSenseBlock from './components/AdSenseBlock'
 
 const PlazaChat = dynamic(() => import('./components/PlazaChat'), { ssr: false })
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
@@ -1170,6 +1171,11 @@ export default function Home() {
         </div>
       </section>
 
+      <AdSenseBlock
+        slot="6459872221"
+        className="home-adsense-placement"
+      />
+
       {/* ──────────────────────────────────────────
           TENDENCIAS LOCALES (MÉRIDA)
       ────────────────────────────────────────── */}
@@ -1413,6 +1419,14 @@ export default function Home() {
           )}
         </div>
       </section>
+
+      <AdSenseBlock
+        slot="6323804141"
+        format="autorelaxed"
+        responsive={false}
+        className="multiplex-adsense-placement"
+        label="Contenido patrocinado"
+      />
 
       {/* ──────────────────────────────────────────
           WHATSAPP CTA BANNER

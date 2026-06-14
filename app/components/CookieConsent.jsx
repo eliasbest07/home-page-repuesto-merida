@@ -5,22 +5,38 @@ import Script from 'next/script'
 import { useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'repuestos-merida-cookie-consent'
+const CONSENT_EVENT = 'repuestos-merida:cookie-consent'
+const ADSENSE_READY_EVENT = 'repuestos-merida:adsense-ready'
 
 export default function CookieConsent() {
   const [consent, setConsent] = useState(null)
   const [showDialog, setShowDialog] = useState(false)
+  const [showRejectedWarning, setShowRejectedWarning] = useState(false)
 
   useEffect(() => {
     const savedConsent = window.localStorage.getItem(STORAGE_KEY)
     setConsent(savedConsent)
     setShowDialog(!savedConsent)
+    setShowRejectedWarning(savedConsent === 'rejected')
   }, [])
 
   const choose = (value) => {
     window.localStorage.setItem(STORAGE_KEY, value)
     setConsent(value)
     setShowDialog(false)
+    setShowRejectedWarning(value === 'rejected')
+    window.dispatchEvent(new Event(CONSENT_EVENT))
   }
+
+  useEffect(() => {
+    if (consent !== 'rejected' || showDialog || showRejectedWarning) return
+
+    const timeoutId = window.setTimeout(() => {
+      setShowRejectedWarning(true)
+    }, 1000)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [consent, showDialog, showRejectedWarning])
 
   return (
     <>
@@ -30,6 +46,7 @@ export default function CookieConsent() {
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7506182169131280"
           crossOrigin="anonymous"
           strategy="afterInteractive"
+          onLoad={() => window.dispatchEvent(new Event(ADSENSE_READY_EVENT))}
         />
       )}
 
@@ -70,7 +87,47 @@ export default function CookieConsent() {
         </section>
       )}
 
-      {!showDialog && consent && (
+      {!showDialog && consent === 'rejected' && showRejectedWarning && (
+        <section
+          className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-w-2xl rounded-2xl border-2 border-red-500 bg-red-950 p-4 text-white shadow-2xl"
+          role="alert"
+          aria-live="polite"
+        >
+          <div className="flex items-start gap-3">
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500 text-xl font-black"
+              aria-hidden="true"
+            >
+              !
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-red-100">Cookies opcionales desactivadas</p>
+              <p className="mt-1 text-sm leading-5 text-red-100/85">
+                El servicio básico seguirá funcionando, pero la publicidad y algunas funciones de
+                medición no estarán disponibles. Puedes cambiar tu decisión en cualquier momento.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowRejectedWarning(false)}
+                  className="rounded-lg border border-red-300/60 px-4 py-2 text-sm font-semibold hover:bg-red-900"
+                >
+                  Condiderar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => choose('accepted')}
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-red-800 hover:bg-red-50"
+                >
+                  Aceptar cookies
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* {!showDialog && consent && (
         <button
           type="button"
           onClick={() => setShowDialog(true)}
@@ -79,7 +136,7 @@ export default function CookieConsent() {
         >
           Cookies
         </button>
-      )}
+      )} */}
     </>
   )
 }
