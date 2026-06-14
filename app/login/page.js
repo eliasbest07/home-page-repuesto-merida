@@ -54,7 +54,7 @@ function LoginInner() {
         })),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Error')
+      if (!res.ok) throw new Error(data.error || 'No se pudo enviar el código.')
       setStep('otp')
     } catch (e) { setError(e.message) }
     finally     { setLoading(false) }
@@ -128,14 +128,16 @@ function LoginInner() {
                 className="btn-brand w-full justify-center gap-2"
               >
                 {loading && <Spinner />}
-                {loading ? 'Enviando código...' : 'Recibir código por WhatsApp'}
+                {loading ? 'Enviando código…' : 'Recibir código por WhatsApp'}
               </button>
             </div>
           )}
 
           {step === 'otp' && (
             <div className="space-y-4">
-              <p className="text-sm text-gray-600">Enviamos un código de 4 dígitos a <strong>{phone}</strong></p>
+              <p className="text-sm text-gray-600">
+                Te enviamos un código de 4 dígitos por WhatsApp al <b>{phone.trim()}</b>. Escríbelo aquí para entrar.
+              </p>
               <input
                 type="text"
                 inputMode="numeric"
@@ -160,6 +162,13 @@ function LoginInner() {
               >
                 Cambiar número
               </button>
+              <button
+                onClick={pedirCodigo}
+                disabled={loading}
+                className="block w-full text-center text-sm font-semibold text-green-600 hover:text-green-700 disabled:opacity-50"
+              >
+                Reenviar código
+              </button>
             </div>
           )}
 
@@ -176,7 +185,7 @@ function LoginInner() {
           <div className="bg-white rounded-2xl px-6 py-5 shadow-2xl flex items-center gap-3 max-w-xs">
             <Spinner big />
             <div className="text-sm font-semibold text-gray-800">
-              {step === 'phone' ? 'Enviando código a WhatsApp…' : 'Verificando código…'}
+              Verificando código…
             </div>
           </div>
         </div>

@@ -1,10 +1,14 @@
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { rtdb } from '@/lib/firebase'
-import { ref, get, remove, update } from 'firebase/database'
-import { normalizePhone, phoneKey } from '@/lib/whatsappAuth'
+import { ref, get } from 'firebase/database'
+import {
+  getWhatsAppAuthBase,
+  getWhatsAppAuthHeaders,
+  normalizePhone,
+  phoneKey,
+} from '@/lib/whatsappAuth'
 import { signRifaToken } from '@/lib/rifaJwt'
-import { verifyOtpHash } from '@/lib/otpSecurity'
 import {
   WA_BROWSER_COOKIE,
   assertSameOrigin,
@@ -12,8 +16,9 @@ import {
 } from '@/lib/whatsappCapability'
 import { checkOtpVerificationRateLimit } from '@/lib/whatsappRateLimit'
 
-const MAX_ATTEMPTS = 5
-
+// El BOT compara el código contra el que tiene escrito en Firebase para ese
+// número. Si coincide, esta API emite el JWT de sesión (la web es la dueña de
+// la sesión) y devuelve el perfil del usuario.
 export async function POST(request) {
   try {
     if (!assertSameOrigin(request)) {
@@ -42,28 +47,28 @@ export async function POST(request) {
       )
     }
 
-    const snap = await get(ref(rtdb, `rifas_otps/${key}`))
-    if (!snap.exists()) {
-      return NextResponse.json({ error: 'Solicita un código primero.' }, { status: 404 })
-    }
-    const data = snap.val()
-    if (Date.now() > Number(data.expira_en || 0)) {
-      await remove(ref(rtdb, `rifas_otps/${key}`))
-      return NextResponse.json({ error: 'El código expiró. Solicita uno nuevo.' }, { status: 410 })
-    }
-    if (Number(data.intentos || 0) >= MAX_ATTEMPTS) {
-      await remove(ref(rtdb, `rifas_otps/${key}`))
-      return NextResponse.json({ error: 'Demasiados intentos. Solicita otro código.' }, { status: 429 })
-    }
-    if (!verifyOtpHash(key, codigo, data.codigo)) {
-      await update(ref(rtdb, `rifas_otps/${key}`), {
-        intentos: Number(data.intentos || 0) + 1,
+    // El bot compara el código contra Firebase.
+    let response
+    try {
+      response = await fetch(`${getWhatsAppAuthBase()}/auth/verificar-otp`, {
+        method: 'POST',
+        headers: getWhatsAppAuthHeaders(),
+        body: JSON.stringify({ telefono, codigo }),
+        cache: 'no-store',
       })
-      return NextResponse.json({ error: 'Código incorrecto.' }, { status: 401 })
+    } catch {
+      return NextResponse.json({ error: 'No se pudo contactar el servicio de WhatsApp.' }, { status: 502 })
     }
 
-    await remove(ref(rtdb, `rifas_otps/${key}`))
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok || !data.ok) {
+      return NextResponse.json(
+        { error: data.error || 'No se pudo verificar el código.' },
+        { status: response.status === 200 ? 401 : response.status }
+      )
+    }
 
+    // Código correcto → cargar perfil y emitir el JWT de sesión.
     let perfil = null
     const perfilSnap = await get(ref(rtdb, `rifas_usuarios/${key}`))
     if (perfilSnap.exists()) perfil = perfilSnap.val()
@@ -71,8 +76,7 @@ export async function POST(request) {
     let rifasVendedor = []
     const vendSnap = await get(ref(rtdb, `vendedor_index/${key}`))
     if (vendSnap.exists()) {
-      const v = vendSnap.val() || {}
-      rifasVendedor = Object.keys(v)
+      rifasVendedor = Object.keys(vendSnap.val() || {})
     }
 
     const { token, expiresAt } = signRifaToken({ tel: key, telefono })
@@ -80,8 +84,6 @@ export async function POST(request) {
     return NextResponse.json({
       ok: true,
       telefono,
-      tipo: data.tipo || 'usuario',
-      rifa_id: data.rifa_id || null,
       perfil,
       rifas_vendedor: rifasVendedor,
       token,

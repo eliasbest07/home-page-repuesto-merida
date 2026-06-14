@@ -58,7 +58,8 @@ export async function POST(request) {
     });
 
     return NextResponse.json({ ok: true, roomId, playerId, code });
-  } catch {
+  } catch (error) {
+    console.error('[bingo] Error creando sala:', error);
     return NextResponse.json({ error: 'No se pudo crear la sala.' }, { status: 500 });
   }
 }

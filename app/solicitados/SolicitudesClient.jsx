@@ -13,10 +13,11 @@ import { firestore } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
 
 const COMMENT_COLLECTION = 'solicitudes_comentarios'
-const OFFICIAL_WHATSAPP = '584123375417'
+const LOGIN_URL = '/login?redirect=%2Fsolicitados'
 
 const BRAND_ICONS = {
   chevrolet: '/mobile-catalog/brands/chevrolet.png',
+  daihatsu: '/mobile-catalog/brands/Daihatsu.png',
   ford: '/mobile-catalog/brands/ford.png',
   hyundai: '/mobile-catalog/brands/hyundai.png',
   mazda: '/mobile-catalog/brands/mazda.png',
@@ -87,11 +88,6 @@ function formatCommentDate(value) {
   }).format(new Date(milliseconds))
 }
 
-function debateLoginUrl(request) {
-  const message = `Hola Oso, quiero iniciar sesión para participar en el debate de la solicitud #${request.id}: ${request.repuesto}.`
-  return `https://wa.me/${OFFICIAL_WHATSAPP}?text=${encodeURIComponent(message)}`
-}
-
 function commenterWhatsappUrl(comment, request) {
   const number = String(comment.whatsapp || '').replace(/\D/g, '')
   const message = `Hola ${comment.autor || ''}, vi tu comentario sobre la solicitud de ${request.repuesto} en Repuestos Mérida.`
@@ -131,7 +127,7 @@ function CommentSection({ request, comments, onCommentAdded, open, onToggle, ses
     event.preventDefault()
 
     if (!session?.telefono) {
-      window.location.href = debateLoginUrl(request)
+      window.location.href = LOGIN_URL
       return
     }
 
@@ -262,10 +258,10 @@ function CommentSection({ request, comments, onCommentAdded, open, onToggle, ses
                 </span>
               ) : (
                 <a
-                  href={debateLoginUrl(request)}
+                  href={LOGIN_URL}
                   className="mt-3 inline-flex rounded-lg bg-gray-900 px-4 py-2 text-xs font-bold text-yellow-400"
                 >
-                  Iniciar sesión por WhatsApp
+                  Iniciar sesión
                 </a>
               )}
             </div>
@@ -276,13 +272,30 @@ function CommentSection({ request, comments, onCommentAdded, open, onToggle, ses
   )
 }
 
-function RequestCard({ request, comments, onCommentAdded, session, sessionLoading }) {
+function RequestCard({ request, comments, onCommentAdded, session, sessionLoading, autoOpen, cardRef }) {
   const status = STATUS[request.estado] || STATUS.solicitado
   const vehicle = [request.marca, request.modelo, request.anio].filter(Boolean)
-  const [debateOpen, setDebateOpen] = useState(false)
+  const [debateOpen, setDebateOpen] = useState(Boolean(autoOpen))
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <article
+      ref={cardRef}
+      id={`solicitud-${request.id}`}
+      className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+      autoOpen
+        ? 'border-emerald-400 ring-2 ring-emerald-200'
+        : request.destacada
+        ? 'border-yellow-400 ring-2 ring-yellow-200'
+        : 'border-gray-200'
+    }`}>
+      {request.destacada && (
+        <div className="flex items-center justify-center gap-1.5 bg-yellow-400 px-4 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.16em] text-gray-950">
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="m12 2.5 2.83 5.73 6.32.92-4.58 4.46 1.08 6.3L12 16.94l-5.65 2.97 1.08-6.3-4.58-4.46 6.32-.92L12 2.5Z" />
+          </svg>
+          Solicitud destacada
+        </div>
+      )}
       <div className="p-4 sm:p-5">
         <div className="flex items-start gap-3">
           <BrandMark brand={request.marca} />
@@ -364,9 +377,7 @@ function RequestCard({ request, comments, onCommentAdded, session, sessionLoadin
             </button>
           ) : (
             <a
-              href={debateLoginUrl(request)}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={LOGIN_URL}
               className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-3.5 py-2.5 text-xs font-bold text-white transition hover:bg-[#1fb95a]"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -400,6 +411,21 @@ export default function SolicitudesClient({ data }) {
   const [commentsLoading, setCommentsLoading] = useState(true)
   const [session, setSession] = useState(null)
   const [sessionLoading, setSessionLoading] = useState(true)
+
+  // Solicitud destacada por enlace (/solicitados?solicitud=161): se abre su
+  // debate y se hace scroll hasta su tarjeta.
+  const [focusId, setFocusId] = useState(null)
+  const focusRef = useRef(null)
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    const sid = sp.get('solicitud')
+    if (sid) setFocusId(String(sid))
+  }, [])
+  useEffect(() => {
+    if (focusId && focusRef.current) {
+      focusRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [focusId, commentsLoading])
 
   useEffect(() => {
     let cancelled = false
@@ -642,16 +668,21 @@ export default function SolicitudesClient({ data }) {
 
         {filteredRequests.length > 0 ? (
           <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
-            {filteredRequests.map((request) => (
-              <RequestCard
-                key={request.id}
-                request={request}
-                comments={commentsByRequest[String(request.id)] || []}
-                onCommentAdded={addComment}
-                session={session}
-                sessionLoading={sessionLoading}
-              />
-            ))}
+            {filteredRequests.map((request) => {
+              const isFocus = focusId && String(request.id) === focusId
+              return (
+                <RequestCard
+                  key={request.id}
+                  request={request}
+                  comments={commentsByRequest[String(request.id)] || []}
+                  onCommentAdded={addComment}
+                  session={session}
+                  sessionLoading={sessionLoading}
+                  autoOpen={isFocus}
+                  cardRef={isFocus ? focusRef : null}
+                />
+              )
+            })}
           </div>
         ) : (
           <div className="mt-4 rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-16 text-center">

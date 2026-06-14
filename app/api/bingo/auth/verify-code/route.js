@@ -13,7 +13,7 @@ export async function POST(request) {
     const phone = normalizePhone(telefono);
     const otp = String(codigo || '').trim();
 
-    if (!phone || otp.length !== 6) {
+    if (!phone || !/^\d{4}$/.test(otp)) {
       return NextResponse.json({ error: 'Datos de verificación inválidos.' }, { status: 400 });
     }
 

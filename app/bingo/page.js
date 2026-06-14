@@ -329,7 +329,7 @@ export default function BingoLobby() {
       if (!res.ok) throw new Error(data.error || 'No se pudo crear la sala.');
       router.push(`/bingo/sala/${data.roomId}`);
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : 'No se pudo crear la sala.');
       setLoading(false);
     }
   }
@@ -423,16 +423,16 @@ export default function BingoLobby() {
           <input
             type="text"
             inputMode="numeric"
-            maxLength={6}
+            maxLength={4}
             value={otp}
             onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-            placeholder="000000"
+            placeholder="0000"
             className="w-full rounded-xl border border-gray-700 bg-gray-900 px-4 py-3 text-center text-2xl tracking-[0.4em] text-white outline-none transition focus:border-brand-yellow"
           />
           {authError && <p className="text-sm text-red-400">{authError}</p>}
           <button
             onClick={verifyCode}
-            disabled={authLoading || otp.length !== 6}
+            disabled={authLoading || otp.length !== 4}
             className="w-full rounded-xl bg-brand-green px-4 py-3 font-semibold text-white transition hover:bg-green-400 disabled:opacity-50"
           >
             {authLoading ? 'Verificando…' : 'Verificar código'}
