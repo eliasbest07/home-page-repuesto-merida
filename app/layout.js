@@ -1,4 +1,5 @@
 import './globals.css'
+import { Analytics } from '@vercel/analytics/next'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
 import CookieConsent from '@/app/components/CookieConsent'
 import GlobalLegalLinks from '@/app/components/GlobalLegalLinks'
@@ -64,6 +65,7 @@ export default function RootLayout({ children }) {
         {children}
         <GlobalLegalLinks />
         <CookieConsent />
+        <Analytics />
       </body>
     </html>
   )
