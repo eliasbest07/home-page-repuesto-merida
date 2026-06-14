@@ -8,6 +8,19 @@ const STORAGE_KEY = 'repuestos-merida-cookie-consent'
 const CONSENT_EVENT = 'repuestos-merida:cookie-consent'
 const ADSENSE_READY_EVENT = 'repuestos-merida:adsense-ready'
 
+// Consent Mode v2 — actualiza las señales de Google según la decisión del usuario.
+// El estado por defecto (denied) se fija en app/layout.js antes de cargar AdSense.
+function updateConsent(granted) {
+  if (typeof window === 'undefined' || typeof window.gtag !== 'function') return
+  const value = granted ? 'granted' : 'denied'
+  window.gtag('consent', 'update', {
+    ad_storage: value,
+    ad_user_data: value,
+    ad_personalization: value,
+    analytics_storage: value,
+  })
+}
+
 export default function CookieConsent() {
   const [consent, setConsent] = useState(null)
   const [showDialog, setShowDialog] = useState(false)
@@ -18,6 +31,7 @@ export default function CookieConsent() {
     setConsent(savedConsent)
     setShowDialog(!savedConsent)
     setShowRejectedWarning(savedConsent === 'rejected')
+    if (savedConsent === 'accepted') updateConsent(true)
   }, [])
 
   const choose = (value) => {
@@ -25,6 +39,7 @@ export default function CookieConsent() {
     setConsent(value)
     setShowDialog(false)
     setShowRejectedWarning(value === 'rejected')
+    updateConsent(value === 'accepted')
     window.dispatchEvent(new Event(CONSENT_EVENT))
   }
 
@@ -40,15 +55,15 @@ export default function CookieConsent() {
 
   return (
     <>
-      {consent === 'accepted' && (
-        <Script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7506182169131280"
-          crossOrigin="anonymous"
-          strategy="afterInteractive"
-          onLoad={() => window.dispatchEvent(new Event(ADSENSE_READY_EVENT))}
-        />
-      )}
+      {/* AdSense carga siempre (Consent Mode avanzado): sirve anuncios no
+          personalizados sin consentimiento y personalizados tras aceptar. */}
+      <Script
+        async
+        src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7506182169131280"
+        crossOrigin="anonymous"
+        strategy="afterInteractive"
+        onLoad={() => window.dispatchEvent(new Event(ADSENSE_READY_EVENT))}
+      />
 
       {showDialog && (
         <section

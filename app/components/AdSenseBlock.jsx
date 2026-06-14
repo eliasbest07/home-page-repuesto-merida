@@ -1,9 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
-const CONSENT_KEY = 'repuestos-merida-cookie-consent'
-const CONSENT_EVENT = 'repuestos-merida:cookie-consent'
 const ADSENSE_READY_EVENT = 'repuestos-merida:adsense-ready'
 const ADSENSE_CLIENT = 'ca-pub-7506182169131280'
 
@@ -14,27 +12,12 @@ export default function AdSenseBlock({
   className = '',
   label = 'Publicidad',
 }) {
-  const [allowed, setAllowed] = useState(false)
   const initialized = useRef(false)
 
+  // Con Consent Mode (app/layout.js + CookieConsent), AdSense decide si el
+  // anuncio es personalizado o no según el consentimiento. El bloque se
+  // renderiza y solicita relleno siempre.
   useEffect(() => {
-    const syncConsent = () => {
-      setAllowed(window.localStorage.getItem(CONSENT_KEY) === 'accepted')
-    }
-
-    syncConsent()
-    window.addEventListener(CONSENT_EVENT, syncConsent)
-    window.addEventListener('storage', syncConsent)
-
-    return () => {
-      window.removeEventListener(CONSENT_EVENT, syncConsent)
-      window.removeEventListener('storage', syncConsent)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!allowed || initialized.current) return
-
     const initializeAd = () => {
       if (initialized.current || !window.adsbygoogle) return false
 
@@ -61,9 +44,7 @@ export default function AdSenseBlock({
       window.clearTimeout(timeoutId)
       window.removeEventListener(ADSENSE_READY_EVENT, initializeAd)
     }
-  }, [allowed])
-
-  if (!allowed) return null
+  }, [])
 
   return (
     <aside className={`adsense-placement ${className}`} aria-label={label}>

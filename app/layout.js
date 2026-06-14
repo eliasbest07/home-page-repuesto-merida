@@ -57,6 +57,26 @@ export default function RootLayout({ children }) {
   return (
     <html lang="es">
       <head>
+        {/* Google Consent Mode v2 — debe ejecutarse ANTES de cargar AdSense.
+            Estado por defecto: denegado (cumplimiento GDPR). En modo de consentimiento
+            "avanzado" AdSense igual sirve anuncios no personalizados hasta que el
+            usuario acepte cookies, momento en que CookieConsent hace gtag consent update. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              window.gtag = gtag;
+              gtag('consent', 'default', {
+                'ad_storage': 'denied',
+                'ad_user_data': 'denied',
+                'ad_personalization': 'denied',
+                'analytics_storage': 'denied',
+                'wait_for_update': 500
+              });
+            `,
+          }}
+        />
         <link rel="icon" href="/iconorm.png" type="image/png" />
         <meta name="theme-color" content="#111827" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
