@@ -1,5 +1,4 @@
 import SolicitudesClient from './SolicitudesClient'
-import solicitudesData from './solicitudes-repuestos.json'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
 
@@ -19,5 +18,5 @@ export const metadata = {
 }
 
 export default function SolicitadosPage() {
-  return <SolicitudesClient data={solicitudesData} />
+  return <SolicitudesClient />
 }

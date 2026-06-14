@@ -46,20 +46,103 @@ service cloud.firestore {
                       'solicitud_id',
                       'autor',
                       'texto',
+                      'imagen_url',
+                      'propietario_id',
                       'whatsapp',
                       'creado_en'
                     ])
-                    && request.resource.data.solicitud_id is int
+                    && (
+                      request.resource.data.solicitud_id is int
+                      || (
+                        request.resource.data.solicitud_id is string
+                        && request.resource.data.solicitud_id.size() > 0
+                        && request.resource.data.solicitud_id.size() <= 128
+                      )
+                    )
                     && request.resource.data.autor is string
                     && request.resource.data.autor.size() > 0
                     && request.resource.data.autor.size() <= 50
                     && request.resource.data.texto is string
-                    && request.resource.data.texto.size() > 0
                     && request.resource.data.texto.size() <= 500
+                    && request.resource.data.imagen_url is string
+                    && request.resource.data.imagen_url.size() <= 4096
+                    && (
+                      request.resource.data.texto.size() > 0
+                      || request.resource.data.imagen_url.size() > 0
+                    )
+                    && request.resource.data.propietario_id is string
+                    && request.resource.data.propietario_id.size() >= 10
+                    && request.resource.data.propietario_id.size() <= 18
                     && request.resource.data.whatsapp is string
                     && request.resource.data.whatsapp.size() <= 18
                     && request.resource.data.creado_en == request.time;
-      allow update, delete: if false;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['texto', 'propietario_id', 'editado_en', 'eliminado', 'eliminado_en'])
+                    && request.resource.data.propietario_id is string
+                    && request.resource.data.propietario_id.size() >= 10
+                    && request.resource.data.propietario_id.size() <= 18
+                    && (
+                      resource.data.keys().hasAny(['propietario_id'])
+                        ? resource.data.propietario_id == request.resource.data.propietario_id
+                        : resource.data.whatsapp == request.resource.data.propietario_id
+                    )
+                    && request.resource.data.texto is string
+                    && request.resource.data.texto.size() <= 500
+                    && (
+                      !request.resource.data.keys().hasAny(['editado_en'])
+                      || request.resource.data.editado_en == request.time
+                    )
+                    && (
+                      !request.resource.data.keys().hasAny(['eliminado_en'])
+                      || request.resource.data.eliminado_en == request.time
+                    );
+      allow delete: if false;
+    }
+
+    // Permisos de contacto entre participantes de una conversación.
+    match /solicitudes_contactos/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly([
+                         'solicitud_id',
+                         'propietario_id',
+                         'autorizado_id',
+                         'estado',
+                         'creado_en',
+                         'actualizado_en'
+                       ])
+                    && (
+                      request.resource.data.solicitud_id is int
+                      || (
+                        request.resource.data.solicitud_id is string
+                        && request.resource.data.solicitud_id.size() > 0
+                        && request.resource.data.solicitud_id.size() <= 128
+                      )
+                    )
+                    && request.resource.data.propietario_id is string
+                    && request.resource.data.propietario_id.size() >= 10
+                    && request.resource.data.propietario_id.size() <= 18
+                    && request.resource.data.autorizado_id is string
+                    && request.resource.data.autorizado_id.size() >= 10
+                    && request.resource.data.autorizado_id.size() <= 18
+                    && request.resource.data.propietario_id != request.resource.data.autorizado_id
+                    && request.resource.data.estado in ['pendiente', 'aprobado', 'rechazado']
+                    && request.resource.data.creado_en == request.time
+                    && request.resource.data.actualizado_en == request.time;
+      allow update: if request.resource.data.keys().hasOnly([
+                         'solicitud_id',
+                         'propietario_id',
+                         'autorizado_id',
+                         'estado',
+                         'creado_en',
+                         'actualizado_en'
+                       ])
+                    && request.resource.data.solicitud_id == resource.data.solicitud_id
+                    && request.resource.data.propietario_id == resource.data.propietario_id
+                    && request.resource.data.autorizado_id == resource.data.autorizado_id
+                    && request.resource.data.creado_en == resource.data.creado_en
+                    && request.resource.data.estado in ['pendiente', 'aprobado', 'rechazado']
+                    && request.resource.data.actualizado_en == request.time;
+      allow delete: if false;
     }
 
     // Solicitudes creadas desde la portada.

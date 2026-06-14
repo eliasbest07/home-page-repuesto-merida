@@ -6,14 +6,19 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   addDoc,
   collection,
+  doc,
   getDocs,
   serverTimestamp,
+  setDoc,
+  updateDoc,
 } from 'firebase/firestore'
-import { firestore } from '@/lib/firebase'
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
+import { firestore, storage } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
 import AdSenseBlock from '@/app/components/AdSenseBlock'
 
 const COMMENT_COLLECTION = 'solicitudes_comentarios'
+const CONTACT_COLLECTION = 'solicitudes_contactos'
 const REQUEST_COLLECTION = 'solicitudes_repuestos'
 const LOGIN_URL = '/login?redirect=%2Fsolicitados'
 
@@ -96,6 +101,18 @@ function commenterWhatsappUrl(comment, request) {
   return `https://wa.me/${number}?text=${encodeURIComponent(message)}`
 }
 
+function participantId(comment) {
+  return String(comment.propietario_id || comment.whatsapp || '').replace(/\D/g, '')
+}
+
+function sessionParticipantId(session) {
+  return String(session?.telefono || '').replace(/\D/g, '')
+}
+
+function contactPermissionId(requestId, ownerId, granteeId) {
+  return `${requestId}_${ownerId}_${granteeId}`
+}
+
 function BrandMark({ brand }) {
   const normalized = normalize(brand)
   const icon = BRAND_ICONS[normalized]
@@ -115,15 +132,104 @@ function BrandMark({ brand }) {
   )
 }
 
-function CommentSection({ request, comments, onCommentAdded, open, onToggle, session, sessionLoading }) {
+function CommentSection({
+  request,
+  comments,
+  contacts,
+  onCommentAdded,
+  onCommentUpdated,
+  onContactUpdated,
+  open,
+  onToggle,
+  session,
+  sessionLoading,
+}) {
   const [text, setText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [editingId, setEditingId] = useState(null)
+  const [editingText, setEditingText] = useState('')
+  const [savingId, setSavingId] = useState(null)
+  const [contactBusy, setContactBusy] = useState('')
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState('')
+  const [expandedImage, setExpandedImage] = useState(null)
   const textRef = useRef(null)
+  const fileRef = useRef(null)
+  const currentParticipantId = sessionParticipantId(session)
+  const participants = useMemo(() => {
+    const unique = new Map()
+    comments.forEach((comment) => {
+      const id = participantId(comment)
+      if (!id) return
+      if (!unique.has(id)) {
+        unique.set(id, {
+          id,
+          autor: comment.autor || 'Usuario',
+          whatsapp: comment.whatsapp || '',
+        })
+      }
+    })
+    return [...unique.values()]
+  }, [comments])
+
+  const contactMap = useMemo(() => {
+    const map = new Map()
+    contacts.forEach((contact) => {
+      map.set(`${contact.propietario_id}:${contact.autorizado_id}`, contact)
+    })
+    return map
+  }, [contacts])
 
   useEffect(() => {
     if (open && session) textRef.current?.focus()
   }, [open, session])
+
+  useEffect(() => {
+    if (!imageFile) {
+      setImagePreview('')
+      return
+    }
+
+    const previewUrl = URL.createObjectURL(imageFile)
+    setImagePreview(previewUrl)
+    return () => URL.revokeObjectURL(previewUrl)
+  }, [imageFile])
+
+  useEffect(() => {
+    if (!expandedImage) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setExpandedImage(null)
+    }
+
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', closeOnEscape)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [expandedImage])
+
+  function selectImage(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    setError('')
+
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setError('Selecciona un archivo de imagen.')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('La imagen no puede superar 5 MB.')
+      return
+    }
+
+    setImageFile(file)
+  }
 
   async function submit(event) {
     event.preventDefault()
@@ -137,35 +243,154 @@ function CommentSection({ request, comments, onCommentAdded, open, onToggle, ses
     const cleanText = text.trim().slice(0, 500)
     const cleanWhatsapp = String(session.telefono).replace(/\D/g, '').slice(0, 18)
 
-    if (!cleanText) return
+    if (!cleanText && !imageFile) return
 
     setSubmitting(true)
     setError('')
 
-    const optimistic = {
-      id: `local-${Date.now()}`,
-      solicitud_id: request.id,
-      autor: cleanAuthor || 'Anónimo',
-      texto: cleanText,
-      whatsapp: cleanWhatsapp,
-      creado_en: Date.now(),
-    }
+    let publishPhase = 'upload'
 
     try {
+      let imageUrl = ''
+      if (imageFile) {
+        const extension = imageFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
+        const randomId = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)
+        const uniqueName = `${Date.now()}-${randomId}.${extension}`
+        const path = `solicitudes-debate/${request.id}/${cleanWhatsapp}/${uniqueName}`
+        const uploaded = await uploadBytes(storageRef(storage, path), imageFile, {
+          contentType: imageFile.type,
+        })
+        imageUrl = await getDownloadURL(uploaded.ref)
+      }
+
+      publishPhase = 'comment'
+      const optimistic = {
+        id: `local-${Date.now()}`,
+        solicitud_id: request.id,
+        autor: cleanAuthor || 'Anónimo',
+        texto: cleanText,
+        imagen_url: imageUrl,
+        propietario_id: cleanWhatsapp,
+        whatsapp: cleanWhatsapp,
+        creado_en: Date.now(),
+      }
+
       const document = await addDoc(collection(firestore, COMMENT_COLLECTION), {
         solicitud_id: request.id,
         autor: optimistic.autor,
         texto: cleanText,
+        imagen_url: imageUrl,
+        propietario_id: cleanWhatsapp,
         whatsapp: cleanWhatsapp,
         creado_en: serverTimestamp(),
       })
 
       onCommentAdded({ ...optimistic, id: document.id })
       setText('')
-    } catch {
-      setError('No se pudo publicar la conversación. Intenta nuevamente.')
+      setImageFile(null)
+    } catch (uploadError) {
+      console.error('Error al publicar en el debate:', uploadError)
+      const code = String(uploadError?.code || 'error-desconocido')
+
+      if (publishPhase === 'upload') {
+        const storageMessages = {
+          'storage/unauthorized': 'Firebase Storage rechazó la foto por permisos.',
+          'storage/quota-exceeded': 'Firebase Storage no tiene cuota disponible. Revisa el plan y la facturación del proyecto.',
+          'storage/bucket-not-found': 'No se encontró el bucket configurado en Firebase Storage.',
+          'storage/retry-limit-exceeded': 'La subida agotó el tiempo de espera. Revisa la conexión e intenta nuevamente.',
+        }
+        setError(`${storageMessages[code] || 'No se pudo subir la imagen.'} (${code})`)
+      } else {
+        setError(`La foto se subió, pero Firestore no pudo publicar la conversación. (${code})`)
+      }
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function saveEdit(comment) {
+    const cleanText = editingText.trim().slice(0, 500)
+    if (!cleanText || participantId(comment) !== currentParticipantId) return
+
+    setSavingId(comment.id)
+    setError('')
+    try {
+      await updateDoc(doc(firestore, COMMENT_COLLECTION, comment.id), {
+        texto: cleanText,
+        propietario_id: currentParticipantId,
+        editado_en: serverTimestamp(),
+      })
+      onCommentUpdated(request.id, comment.id, {
+        texto: cleanText,
+        propietario_id: currentParticipantId,
+        editado_en: Date.now(),
+      })
+      setEditingId(null)
+      setEditingText('')
+    } catch {
+      setError('No se pudo editar el mensaje.')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function removeComment(comment) {
+    if (participantId(comment) !== currentParticipantId) return
+    if (!window.confirm('¿Quieres borrar este mensaje? Quedará el registro de que fue eliminado.')) return
+
+    setSavingId(comment.id)
+    setError('')
+    try {
+      await updateDoc(doc(firestore, COMMENT_COLLECTION, comment.id), {
+        texto: '',
+        propietario_id: currentParticipantId,
+        eliminado: true,
+        eliminado_en: serverTimestamp(),
+      })
+      onCommentUpdated(request.id, comment.id, {
+        texto: '',
+        propietario_id: currentParticipantId,
+        eliminado: true,
+        eliminado_en: Date.now(),
+      })
+      if (editingId === comment.id) {
+        setEditingId(null)
+        setEditingText('')
+      }
+    } catch {
+      setError('No se pudo borrar el mensaje.')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function setContactPermission(ownerId, granteeId, estado) {
+    if (!currentParticipantId || !ownerId || !granteeId || ownerId === granteeId) return
+    const permissionId = contactPermissionId(request.id, ownerId, granteeId)
+    setContactBusy(permissionId)
+    setError('')
+
+    try {
+      const existing = contactMap.get(`${ownerId}:${granteeId}`)
+      const contact = {
+        solicitud_id: request.id,
+        propietario_id: ownerId,
+        autorizado_id: granteeId,
+        estado,
+        creado_en: existing?.creado_en || serverTimestamp(),
+        actualizado_en: serverTimestamp(),
+      }
+      await setDoc(doc(firestore, CONTACT_COLLECTION, permissionId), contact)
+      onContactUpdated({
+        ...contact,
+        id: permissionId,
+        creado_en: existing?.creado_en || Date.now(),
+        actualizado_en: Date.now(),
+      })
+    } catch {
+      setError('No se pudo actualizar el permiso de contacto.')
+    } finally {
+      setContactBusy('')
     }
   }
 
@@ -204,9 +429,69 @@ function CommentSection({ request, comments, onCommentAdded, open, onToggle, ses
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-gray-800">{comment.autor || 'Anónimo'}</p>
-                      <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-600">{comment.texto}</p>
+                      {comment.eliminado ? (
+                        <p className="mt-1 text-sm italic text-gray-400">Mensaje eliminado por su autor.</p>
+                      ) : editingId === comment.id ? (
+                        <div className="mt-2 space-y-2">
+                          <textarea
+                            value={editingText}
+                            onChange={(event) => setEditingText(event.target.value)}
+                            maxLength={500}
+                            rows={3}
+                            className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-yellow-400"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => saveEdit(comment)}
+                              disabled={!editingText.trim() || savingId === comment.id}
+                              className="rounded-lg bg-gray-900 px-3 py-1.5 text-[11px] font-bold text-yellow-400 disabled:opacity-50"
+                            >
+                              Guardar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingId(null)
+                                setEditingText('')
+                              }}
+                              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-bold text-gray-600"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {comment.texto && (
+                            <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-600">{comment.texto}</p>
+                          )}
+                          {comment.imagen_url && (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedImage({
+                                url: comment.imagen_url,
+                                alt: `Imagen compartida por ${comment.autor || 'usuario'}`,
+                              })}
+                              className="relative mt-2 block aspect-video w-full max-w-sm cursor-zoom-in overflow-hidden rounded-xl border border-gray-200 bg-gray-100"
+                              aria-label="Ampliar imagen"
+                            >
+                              <Image
+                                src={comment.imagen_url}
+                                alt={`Imagen compartida por ${comment.autor || 'usuario'}`}
+                                fill
+                                unoptimized
+                                sizes="(max-width: 640px) 90vw, 384px"
+                                className="object-contain"
+                              />
+                            </button>
+                          )}
+                        </>
+                      )}
                     </div>
-                    {comment.whatsapp && (
+                    {comment.whatsapp &&
+                      participantId(comment) !== currentParticipantId &&
+                      contactMap.get(`${participantId(comment)}:${currentParticipantId}`)?.estado === 'aprobado' && (
                       <a
                         href={commenterWhatsappUrl(comment, request)}
                         target="_blank"
@@ -217,9 +502,119 @@ function CommentSection({ request, comments, onCommentAdded, open, onToggle, ses
                       </a>
                     )}
                   </div>
-                  <p className="mt-1.5 text-[10px] text-gray-400">{formatCommentDate(comment.creado_en)}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-gray-400">
+                    <span>{formatCommentDate(comment.creado_en)}</span>
+                    {comment.editado_en && !comment.eliminado && <span>· Editado</span>}
+                    {participantId(comment) === currentParticipantId && !comment.eliminado && editingId !== comment.id && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingId(comment.id)
+                            setEditingText(comment.texto || '')
+                          }}
+                          className="font-bold text-blue-600 hover:text-blue-700"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeComment(comment)}
+                          disabled={savingId === comment.id}
+                          className="font-bold text-red-600 hover:text-red-700 disabled:opacity-50"
+                        >
+                          Borrar
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </article>
               ))}
+            </div>
+          )}
+
+          {session && participants.length > 1 && (
+            <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+              <p className="text-xs font-bold text-gray-800">Permisos para contactar</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
+                El botón de WhatsApp solo se habilita cuando el dueño del número autoriza al otro participante.
+              </p>
+              <div className="mt-3 space-y-2">
+                {participants
+                  .filter((participant) => participant.id !== currentParticipantId)
+                  .map((participant) => {
+                    const permissionToMe = contactMap.get(`${participant.id}:${currentParticipantId}`)
+                    const permissionFromMe = contactMap.get(`${currentParticipantId}:${participant.id}`)
+                    const outgoingId = contactPermissionId(request.id, participant.id, currentParticipantId)
+                    const incomingId = contactPermissionId(request.id, currentParticipantId, participant.id)
+
+                    return (
+                      <div key={participant.id} className="rounded-lg border border-emerald-100 bg-white p-2.5">
+                        <p className="text-xs font-bold text-gray-800">{participant.autor}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {permissionToMe?.estado === 'aprobado' ? (
+                            <a
+                              href={commenterWhatsappUrl(participant, request)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-lg bg-green-600 px-3 py-1.5 text-[11px] font-bold text-white"
+                            >
+                              Contactar
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setContactPermission(participant.id, currentParticipantId, 'pendiente')}
+                              disabled={permissionToMe?.estado === 'pendiente' || contactBusy === outgoingId}
+                              className="rounded-lg border border-green-200 bg-green-50 px-3 py-1.5 text-[11px] font-bold text-green-700 disabled:opacity-60"
+                            >
+                              {permissionToMe?.estado === 'pendiente' ? 'Solicitud enviada' : 'Solicitar contacto'}
+                            </button>
+                          )}
+
+                          {permissionFromMe?.estado === 'pendiente' ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setContactPermission(currentParticipantId, participant.id, 'aprobado')}
+                                disabled={contactBusy === incomingId}
+                                className="rounded-lg bg-gray-900 px-3 py-1.5 text-[11px] font-bold text-yellow-400 disabled:opacity-60"
+                              >
+                                Autorizarle
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setContactPermission(currentParticipantId, participant.id, 'rechazado')}
+                                disabled={contactBusy === incomingId}
+                                className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-bold text-gray-500 disabled:opacity-60"
+                              >
+                                Rechazar
+                              </button>
+                            </>
+                          ) : permissionFromMe?.estado === 'aprobado' ? (
+                            <button
+                              type="button"
+                              onClick={() => setContactPermission(currentParticipantId, participant.id, 'rechazado')}
+                              disabled={contactBusy === incomingId}
+                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-bold text-gray-500 disabled:opacity-60"
+                            >
+                              Revocar autorización
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setContactPermission(currentParticipantId, participant.id, 'aprobado')}
+                              disabled={contactBusy === incomingId}
+                              className="rounded-lg border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-[11px] font-bold text-gray-800 disabled:opacity-60"
+                            >
+                              Autorizarle contacto
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
             </div>
           )}
 
@@ -234,17 +629,48 @@ function CommentSection({ request, comments, onCommentAdded, open, onToggle, ses
                 onChange={(event) => setText(event.target.value)}
                 maxLength={500}
                 rows={3}
-                required
                 placeholder="Ej: Lo tengo disponible, necesito más información o puedo conseguirlo..."
                 className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
               />
-              <div className="flex justify-end">
+              {imagePreview && (
+                <div className="relative w-40 overflow-hidden rounded-xl border border-gray-200 bg-gray-100">
+                  <div className="relative aspect-video">
+                    <Image src={imagePreview} alt="Vista previa" fill unoptimized className="object-contain" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setImageFile(null)}
+                    className="absolute right-1 top-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-bold text-white"
+                  >
+                    Quitar
+                  </button>
+                </div>
+              )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                onChange={selectImage}
+                className="hidden"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={submitting}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:border-yellow-400 hover:bg-yellow-50 disabled:opacity-50"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7a2 2 0 0 1 2-2h2l1.5-2h5L16 5h2a2 2 0 0 1 2 2v11H4V7Zm8 9a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+                  </svg>
+                  Subir foto
+                </button>
                 <button
                   type="submit"
-                  disabled={!text.trim() || submitting}
+                  disabled={(!text.trim() && !imageFile) || submitting}
                   className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-xs font-bold text-yellow-400 transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {submitting ? 'Publicando...' : 'Publicar conversación'}
+                  {submitting ? 'Subiendo y publicando...' : 'Publicar conversación'}
                 </button>
               </div>
               {error && <p className="text-xs font-medium text-red-600">{error}</p>}
@@ -270,11 +696,54 @@ function CommentSection({ request, comments, onCommentAdded, open, onToggle, ses
           )}
         </div>
       )}
+      {expandedImage && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/90 p-3 backdrop-blur-sm sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Imagen ampliada"
+          onClick={() => setExpandedImage(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setExpandedImage(null)}
+            className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white text-2xl font-bold leading-none text-gray-900 shadow-lg sm:right-6 sm:top-6"
+            aria-label="Cerrar imagen"
+          >
+            ×
+          </button>
+          <div
+            className="relative h-full max-h-[90vh] w-full max-w-6xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Image
+              src={expandedImage.url}
+              alt={expandedImage.alt}
+              fill
+              unoptimized
+              priority
+              sizes="100vw"
+              className="object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function RequestCard({ request, comments, onCommentAdded, session, sessionLoading, autoOpen, cardRef }) {
+function RequestCard({
+  request,
+  comments,
+  contacts,
+  onCommentAdded,
+  onCommentUpdated,
+  onContactUpdated,
+  session,
+  sessionLoading,
+  autoOpen,
+  cardRef,
+}) {
   const status = STATUS[request.estado] || STATUS.solicitado
   const vehicle = [request.marca, request.modelo, request.anio].filter(Boolean)
   const [debateOpen, setDebateOpen] = useState(Boolean(autoOpen))
@@ -394,7 +863,10 @@ function RequestCard({ request, comments, onCommentAdded, session, sessionLoadin
       <CommentSection
         request={request}
         comments={comments}
+        contacts={contacts}
         onCommentAdded={onCommentAdded}
+        onCommentUpdated={onCommentUpdated}
+        onContactUpdated={onContactUpdated}
         open={debateOpen}
         onToggle={() => setDebateOpen((current) => !current)}
         session={session}
@@ -404,26 +876,28 @@ function RequestCard({ request, comments, onCommentAdded, session, sessionLoadin
   )
 }
 
-export default function SolicitudesClient({ data }) {
+export default function SolicitudesClient() {
   const [firebaseRequests, setFirebaseRequests] = useState([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('todos')
   const [brandFilter, setBrandFilter] = useState('todas')
   const [commentsByRequest, setCommentsByRequest] = useState({})
+  const [contactsByRequest, setContactsByRequest] = useState({})
   const [commentsLoading, setCommentsLoading] = useState(true)
   const [session, setSession] = useState(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   const requests = useMemo(() => {
-    const combined = [...firebaseRequests, ...(data?.solicitudes || [])]
-    const unique = new Map()
+    const uniqueIds = new Set()
 
-    combined.forEach((request) => {
-      const key = String(request.id)
-      if (!unique.has(key)) unique.set(key, request)
-    })
-
-    return [...unique.values()].sort((a, b) => Number(b.creado_en || 0) - Number(a.creado_en || 0))
-  }, [data, firebaseRequests])
+    return firebaseRequests
+      .filter((request) => {
+        const id = String(request.id)
+        if (uniqueIds.has(id)) return false
+        uniqueIds.add(id)
+        return true
+      })
+      .sort((a, b) => Number(b.creado_en || 0) - Number(a.creado_en || 0))
+  }, [firebaseRequests])
 
   // Solicitud destacada por enlace (/solicitados?solicitud=161): se abre su
   // debate y se hace scroll hasta su tarjeta.
@@ -433,6 +907,30 @@ export default function SolicitudesClient({ data }) {
     const sp = new URLSearchParams(window.location.search)
     const sid = sp.get('solicitud')
     if (sid) setFocusId(String(sid))
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    getDocs(collection(firestore, CONTACT_COLLECTION))
+      .then((snapshot) => {
+        if (cancelled) return
+        const grouped = {}
+        snapshot.docs.forEach((document) => {
+          const contact = { id: document.id, ...document.data() }
+          const key = String(contact.solicitud_id)
+          if (!grouped[key]) grouped[key] = []
+          grouped[key].push(contact)
+        })
+        setContactsByRequest(grouped)
+      })
+      .catch(() => {
+        if (!cancelled) setContactsByRequest({})
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
   useEffect(() => {
     if (focusId && focusRef.current) {
@@ -553,6 +1051,30 @@ export default function SolicitudesClient({ data }) {
     }))
   }
 
+  function updateComment(requestId, commentId, changes) {
+    const key = String(requestId)
+    setCommentsByRequest((current) => ({
+      ...current,
+      [key]: (current[key] || []).map((comment) => (
+        comment.id === commentId ? { ...comment, ...changes } : comment
+      )),
+    }))
+  }
+
+  function updateContact(contact) {
+    const key = String(contact.solicitud_id)
+    setContactsByRequest((current) => {
+      const existing = current[key] || []
+      const found = existing.some((item) => item.id === contact.id)
+      return {
+        ...current,
+        [key]: found
+          ? existing.map((item) => item.id === contact.id ? contact : item)
+          : [...existing, contact],
+      }
+    })
+  }
+
   return (
     <div className="min-h-screen bg-[#f5f7f9] text-gray-900">
       <header className="sticky top-0 z-40 border-b border-gray-800 bg-gray-950 text-white shadow-lg">
@@ -579,7 +1101,7 @@ export default function SolicitudesClient({ data }) {
           <div className="max-w-3xl">
             <span className="inline-flex items-center gap-2 rounded-full border border-gray-700 bg-gray-900 px-3 py-1.5 text-xs font-semibold text-gray-300">
               <span className="h-2 w-2 rounded-full bg-green-400" />
-              Actualizado el {formatDate(data.generado)}
+              Solicitudes publicadas en Firebase
             </span>
             <h1 className="mt-5 font-brand text-3xl leading-tight sm:text-5xl">
               Repuestos que están <span className="text-yellow-400">buscando ahora</span>
@@ -718,7 +1240,10 @@ export default function SolicitudesClient({ data }) {
                   key={request.id}
                   request={request}
                   comments={commentsByRequest[String(request.id)] || []}
+                  contacts={contactsByRequest[String(request.id)] || []}
                   onCommentAdded={addComment}
+                  onCommentUpdated={updateComment}
+                  onContactUpdated={updateContact}
                   session={session}
                   sessionLoading={sessionLoading}
                   autoOpen={isFocus}

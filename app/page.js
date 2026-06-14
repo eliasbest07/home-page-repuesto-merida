@@ -48,25 +48,81 @@ const CATEGORIAS = [
 ]
 
 const MOBILE_CATEGORIES = [
-  { id: 'filtros', nombre: 'Filtros', icon: '/mobile-catalog/categories/filtro.png' },
-  { id: 'frenos', nombre: 'Frenos', icon: '/mobile-catalog/categories/freno.png' },
-  { id: 'motor', nombre: 'Motor', icon: '/mobile-catalog/categories/motor.png' },
-  { id: 'frenos', nombre: 'Suspensión', icon: '/mobile-catalog/categories/amortiguador.png' },
-  { id: 'electrico', nombre: 'Eléctricos', icon: '/mobile-catalog/categories/bateria.png' },
-  { id: 'todos', nombre: 'Más', icon: '/mobile-catalog/categories/otro.png' },
+  { id: 'todos', nombre: 'Accesorios', icon: '/catalog-assets/categories/accesorios.png' },
+  { id: 'refrigeracion', nombre: 'Aire', icon: '/catalog-assets/categories/aire.png' },
+  { id: 'frenos', nombre: 'Amortiguador', icon: '/catalog-assets/categories/amortiguador.png' },
+  { id: 'electrico', nombre: 'Batería', icon: '/catalog-assets/categories/bateria.png' },
+  { id: 'motor', nombre: 'Caja', icon: '/catalog-assets/categories/caja.png' },
+  { id: 'todos', nombre: 'Caucho', icon: '/catalog-assets/categories/caucho.png' },
+  { id: 'motor', nombre: 'Correa', icon: '/catalog-assets/categories/correa.png' },
+  { id: 'electrico', nombre: 'Electricidad', icon: '/catalog-assets/categories/electricidad.png' },
+  { id: 'motor', nombre: 'Empaque', icon: '/catalog-assets/categories/empaque.png' },
+  { id: 'filtros', nombre: 'Filtro', icon: '/catalog-assets/categories/filtro.png' },
+  { id: 'frenos', nombre: 'Freno', icon: '/catalog-assets/categories/freno.png' },
+  { id: 'filtros', nombre: 'Líquido', icon: '/catalog-assets/categories/liquido.png' },
+  { id: 'motor', nombre: 'Motor', icon: '/catalog-assets/categories/motor.png' },
+  { id: 'todos', nombre: 'Otro', icon: '/catalog-assets/categories/otro.png' },
+  { id: 'todos', nombre: 'Rin', icon: '/catalog-assets/categories/rin.png' },
+  { id: 'motor', nombre: 'Rolinera', icon: '/catalog-assets/categories/rolinera.png' },
+  { id: 'motor', nombre: 'Transmisión', icon: '/catalog-assets/categories/transmision.png' },
+  { id: 'motor', nombre: 'Tripoide', icon: '/catalog-assets/categories/tripoide.png' },
+  { id: 'carroceria', nombre: 'Vidrio', icon: '/catalog-assets/categories/vidrio.png' },
 ]
 
-const HOME_BRANDS = [
+const CAR_BRANDS = [
+  { name: 'Audi', icon: '/catalog-assets/car-brands/audi.png' },
+  { name: 'BMW', icon: '/catalog-assets/car-brands/bmw.png' },
   { name: 'Chevrolet', icon: '/mobile-catalog/brands/chevrolet.png' },
+  { name: 'Chevy', icon: '/catalog-assets/car-brands/chevy.png' },
   { name: 'Daihatsu', icon: '/mobile-catalog/brands/Daihatsu.png' },
+  { name: 'Daewoo', icon: '/catalog-assets/car-brands/daewoo.png' },
+  { name: 'Dodge', icon: '/catalog-assets/car-brands/dodge.png' },
+  { name: 'Dongfeng', icon: '/catalog-assets/car-brands/dongfeng.png' },
+  { name: 'Fiat', icon: '/catalog-assets/car-brands/fiat.png' },
   { name: 'Ford', icon: '/mobile-catalog/brands/ford.png' },
+  { name: 'Honda', icon: '/catalog-assets/car-brands/honda.png' },
   { name: 'Toyota', icon: '/mobile-catalog/brands/toyota.png' },
   { name: 'Hyundai', icon: '/mobile-catalog/brands/hyundai.png' },
+  { name: 'Jeep', icon: '/catalog-assets/car-brands/jeep.png' },
+  { name: 'Kia', icon: '/catalog-assets/car-brands/kia.png' },
+  { name: 'Land Rover', icon: '/catalog-assets/car-brands/landrover.png' },
+  { name: 'Lexus', icon: '/catalog-assets/car-brands/lexus.png' },
   { name: 'Mazda', icon: '/mobile-catalog/brands/mazda.png' },
+  { name: 'Mercedes-Benz', icon: '/catalog-assets/car-brands/mercedesbenz.png' },
   { name: 'Mitsubishi', icon: '/mobile-catalog/brands/mitsubishi.png' },
+  { name: 'Nissan', icon: '/catalog-assets/car-brands/nissan.png' },
+  { name: 'Peugeot', icon: '/catalog-assets/car-brands/peugeot.png' },
   { name: 'Renault', icon: '/mobile-catalog/brands/renault.png' },
+  { name: 'Subaru', icon: '/catalog-assets/car-brands/subaru.png' },
   { name: 'Suzuki', icon: '/mobile-catalog/brands/suzuki.png' },
   { name: 'Volkswagen', icon: '/mobile-catalog/brands/volkswagen.png' },
+]
+
+const MOTO_BRANDS = [
+  { name: 'AVA', icon: '/catalog-assets/moto-brands/ava.png' },
+  { name: 'Bajaj', icon: '/catalog-assets/moto-brands/bajaj.png' },
+  { name: 'Bera', icon: '/catalog-assets/moto-brands/bera.png' },
+  { name: 'CFMoto', icon: '/catalog-assets/moto-brands/cfmoto.png' },
+  { name: 'Ducati', icon: '/catalog-assets/moto-brands/ducati.png' },
+  { name: 'Empire', icon: '/catalog-assets/moto-brands/empire.png' },
+  { name: 'Forza', icon: '/catalog-assets/moto-brands/forza.png' },
+  { name: 'Haojue', icon: '/catalog-assets/moto-brands/haojue.png' },
+  { name: 'Harley-Davidson', icon: '/catalog-assets/moto-brands/harley-davidson.png' },
+  { name: 'Honda', icon: '/catalog-assets/moto-brands/honda.png' },
+  { name: 'Husaberg', icon: '/catalog-assets/moto-brands/husaberg.png' },
+  { name: 'Kawasaki', icon: '/catalog-assets/moto-brands/kawasaki.png' },
+  { name: 'Keeway', icon: '/catalog-assets/moto-brands/keeway.png' },
+  { name: 'KTM', icon: '/catalog-assets/moto-brands/ktm.png' },
+  { name: 'Kymco', icon: '/catalog-assets/moto-brands/kymco.png' },
+  { name: 'Loncin', icon: '/catalog-assets/moto-brands/loncin.png' },
+  { name: 'Ralvia', icon: '/catalog-assets/moto-brands/ralvia.png' },
+  { name: 'Skygo', icon: '/catalog-assets/moto-brands/skygo.png' },
+  { name: 'Suzuki', icon: '/catalog-assets/moto-brands/suzuki.png' },
+  { name: 'Triumph', icon: '/catalog-assets/moto-brands/triumph.png' },
+  { name: 'UM', icon: '/catalog-assets/moto-brands/um.png' },
+  { name: 'Único', icon: '/catalog-assets/moto-brands/unico.png' },
+  { name: 'Vespa', icon: '/catalog-assets/moto-brands/vespa.png' },
+  { name: 'Yamaha', icon: '/catalog-assets/moto-brands/yamaha.png' },
 ]
 
 const MOBILE_FEATURED = [
@@ -240,8 +296,35 @@ function normalizeHomeProduct(item, id) {
   }
 }
 
+function getSellerCoordinates(user = {}) {
+  const rawLat = user.latitud ?? user.latitude ?? user.lat ?? user.coords?.lat ?? user.coordenadas?.lat
+  const rawLng = user.longitud ?? user.longitude ?? user.lng ?? user.lon ??
+    user.coords?.lng ?? user.coordenadas?.lng
+  const lat = rawLat === '' || rawLat === null || rawLat === undefined ? NaN : Number(rawLat)
+  const lng = rawLng === '' || rawLng === null || rawLng === undefined ? NaN : Number(rawLng)
+
+  if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+    return { lat, lng }
+  }
+
+  const locationText = [user.ubicacion, user.zona, user.ciudad].filter(Boolean).join(', ')
+  const match = locationText.match(/(-?\d{1,2}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)/)
+  if (!match) return null
+
+  const parsedLat = Number(match[1])
+  const parsedLng = Number(match[2])
+  return Number.isFinite(parsedLat) && Number.isFinite(parsedLng)
+    && Math.abs(parsedLat) <= 90 && Math.abs(parsedLng) <= 180
+    ? { lat: parsedLat, lng: parsedLng }
+    : null
+}
+
 function buildSellerMapUrl(user = {}) {
   if (user.googleMapsUrl) return user.googleMapsUrl
+  const coordinates = getSellerCoordinates(user)
+  if (coordinates) {
+    return `https://www.google.com/maps/search/?api=1&query=${coordinates.lat},${coordinates.lng}`
+  }
 
   const query = [
     user.ubicacion,
@@ -251,6 +334,12 @@ function buildSellerMapUrl(user = {}) {
 
   if (!query) return 'https://maps.google.com/'
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+}
+
+function buildSellerMapEmbedUrl(user = {}) {
+  const coordinates = getSellerCoordinates(user)
+  if (!coordinates) return ''
+  return `https://maps.google.com/maps?q=${coordinates.lat},${coordinates.lng}&z=17&output=embed`
 }
 
 function buildOsoConsultaPrompt(producto) {
@@ -365,6 +454,7 @@ const IconStore = () => (
 export default function Home() {
   const [catActiva, setCatActiva]   = useState('todos')
   const [busqueda, setBusqueda]     = useState('')
+  const [brandType, setBrandType] = useState('carro')
   const [selectedBrand, setSelectedBrand] = useState('')
   const [requestFormOpen, setRequestFormOpen] = useState(false)
   const [requestForm, setRequestForm] = useState({
@@ -558,6 +648,7 @@ export default function Home() {
       isFallbackImage: !productWithImage?.imagen,
     }
   })
+  const visibleBrands = brandType === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const homepageUrl = `${SITE_URL}/`
   const flattenedTrendPatterns = LOCAL_SEO_SIGNALS.intentClusters.flatMap((cluster) => cluster.patterns)
   const topLocalTerms = LOCAL_SEO_SIGNALS.highValueKeywords.slice(0, 6)
@@ -591,6 +682,7 @@ export default function Home() {
       producto,
       user,
       mapUrl: buildSellerMapUrl(user || {}),
+      mapEmbedUrl: buildSellerMapEmbedUrl(user || {}),
       isPhysicalStore: isPhysicalStore(user),
       responseTime: resolveResponseTime(producto, user),
     })
@@ -936,8 +1028,30 @@ export default function Home() {
             Solicita el repuesto que necesitas para carro, moto o bicicleta
           </h1>
 
-          <div className="home-brand-rail scrollbar-none" aria-label="Marcas disponibles">
-            {HOME_BRANDS.map((brand) => (
+          <div className="home-brand-switch" role="tablist" aria-label="Tipo de vehículo">
+            {[
+              { id: 'carro', label: 'Carro' },
+              { id: 'moto', label: 'Moto' },
+            ].map((type) => (
+              <button
+                type="button"
+                role="tab"
+                key={type.id}
+                aria-selected={brandType === type.id}
+                className={brandType === type.id ? 'is-active' : ''}
+                onClick={() => {
+                  setBrandType(type.id)
+                  setSelectedBrand('')
+                  setRequestForm((current) => ({ ...current, tipoVehiculo: type.id }))
+                }}
+              >
+                {type.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="home-brand-rail catalog-scrollbar" aria-label={brandType === 'moto' ? 'Marcas de motos' : 'Marcas de carros'}>
+            {visibleBrands.map((brand) => (
               <button
                 type="button"
                 key={brand.name}
@@ -1128,7 +1242,7 @@ export default function Home() {
 
         <div className="mobile-category-block">
           <h2>Explora por categoría</h2>
-          <div className="mobile-category-grid">
+          <div className="mobile-category-grid catalog-scrollbar">
             {MOBILE_CATEGORIES.map((category) => (
               <button
                 type="button"
@@ -1384,6 +1498,15 @@ export default function Home() {
 
                   {/* Card footer - CTA */}
                   <div className="px-4 pb-4 space-y-2">
+                    {p.imagen && (
+                      <Link
+                        href={`/repuesto/${encodeURIComponent(String(p.id))}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-900 py-2.5 text-sm font-semibold text-gray-900 transition hover:bg-gray-900 hover:text-white"
+                      >
+                        Ver página completa
+                      </Link>
+                    )}
                     <a
                       href="#"
                       onClick={(e) => {
@@ -1840,7 +1963,7 @@ export default function Home() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative flex w-full max-w-3xl max-h-[94vh] flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl animate-slide-up"
+            className="relative flex w-full max-w-6xl max-h-[94vh] flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl animate-slide-up"
           >
             <button
               type="button"
@@ -1852,10 +1975,10 @@ export default function Home() {
             </button>
 
             <div className="flex-1 overflow-y-auto overscroll-contain">
-              <div className="md:grid md:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+              <div className="md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
 
-                <div className="relative bg-gradient-to-br from-gray-100 to-gray-200 md:h-full md:min-h-[560px]">
-                  <div className="relative aspect-[4/3] overflow-hidden md:aspect-auto md:h-full md:min-h-[560px]">
+                <div className="relative bg-gradient-to-br from-gray-100 to-gray-200 md:h-full md:min-h-[640px]">
+                  <div className="relative aspect-[4/3] overflow-hidden md:sticky md:top-0 md:aspect-auto md:h-[94vh] md:max-h-[900px] md:min-h-[640px]">
                     {detalleRepuesto.producto.imagen ? (
                       <button
                         type="button"
@@ -1869,7 +1992,7 @@ export default function Home() {
                           fill
                           unoptimized
                           sizes="(max-width: 768px) 100vw, 50vw"
-                          className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                          className="object-contain transition-transform duration-300 group-hover:scale-[1.01]"
                         />
                         <span className="pointer-events-none absolute top-4 right-4 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/65 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white opacity-0 backdrop-blur transition group-hover:opacity-100">
                           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -1974,6 +2097,33 @@ export default function Home() {
                       </div>
                     )}
                   </div>
+
+                  {detalleRepuesto.mapEmbedUrl && (
+                    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
+                      <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Ubicación exacta</p>
+                          <p className="mt-0.5 text-sm font-bold text-gray-900">Mapa del comercio</p>
+                        </div>
+                        <a
+                          href={detalleRepuesto.mapUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 text-xs font-bold text-blue-600 hover:text-blue-700"
+                        >
+                          Abrir mapa
+                        </a>
+                      </div>
+                      <iframe
+                        src={detalleRepuesto.mapEmbedUrl}
+                        title={`Ubicación de ${detalleRepuesto.user?.google_nombre || detalleRepuesto.user?.nombre || 'la tienda'}`}
+                        className="h-64 w-full border-0"
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                        allowFullScreen
+                      />
+                    </div>
+                  )}
 
                   {detalleQA.length > 0 && (
                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4">
@@ -2097,6 +2247,18 @@ export default function Home() {
 
             <div className="shrink-0 border-t border-gray-100 bg-white/95 px-4 py-3 shadow-[0_-8px_20px_-10px_rgba(0,0,0,0.08)] backdrop-blur sm:px-6">
               <div className="flex items-stretch gap-2">
+                {detalleRepuesto.producto.imagen && (
+                  <Link
+                    href={`/repuesto/${encodeURIComponent(String(detalleRepuesto.producto.id))}`}
+                    title="Ver página completa"
+                    aria-label="Ver página completa"
+                    className="inline-flex shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-3 text-gray-700 transition hover:border-yellow-400 hover:bg-yellow-50 hover:text-yellow-700"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7L10 14M5 7v12h12v-5" />
+                    </svg>
+                  </Link>
+                )}
                 {detalleRepuesto.user && (
                   <a
                     href={detalleRepuesto.mapUrl}

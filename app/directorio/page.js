@@ -241,9 +241,12 @@ function DirectorioCard({ item, onEliminar, onActualizarNota }) {
         <div className="flex-1 p-4 sm:p-5 space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <h2 className="text-base sm:text-lg font-extrabold leading-tight text-gray-900 truncate">
+              <Link
+                href={`/repuesto/${encodeURIComponent(String(item.id))}`}
+                className="block truncate text-base font-extrabold leading-tight text-gray-900 hover:text-blue-600 sm:text-lg"
+              >
                 {item.nombre || 'Repuesto'}
-              </h2>
+              </Link>
               <p className="mt-0.5 text-xs text-gray-500 truncate">
                 {[item.marca, item.compat].filter(Boolean).join(' · ') || 'Sin detalle'}
               </p>
