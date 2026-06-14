@@ -27,7 +27,7 @@ export default function CookieConsent() {
       {consent === 'accepted' && (
         <Script
           async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6503077569219292"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7506182169131280"
           crossOrigin="anonymous"
           strategy="afterInteractive"
         />

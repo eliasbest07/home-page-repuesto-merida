@@ -12,7 +12,7 @@ export const metadata = {
   description: 'Repuestos automotrices en Mérida ciudad (Municipio Libertador), estado Mérida, Venezuela. Atención por WhatsApp, compatibilidad por modelo y disponibilidad rápida.',
   keywords: `repuestos Mérida ciudad, repuestos Municipio Libertador, repuestos estado Mérida, repuestos automotrices Venezuela, ${localKeywordText}`,
   other: {
-    'google-adsense-account': 'ca-pub-6503077569219292',
+    'google-adsense-account': 'ca-pub-7506182169131280',
   },
   metadataBase: new URL(SITE_URL),
   alternates: {
