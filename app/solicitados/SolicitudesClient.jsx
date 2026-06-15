@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   addDoc,
@@ -954,10 +954,37 @@ function RequestCard({
   sessionLoading,
   autoOpen,
   cardRef,
+  adminSecret,
+  onPhotoDeleted,
 }) {
   const status = STATUS[request.estado] || STATUS.solicitado
   const vehicle = [request.marca, request.modelo, request.anio].filter(Boolean)
+  const vehiclePhotos = Array.isArray(request.fotos_vehiculo)
+    ? request.fotos_vehiculo.filter((url) => typeof url === 'string' && url)
+    : []
   const [debateOpen, setDebateOpen] = useState(Boolean(autoOpen))
+  const [zoomPhoto, setZoomPhoto] = useState(null)
+  const [deletingPhoto, setDeletingPhoto] = useState('')
+
+  async function handleDeletePhoto(url) {
+    if (!adminSecret || deletingPhoto) return
+    if (!window.confirm('¿Eliminar esta foto? Se borrará también de Firebase y de las demás solicitudes del mismo vehículo.')) return
+    setDeletingPhoto(url)
+    try {
+      const res = await fetch('/api/solicitados/eliminar-foto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': adminSecret },
+        body: JSON.stringify({ url }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`)
+      onPhotoDeleted?.(url)
+    } catch (error) {
+      window.alert('No se pudo eliminar la foto: ' + (error?.message || 'error'))
+    } finally {
+      setDeletingPhoto('')
+    }
+  }
 
   return (
     <article
@@ -1033,6 +1060,48 @@ function RequestCard({
           <p className="mt-3 rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-600">{request.notas}</p>
         )}
 
+        {vehiclePhotos.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+              Referencia del vehículo
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {vehiclePhotos.map((url, index) => (
+                <div key={`${url}-${index}`} className="relative h-20 w-28 flex-none">
+                  <button
+                    type="button"
+                    onClick={() => setZoomPhoto({ url, index })}
+                    className="relative block h-full w-full cursor-zoom-in overflow-hidden rounded-lg border border-gray-200 bg-gray-100"
+                    aria-label={`Ampliar foto ${index + 1} del vehículo`}
+                  >
+                    <Image
+                      src={url}
+                      alt={`${vehicle.join(' ') || 'Vehículo'} — foto ${index + 1}`}
+                      fill
+                      unoptimized
+                      sizes="112px"
+                      className="object-cover"
+                    />
+                  </button>
+                  {adminSecret && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePhoto(url)}
+                      disabled={Boolean(deletingPhoto)}
+                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border border-white/70 bg-gray-900/85 text-sm leading-none text-white shadow transition hover:bg-red-600 disabled:opacity-50"
+                      aria-label={`Eliminar foto ${index + 1}`}
+                      title="Eliminar foto (también de Firebase)"
+                    >
+                      {deletingPhoto === url ? '…' : '✕'}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="mt-1 text-[10px] text-gray-400">Foto referencial del modelo, no de la pieza.</p>
+          </div>
+        )}
+
         <div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
           <div>
             <p className="text-[10px] uppercase tracking-wide text-gray-400">Publicado</p>
@@ -1083,12 +1152,46 @@ function RequestCard({
         session={session}
         sessionLoading={sessionLoading}
       />
+
+      {zoomPhoto && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[2147483647] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-black/95 px-3 pb-24 pt-4 backdrop-blur-sm sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Foto del vehículo ampliada"
+          onClick={() => setZoomPhoto(null)}
+        >
+          <button
+            type="button"
+            onClick={(event) => { event.stopPropagation(); setZoomPhoto(null) }}
+            className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 z-[2147483647] flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full border-2 border-gray-900 bg-white text-gray-950 shadow-2xl sm:bottom-auto sm:left-auto sm:right-6 sm:top-6 sm:h-12 sm:w-12 sm:translate-x-0"
+            aria-label="Cerrar foto"
+          >
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          </button>
+          <div className="flex h-full w-full max-w-5xl items-center justify-center" onClick={(event) => event.stopPropagation()}>
+            <Image
+              src={zoomPhoto.url}
+              alt={`${vehicle.join(' ') || 'Vehículo'} — referencia`}
+              width={1600}
+              height={1200}
+              unoptimized
+              sizes="100vw"
+              className="max-h-full w-auto rounded-xl object-contain"
+            />
+          </div>
+        </div>,
+        document.body,
+      )}
     </article>
   )
 }
 
 export default function SolicitudesClient() {
   const [firebaseRequests, setFirebaseRequests] = useState([])
+  const [adminSecret, setAdminSecret] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('todos')
   const [brandFilter, setBrandFilter] = useState('todas')
@@ -1102,6 +1205,36 @@ export default function SolicitudesClient() {
   const [notificationError, setNotificationError] = useState('')
   const initialContactsSnapshot = useRef(true)
   const previousPendingIds = useRef(new Set())
+
+  // Modo admin: con ?admin=<secreto> se guarda el secreto y se muestran los
+  // botones para eliminar fotos. El secreto se envía a /api/solicitados/eliminar-foto.
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search)
+      const fromUrl = sp.get('admin')
+      if (fromUrl) {
+        window.localStorage.setItem('solicitudesAdminSecret', fromUrl)
+        sp.delete('admin')
+        const qs = sp.toString()
+        window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
+      }
+      setAdminSecret(window.localStorage.getItem('solicitudesAdminSecret') || '')
+    } catch {
+      /* noop */
+    }
+  }, [])
+
+  // Quita una foto de TODAS las solicitudes que la usaban (el vehículo es compartido).
+  const handlePhotoDeleted = useCallback((url) => {
+    setFirebaseRequests((current) =>
+      current.map((request) =>
+        Array.isArray(request.fotos_vehiculo) && request.fotos_vehiculo.includes(url)
+          ? { ...request, fotos_vehiculo: request.fotos_vehiculo.filter((u) => u !== url) }
+          : request
+      )
+    )
+  }, [])
+
   const requests = useMemo(() => {
     const uniqueIds = new Set()
 
@@ -1644,6 +1777,8 @@ export default function SolicitudesClient() {
                   sessionLoading={sessionLoading}
                   autoOpen={isFocus}
                   cardRef={isFocus ? focusRef : null}
+                  adminSecret={adminSecret}
+                  onPhotoDeleted={handlePhotoDeleted}
                 />
               )
             })}
