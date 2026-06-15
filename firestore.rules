@@ -47,6 +47,8 @@ service cloud.firestore {
                       'autor',
                       'texto',
                       'imagen_url',
+                      'imagenes_urls',
+                      'ubicacion',
                       'propietario_id',
                       'whatsapp',
                       'creado_en'
@@ -67,8 +69,33 @@ service cloud.firestore {
                     && request.resource.data.imagen_url is string
                     && request.resource.data.imagen_url.size() <= 4096
                     && (
+                      !request.resource.data.keys().hasAny(['imagenes_urls'])
+                      || (
+                        request.resource.data.imagenes_urls is list
+                        && request.resource.data.imagenes_urls.size() <= 6
+                      )
+                    )
+                    && (
+                      !request.resource.data.keys().hasAny(['ubicacion'])
+                      || (
+                        request.resource.data.ubicacion is map
+                        && request.resource.data.ubicacion.keys().hasOnly(['lat', 'lng'])
+                        && request.resource.data.ubicacion.lat is number
+                        && request.resource.data.ubicacion.lng is number
+                        && request.resource.data.ubicacion.lat >= -90
+                        && request.resource.data.ubicacion.lat <= 90
+                        && request.resource.data.ubicacion.lng >= -180
+                        && request.resource.data.ubicacion.lng <= 180
+                      )
+                    )
+                    && (
                       request.resource.data.texto.size() > 0
                       || request.resource.data.imagen_url.size() > 0
+                      || (
+                        request.resource.data.keys().hasAny(['imagenes_urls'])
+                        && request.resource.data.imagenes_urls.size() > 0
+                      )
+                      || request.resource.data.keys().hasAny(['ubicacion'])
                     )
                     && request.resource.data.propietario_id is string
                     && request.resource.data.propietario_id.size() >= 10

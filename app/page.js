@@ -319,6 +319,28 @@ function getSellerCoordinates(user = {}) {
     : null
 }
 
+function isCoordinateText(value) {
+  if (typeof value !== 'string') return false
+  const match = value.trim().match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)$/)
+  if (!match) return false
+  const lat = Number(match[1])
+  const lng = Number(match[2])
+  return Number.isFinite(lat) && Number.isFinite(lng)
+    && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+}
+
+function sellerDisplayName(user = {}) {
+  return user.nombre || user.google_nombre || 'Comercio afiliado'
+}
+
+function sellerDisplayLocation(user = {}) {
+  return [
+    isCoordinateText(user.ubicacion) ? '' : user.ubicacion,
+    user.zona,
+    user.ciudad,
+  ].filter((value) => typeof value === 'string' && value.trim()).join(', ')
+}
+
 function buildSellerMapUrl(user = {}) {
   if (user.googleMapsUrl) return user.googleMapsUrl
   const coordinates = getSellerCoordinates(user)
@@ -326,11 +348,7 @@ function buildSellerMapUrl(user = {}) {
     return `https://www.google.com/maps/search/?api=1&query=${coordinates.lat},${coordinates.lng}`
   }
 
-  const query = [
-    user.ubicacion,
-    user.zona,
-    user.ciudad,
-  ].filter(Boolean).join(', ')
+  const query = sellerDisplayLocation(user)
 
   if (!query) return 'https://maps.google.com/'
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
@@ -723,12 +741,8 @@ export default function Home() {
       imagen: detalleRepuesto.producto.imagen || '',
       nota: detalleNota.trim(),
       preguntas: detallePreguntas.trim(),
-      comercio: detalleRepuesto.user?.google_nombre || detalleRepuesto.user?.nombre || 'Comercio afiliado',
-      ubicacion: [
-        detalleRepuesto.user?.ubicacion,
-        detalleRepuesto.user?.zona,
-        detalleRepuesto.user?.ciudad,
-      ].filter(Boolean).join(', '),
+      comercio: sellerDisplayName(detalleRepuesto.user || {}),
+      ubicacion: sellerDisplayLocation(detalleRepuesto.user || {}),
       savedAt: Date.now(),
     }
 
@@ -928,7 +942,7 @@ export default function Home() {
 
       <nav className={`fixed top-0 left-0 right-0 z-50 bg-gray-900 transition-shadow duration-300 ${scrolled ? 'navbar-scrolled' : ''}`}>
         <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex min-h-16 items-center justify-between gap-2 py-2 sm:h-16 sm:py-0">
 
             {/* Logo */}
             <a href="#inicio" className="flex min-w-0 items-center gap-2 sm:gap-3">
@@ -939,9 +953,12 @@ export default function Home() {
                 height={40}
                 className="h-9 w-9 shrink-0 rounded-lg sm:h-10 sm:w-10"
               />
-              <div className="whitespace-nowrap">
-                <span className="font-brand text-white text-[16px] leading-none sm:text-lg">Repuestos</span>
-                <span className="font-brand text-[#FFD700] text-[16px] leading-none ml-1 sm:text-lg">Mérida</span>
+              <div className="flex min-w-0 flex-col font-brand text-sm leading-tight sm:block sm:whitespace-nowrap sm:text-lg">
+                <span className="text-white">Repuestos</span>
+                <span>
+                  <span className="text-[#FFD700] sm:ml-1">Mérida</span>
+                  <span className="ml-1 text-white">App</span>
+                </span>
                 <p className="text-gray-400 text-xs leading-none mt-0.5 hidden sm:block">Gochos Group</p>
               </div>
             </a>
@@ -1921,17 +1938,13 @@ export default function Home() {
 
               <div className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-700">
                 <p className="font-semibold text-gray-900">
-                  {rutaTienda.user?.google_nombre || rutaTienda.user?.nombre || 'Tienda'}
+                  {sellerDisplayName(rutaTienda.user || {})}
                 </p>
                 {rutaTienda.user?.tipovender && (
                   <p className="mt-1 text-gray-500">Tipo: {rutaTienda.user.tipovender}</p>
                 )}
                 <p className="mt-2">
-                  {[
-                    rutaTienda.user?.ubicacion,
-                    rutaTienda.user?.zona,
-                    rutaTienda.user?.ciudad,
-                  ].filter(Boolean).join(', ') || 'Dirección no disponible'}
+                  {sellerDisplayLocation(rutaTienda.user || {}) || 'Dirección no disponible'}
                 </p>
               </div>
 
@@ -2066,7 +2079,7 @@ export default function Home() {
                       <div className="min-w-0 flex-1">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Comercio</p>
                         <p className="mt-0.5 text-base font-bold leading-snug">
-                          {detalleRepuesto.user?.google_nombre || detalleRepuesto.user?.nombre || 'Comercio afiliado'}
+                          {sellerDisplayName(detalleRepuesto.user || {})}
                         </p>
                         {detalleRepuesto.user?.tipovender && (
                           <p className="mt-0.5 text-xs text-gray-400">{detalleRepuesto.user.tipovender}</p>
@@ -2074,11 +2087,7 @@ export default function Home() {
                         <p className="mt-2 flex items-start gap-1.5 text-xs text-gray-300">
                           <span className="mt-0.5 shrink-0 text-gray-400"><IconMapPin /></span>
                           <span className="leading-snug">
-                            {[
-                              detalleRepuesto.user?.ubicacion,
-                              detalleRepuesto.user?.zona,
-                              detalleRepuesto.user?.ciudad,
-                            ].filter(Boolean).join(', ') || 'Ubicación no detallada'}
+                            {sellerDisplayLocation(detalleRepuesto.user || {}) || 'Ubicación no detallada'}
                           </span>
                         </p>
                       </div>
@@ -2116,7 +2125,7 @@ export default function Home() {
                       </div>
                       <iframe
                         src={detalleRepuesto.mapEmbedUrl}
-                        title={`Ubicación de ${detalleRepuesto.user?.google_nombre || detalleRepuesto.user?.nombre || 'la tienda'}`}
+                        title={`Ubicación de ${sellerDisplayName(detalleRepuesto.user || {})}`}
                         className="h-64 w-full border-0"
                         loading="lazy"
                         referrerPolicy="no-referrer-when-downgrade"

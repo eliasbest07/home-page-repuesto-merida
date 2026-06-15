@@ -74,13 +74,35 @@ function sellerCoordinates(seller = {}) {
     : null
 }
 
+function isCoordinateText(value) {
+  if (typeof value !== 'string') return false
+  const match = value.trim().match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)$/)
+  if (!match) return false
+  const lat = Number(match[1])
+  const lng = Number(match[2])
+  return Number.isFinite(lat) && Number.isFinite(lng)
+    && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+}
+
+function sellerDisplayName(seller = {}) {
+  return seller.nombre || seller.google_nombre || 'Comercio afiliado'
+}
+
+function sellerDisplayLocation(seller = {}) {
+  return [
+    isCoordinateText(seller.ubicacion) ? '' : seller.ubicacion,
+    seller.zona,
+    seller.ciudad,
+  ].filter((value) => typeof value === 'string' && value.trim()).join(', ')
+}
+
 function sellerMapUrl(seller = {}) {
   if (seller.googleMapsUrl) return seller.googleMapsUrl
   const coordinates = sellerCoordinates(seller)
   if (coordinates) {
     return `https://www.google.com/maps/search/?api=1&query=${coordinates.lat},${coordinates.lng}`
   }
-  const query = [seller.ubicacion, seller.zona, seller.ciudad].filter(Boolean).join(', ')
+  const query = sellerDisplayLocation(seller)
   return query
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
     : 'https://maps.google.com/'
@@ -131,9 +153,7 @@ export default function RepuestoDetailPage({ params }) {
     }
   }, [productId])
 
-  const location = useMemo(() => (
-    [seller?.ubicacion, seller?.zona, seller?.ciudad].filter(Boolean).join(', ')
-  ), [seller])
+  const location = useMemo(() => sellerDisplayLocation(seller || {}), [seller])
   const mapEmbedUrl = useMemo(() => sellerMapEmbedUrl(seller || {}), [seller])
 
   useEffect(() => {
@@ -164,7 +184,7 @@ export default function RepuestoDetailPage({ params }) {
       imagen: product.image,
       nota: '',
       preguntas: `Hola, me interesa ${product.name}. ¿Sigue disponible y cuál es el precio final?`,
-      comercio: seller?.google_nombre || seller?.nombre || 'Comercio afiliado',
+      comercio: sellerDisplayName(seller || {}),
       ubicacion: location,
       savedAt: Date.now(),
     }
@@ -324,7 +344,7 @@ export default function RepuestoDetailPage({ params }) {
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Publicado por</p>
             <h2 className="mt-2 text-xl font-extrabold text-gray-900">
-              {seller?.google_nombre || seller?.nombre || 'Comercio afiliado'}
+              {sellerDisplayName(seller || {})}
             </h2>
             {seller?.tipovender && <p className="mt-1 text-sm text-gray-500">{seller.tipovender}</p>}
             <p className="mt-4 text-sm text-gray-600">{location || 'Ubicación por confirmar con el vendedor'}</p>
@@ -363,7 +383,7 @@ export default function RepuestoDetailPage({ params }) {
             </div>
             <iframe
               src={mapEmbedUrl}
-              title={`Ubicación de ${seller?.google_nombre || seller?.nombre || 'la tienda'}`}
+              title={`Ubicación de ${sellerDisplayName(seller || {})}`}
               className="h-[360px] w-full border-0 sm:h-[440px]"
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"

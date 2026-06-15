@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   addDoc,
@@ -21,6 +22,8 @@ const COMMENT_COLLECTION = 'solicitudes_comentarios'
 const CONTACT_COLLECTION = 'solicitudes_contactos'
 const REQUEST_COLLECTION = 'solicitudes_repuestos'
 const LOGIN_URL = '/login?redirect=%2Fsolicitados'
+const MAX_COMMENT_IMAGES = 6
+const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
 const BRAND_ICONS = {
   chevrolet: '/mobile-catalog/brands/chevrolet.png',
@@ -113,6 +116,113 @@ function contactPermissionId(requestId, ownerId, granteeId) {
   return `${requestId}_${ownerId}_${granteeId}`
 }
 
+function commentImageUrls(comment) {
+  const urls = Array.isArray(comment.imagenes_urls) ? comment.imagenes_urls : []
+  if (comment.imagen_url && !urls.includes(comment.imagen_url)) return [comment.imagen_url, ...urls]
+  return urls
+}
+
+function commentMapUrl(location) {
+  if (!location) return ''
+  const lat = Number(location.lat)
+  const lng = Number(location.lng)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+}
+
+async function prepareImageForUpload(file) {
+  if (file.size <= 900 * 1024 || file.type === 'image/gif') return file
+
+  const objectUrl = URL.createObjectURL(file)
+  try {
+    const image = new window.Image()
+    image.decoding = 'async'
+    await new Promise((resolve, reject) => {
+      image.onload = resolve
+      image.onerror = reject
+      image.src = objectUrl
+    })
+
+    const maxSide = 1600
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+    const width = Math.max(1, Math.round(image.naturalWidth * scale))
+    const height = Math.max(1, Math.round(image.naturalHeight * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    canvas.getContext('2d').drawImage(image, 0, 0, width, height)
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.78))
+    if (!blob) return file
+
+    const baseName = file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '-') || 'foto'
+    return new File([blob], `${baseName}.jpg`, {
+      type: 'image/jpeg',
+      lastModified: Date.now(),
+    })
+  } catch {
+    return file
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
+async function uploadImageDirect(path, file) {
+  const bucket = storage.app.options.storageBucket
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 90000)
+
+  try {
+    const response = await fetch(
+      `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?uploadType=media&name=${encodeURIComponent(path)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': file.type || 'image/jpeg' },
+        body: file,
+        signal: controller.signal,
+      }
+    )
+    const result = await response.json()
+    if (!response.ok) throw new Error(result?.error?.message || 'Falló la subida directa.')
+
+    const token = String(result.downloadTokens || '').split(',')[0]
+    const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : ''
+    return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media${tokenQuery}`
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
+async function uploadImageWithRetry(path, file) {
+  let lastError
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const uploaded = await uploadBytes(storageRef(storage, path), file, {
+        contentType: file.type,
+      })
+      return getDownloadURL(uploaded.ref)
+    } catch (error) {
+      lastError = error
+      const retryable = ['storage/retry-limit-exceeded', 'storage/unknown', 'storage/server-file-wrong-size']
+        .includes(String(error?.code))
+      if (!retryable || attempt === 3) throw error
+
+      if (String(error?.code) === 'storage/retry-limit-exceeded') {
+        try {
+          return await uploadImageDirect(path, file)
+        } catch {
+          // Continúa con el siguiente intento del SDK.
+        }
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, attempt * 1500))
+    }
+  }
+
+  throw lastError
+}
+
 function BrandMark({ brand }) {
   const normalized = normalize(brand)
   const icon = BRAND_ICONS[normalized]
@@ -151,8 +261,10 @@ function CommentSection({
   const [editingText, setEditingText] = useState('')
   const [savingId, setSavingId] = useState(null)
   const [contactBusy, setContactBusy] = useState('')
-  const [imageFile, setImageFile] = useState(null)
-  const [imagePreview, setImagePreview] = useState('')
+  const [imageFiles, setImageFiles] = useState([])
+  const [imagePreviews, setImagePreviews] = useState([])
+  const [location, setLocation] = useState(null)
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false)
   const [expandedImage, setExpandedImage] = useState(null)
   const textRef = useRef(null)
   const fileRef = useRef(null)
@@ -186,15 +298,15 @@ function CommentSection({
   }, [open, session])
 
   useEffect(() => {
-    if (!imageFile) {
-      setImagePreview('')
+    if (imageFiles.length === 0) {
+      setImagePreviews([])
       return
     }
 
-    const previewUrl = URL.createObjectURL(imageFile)
-    setImagePreview(previewUrl)
-    return () => URL.revokeObjectURL(previewUrl)
-  }, [imageFile])
+    const previewUrls = imageFiles.map((file) => URL.createObjectURL(file))
+    setImagePreviews(previewUrls)
+    return () => previewUrls.forEach((url) => URL.revokeObjectURL(url))
+  }, [imageFiles])
 
   useEffect(() => {
     if (!expandedImage) return undefined
@@ -213,22 +325,30 @@ function CommentSection({
     }
   }, [expandedImage])
 
-  function selectImage(event) {
-    const file = event.target.files?.[0]
+  function selectImages(event) {
+    const selectedFiles = [...(event.target.files || [])]
     event.target.value = ''
     setError('')
 
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setError('Selecciona un archivo de imagen.')
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setError('La imagen no puede superar 5 MB.')
+    if (selectedFiles.length === 0) return
+    const availableSlots = MAX_COMMENT_IMAGES - imageFiles.length
+    if (availableSlots <= 0) {
+      setError(`Puedes subir un máximo de ${MAX_COMMENT_IMAGES} fotos por conversación.`)
       return
     }
 
-    setImageFile(file)
+    const validFiles = selectedFiles.filter((file) => (
+      file.type.startsWith('image/') && file.size <= 5 * 1024 * 1024
+    ))
+    if (validFiles.length !== selectedFiles.length) {
+      setError('Solo se agregaron imágenes válidas de hasta 5 MB cada una.')
+    }
+    if (selectedFiles.length > availableSlots) {
+      setError(`Solo puedes adjuntar ${MAX_COMMENT_IMAGES} fotos por conversación.`)
+    }
+    if (validFiles.length === 0) return
+
+    setImageFiles((current) => [...current, ...validFiles.slice(0, availableSlots)])
   }
 
   async function submit(event) {
@@ -243,7 +363,7 @@ function CommentSection({
     const cleanText = text.trim().slice(0, 500)
     const cleanWhatsapp = String(session.telefono).replace(/\D/g, '').slice(0, 18)
 
-    if (!cleanText && !imageFile) return
+    if (!cleanText && imageFiles.length === 0 && !location) return
 
     setSubmitting(true)
     setError('')
@@ -251,16 +371,14 @@ function CommentSection({
     let publishPhase = 'upload'
 
     try {
-      let imageUrl = ''
-      if (imageFile) {
+      const imageUrls = []
+      for (const [index, originalFile] of imageFiles.entries()) {
+        const imageFile = await prepareImageForUpload(originalFile)
         const extension = imageFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
         const randomId = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)
-        const uniqueName = `${Date.now()}-${randomId}.${extension}`
+        const uniqueName = `${Date.now()}-${index}-${randomId}.${extension}`
         const path = `solicitudes-debate/${request.id}/${cleanWhatsapp}/${uniqueName}`
-        const uploaded = await uploadBytes(storageRef(storage, path), imageFile, {
-          contentType: imageFile.type,
-        })
-        imageUrl = await getDownloadURL(uploaded.ref)
+        imageUrls.push(await uploadImageWithRetry(path, imageFile))
       }
 
       publishPhase = 'comment'
@@ -269,25 +387,32 @@ function CommentSection({
         solicitud_id: request.id,
         autor: cleanAuthor || 'Anónimo',
         texto: cleanText,
-        imagen_url: imageUrl,
+        imagen_url: imageUrls[0] || '',
+        imagenes_urls: imageUrls,
+        ...(location ? { ubicacion: location } : {}),
         propietario_id: cleanWhatsapp,
         whatsapp: cleanWhatsapp,
         creado_en: Date.now(),
       }
 
-      const document = await addDoc(collection(firestore, COMMENT_COLLECTION), {
+      const commentData = {
         solicitud_id: request.id,
         autor: optimistic.autor,
         texto: cleanText,
-        imagen_url: imageUrl,
+        imagen_url: imageUrls[0] || '',
+        imagenes_urls: imageUrls,
         propietario_id: cleanWhatsapp,
         whatsapp: cleanWhatsapp,
         creado_en: serverTimestamp(),
-      })
+      }
+      if (location) commentData.ubicacion = location
+
+      const document = await addDoc(collection(firestore, COMMENT_COLLECTION), commentData)
 
       onCommentAdded({ ...optimistic, id: document.id })
       setText('')
-      setImageFile(null)
+      setImageFiles([])
+      setLocation(null)
     } catch (uploadError) {
       console.error('Error al publicar en el debate:', uploadError)
       const code = String(uploadError?.code || 'error-desconocido')
@@ -466,25 +591,54 @@ function CommentSection({
                           {comment.texto && (
                             <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-600">{comment.texto}</p>
                           )}
-                          {comment.imagen_url && (
-                            <button
-                              type="button"
-                              onClick={() => setExpandedImage({
-                                url: comment.imagen_url,
-                                alt: `Imagen compartida por ${comment.autor || 'usuario'}`,
-                              })}
-                              className="relative mt-2 block aspect-video w-full max-w-sm cursor-zoom-in overflow-hidden rounded-xl border border-gray-200 bg-gray-100"
-                              aria-label="Ampliar imagen"
+                          {commentImageUrls(comment).length > 0 && (
+                            <div className={`mt-2 grid max-w-lg gap-1.5 ${
+                              commentImageUrls(comment).length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+                            }`}>
+                              {commentImageUrls(comment).map((imageUrl, imageIndex) => (
+                                <button
+                                  key={`${imageUrl}-${imageIndex}`}
+                                  type="button"
+                                  onClick={() => setExpandedImage({
+                                    url: imageUrl,
+                                    alt: `Imagen ${imageIndex + 1} compartida por ${comment.autor || 'usuario'}`,
+                                  })}
+                                  className="relative block aspect-video w-full cursor-zoom-in overflow-hidden rounded-xl border border-gray-200 bg-gray-100"
+                                  aria-label={`Ampliar imagen ${imageIndex + 1}`}
+                                >
+                                  <Image
+                                    src={imageUrl}
+                                    alt={`Imagen ${imageIndex + 1} compartida por ${comment.autor || 'usuario'}`}
+                                    fill
+                                    unoptimized
+                                    sizes="(max-width: 640px) 45vw, 240px"
+                                    className="object-cover"
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {commentMapUrl(comment.ubicacion) && (
+                            <a
+                              href={commentMapUrl(comment.ubicacion)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 flex max-w-sm items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 transition hover:bg-emerald-100"
                             >
-                              <Image
-                                src={comment.imagen_url}
-                                alt={`Imagen compartida por ${comment.autor || 'usuario'}`}
-                                fill
-                                unoptimized
-                                sizes="(max-width: 640px) 90vw, 384px"
-                                className="object-contain"
-                              />
-                            </button>
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
+                                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s7-6.1 7-13a7 7 0 1 0-14 0c0 6.9 7 13 7 13Z" />
+                                  <circle cx="12" cy="8" r="2.5" />
+                                </svg>
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-xs font-bold text-emerald-900">Ubicación compartida</span>
+                                <span className="mt-0.5 block font-mono text-[10px] text-emerald-700">
+                                  {Number(comment.ubicacion.lat).toFixed(6)}, {Number(comment.ubicacion.lng).toFixed(6)}
+                                </span>
+                              </span>
+                              <span className="ml-auto text-xs font-bold text-emerald-700">Ver mapa</span>
+                            </a>
                           )}
                         </>
                       )}
@@ -632,15 +786,42 @@ function CommentSection({
                 placeholder="Ej: Lo tengo disponible, necesito más información o puedo conseguirlo..."
                 className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
               />
-              {imagePreview && (
-                <div className="relative w-40 overflow-hidden rounded-xl border border-gray-200 bg-gray-100">
-                  <div className="relative aspect-video">
-                    <Image src={imagePreview} alt="Vista previa" fill unoptimized className="object-contain" />
+              {imagePreviews.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {imagePreviews.map((previewUrl, index) => (
+                    <div key={previewUrl} className="relative overflow-hidden rounded-xl border border-gray-200 bg-gray-100">
+                      <div className="relative aspect-video">
+                        <Image
+                          src={previewUrl}
+                          alt={`Vista previa ${index + 1}`}
+                          fill
+                          unoptimized
+                          className="object-cover"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setImageFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                        className="absolute right-1 top-1 rounded-full bg-black/75 px-2 py-1 text-[10px] font-bold text-white"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {location && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-emerald-900">Ubicación seleccionada</p>
+                    <p className="mt-0.5 truncate font-mono text-[10px] text-emerald-700">
+                      {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
+                    </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setImageFile(null)}
-                    className="absolute right-1 top-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-bold text-white"
+                    onClick={() => setLocation(null)}
+                    className="shrink-0 text-xs font-bold text-red-600"
                   >
                     Quitar
                   </button>
@@ -650,24 +831,39 @@ function CommentSection({
                 ref={fileRef}
                 type="file"
                 accept="image/*"
-                onChange={selectImage}
+                multiple
+                onChange={selectImages}
                 className="hidden"
               />
-              <div className="flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={submitting}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:border-yellow-400 hover:bg-yellow-50 disabled:opacity-50"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7a2 2 0 0 1 2-2h2l1.5-2h5L16 5h2a2 2 0 0 1 2 2v11H4V7Zm8 9a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
-                  </svg>
-                  Subir foto
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={submitting || imageFiles.length >= MAX_COMMENT_IMAGES}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:border-yellow-400 hover:bg-yellow-50 disabled:opacity-50"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7a2 2 0 0 1 2-2h2l1.5-2h5L16 5h2a2 2 0 0 1 2 2v11H4V7Zm8 9a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+                    </svg>
+                    Fotos {imageFiles.length > 0 ? `${imageFiles.length}/${MAX_COMMENT_IMAGES}` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLocationPickerOpen(true)}
+                    disabled={submitting}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-50"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s7-6.1 7-13a7 7 0 1 0-14 0c0 6.9 7 13 7 13Z" />
+                      <circle cx="12" cy="8" r="2.5" />
+                    </svg>
+                    {location ? 'Cambiar ubicación' : 'Ubicación'}
+                  </button>
+                </div>
                 <button
                   type="submit"
-                  disabled={(!text.trim() && !imageFile) || submitting}
+                  disabled={(!text.trim() && imageFiles.length === 0 && !location) || submitting}
                   className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-xs font-bold text-yellow-400 transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {submitting ? 'Subiendo y publicando...' : 'Publicar conversación'}
@@ -695,6 +891,17 @@ function CommentSection({
             </div>
           )}
         </div>
+      )}
+      {locationPickerOpen && (
+        <MapPicker
+          initialLat={location?.lat}
+          initialLng={location?.lng}
+          onConfirm={(coordinates) => {
+            setLocation(coordinates)
+            setLocationPickerOpen(false)
+          }}
+          onClose={() => setLocationPickerOpen(false)}
+        />
       )}
       {expandedImage && (
         <div
@@ -1078,18 +1285,22 @@ export default function SolicitudesClient() {
   return (
     <div className="min-h-screen bg-[#f5f7f9] text-gray-900">
       <header className="sticky top-0 z-40 border-b border-gray-800 bg-gray-950 text-white shadow-lg">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4">
-          <Link href="/" className="flex min-w-0 items-center gap-2.5">
+        <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-2 px-3 py-2 sm:h-16 sm:gap-3 sm:px-4 sm:py-0">
+          <Link href="/" className="flex min-w-0 items-center gap-2 sm:gap-2.5">
             <Image src="/iconorm.png" alt="Repuestos Mérida" width={38} height={38} className="h-9 w-9 shrink-0 rounded-lg" />
-            <span className="truncate font-brand text-base">
-              Repuestos <span className="text-yellow-400">Mérida</span>
+            <span className="flex min-w-0 flex-col font-brand text-sm leading-tight sm:block sm:text-base">
+              <span>Repuestos</span>
+              <span>
+                <span className="text-yellow-400 sm:ml-1">Mérida</span>
+                <span className="ml-1 text-white">App</span>
+              </span>
             </span>
           </Link>
-          <nav className="flex items-center gap-2">
+          <nav className="flex shrink-0 items-center gap-2">
             <Link href="/" className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-white sm:inline-flex">
               Inicio
             </Link>
-            <Link href="/plaza/solicitar" className="rounded-lg bg-yellow-400 px-3 py-2 text-xs font-bold text-gray-950 hover:bg-yellow-300 sm:text-sm">
+            <Link href="/plaza/solicitar" className="shrink-0 rounded-lg bg-yellow-400 px-3 py-2 text-xs font-bold leading-tight text-gray-950 hover:bg-yellow-300 sm:text-sm">
               Solicitar repuesto
             </Link>
           </nav>
