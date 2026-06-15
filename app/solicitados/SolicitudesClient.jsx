@@ -9,6 +9,7 @@ import {
   collection,
   doc,
   getDocs,
+  onSnapshot,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -23,6 +24,8 @@ const CONTACT_COLLECTION = 'solicitudes_contactos'
 const REQUEST_COLLECTION = 'solicitudes_repuestos'
 const LOGIN_URL = '/login?redirect=%2Fsolicitados'
 const MAX_COMMENT_IMAGES = 6
+const MAX_SOURCE_IMAGE_SIZE = 20 * 1024 * 1024
+const MAX_UPLOADED_IMAGE_SIZE = 550 * 1024
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
 const BRAND_ICONS = {
@@ -131,7 +134,7 @@ function commentMapUrl(location) {
 }
 
 async function prepareImageForUpload(file) {
-  if (file.size <= 900 * 1024 || file.type === 'image/gif') return file
+  if (file.size <= MAX_UPLOADED_IMAGE_SIZE) return file
 
   const objectUrl = URL.createObjectURL(file)
   try {
@@ -143,17 +146,40 @@ async function prepareImageForUpload(file) {
       image.src = objectUrl
     })
 
-    const maxSide = 1600
-    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
-    const width = Math.max(1, Math.round(image.naturalWidth * scale))
-    const height = Math.max(1, Math.round(image.naturalHeight * scale))
+    const maxSide = 1280
+    let scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+    let width = Math.max(1, Math.round(image.naturalWidth * scale))
+    let height = Math.max(1, Math.round(image.naturalHeight * scale))
     const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    canvas.getContext('2d').drawImage(image, 0, 0, width, height)
+    const context = canvas.getContext('2d')
+    if (!context) return file
 
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.78))
-    if (!blob) return file
+    let blob = null
+    let quality = 0.78
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      canvas.width = width
+      canvas.height = height
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, width, height)
+      context.drawImage(image, 0, 0, width, height)
+
+      blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
+      if (!blob || blob.size <= MAX_UPLOADED_IMAGE_SIZE) break
+
+      if (quality > 0.5) {
+        quality -= 0.08
+      } else {
+        scale *= 0.82
+        width = Math.max(1, Math.round(image.naturalWidth * scale))
+        height = Math.max(1, Math.round(image.naturalHeight * scale))
+        quality = 0.68
+      }
+    }
+
+    if (!blob || blob.size > MAX_UPLOADED_IMAGE_SIZE) {
+      throw new Error('No se pudo comprimir la imagen a 550 KB.')
+    }
 
     const baseName = file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '-') || 'foto'
     return new File([blob], `${baseName}.jpg`, {
@@ -195,6 +221,15 @@ async function uploadImageDirect(path, file) {
 
 async function uploadImageWithRetry(path, file) {
   let lastError
+  const mobileBrowser = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+
+  if (mobileBrowser) {
+    try {
+      return await uploadImageDirect(path, file)
+    } catch (error) {
+      lastError = error
+    }
+  }
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
@@ -338,10 +373,10 @@ function CommentSection({
     }
 
     const validFiles = selectedFiles.filter((file) => (
-      file.type.startsWith('image/') && file.size <= 5 * 1024 * 1024
+      file.type.startsWith('image/') && file.size <= MAX_SOURCE_IMAGE_SIZE
     ))
     if (validFiles.length !== selectedFiles.length) {
-      setError('Solo se agregaron imágenes válidas de hasta 5 MB cada una.')
+      setError('Solo se agregaron imágenes válidas de hasta 20 MB cada una.')
     }
     if (selectedFiles.length > availableSlots) {
       setError(`Solo puedes adjuntar ${MAX_COMMENT_IMAGES} fotos por conversación.`)
@@ -374,6 +409,9 @@ function CommentSection({
       const imageUrls = []
       for (const [index, originalFile] of imageFiles.entries()) {
         const imageFile = await prepareImageForUpload(originalFile)
+        if (imageFile.size > MAX_UPLOADED_IMAGE_SIZE) {
+          throw new Error(`La foto ${index + 1} no pudo reducirse por debajo de 550 KB.`)
+        }
         const extension = imageFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
         const randomId = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)
         const uniqueName = `${Date.now()}-${index}-${randomId}.${extension}`
@@ -424,7 +462,10 @@ function CommentSection({
           'storage/bucket-not-found': 'No se encontró el bucket configurado en Firebase Storage.',
           'storage/retry-limit-exceeded': 'La subida agotó el tiempo de espera. Revisa la conexión e intenta nuevamente.',
         }
-        setError(`${storageMessages[code] || 'No se pudo subir la imagen.'} (${code})`)
+        const detail = uploadError?.message && code === 'error-desconocido'
+          ? uploadError.message
+          : storageMessages[code] || 'No se pudo subir la imagen.'
+        setError(`${detail} (${code})`)
       } else {
         setError(`La foto se subió, pero Firestore no pudo publicar la conversación. (${code})`)
       }
@@ -727,24 +768,9 @@ function CommentSection({
                           )}
 
                           {permissionFromMe?.estado === 'pendiente' ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => setContactPermission(currentParticipantId, participant.id, 'aprobado')}
-                                disabled={contactBusy === incomingId}
-                                className="rounded-lg bg-gray-900 px-3 py-1.5 text-[11px] font-bold text-yellow-400 disabled:opacity-60"
-                              >
-                                Autorizarle
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setContactPermission(currentParticipantId, participant.id, 'rechazado')}
-                                disabled={contactBusy === incomingId}
-                                className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-bold text-gray-500 disabled:opacity-60"
-                              >
-                                Rechazar
-                              </button>
-                            </>
+                            <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-700">
+                              Revisa la campana para responder
+                            </span>
                           ) : permissionFromMe?.estado === 'aprobado' ? (
                             <button
                               type="button"
@@ -802,7 +828,8 @@ function CommentSection({
                       <button
                         type="button"
                         onClick={() => setImageFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
-                        className="absolute right-1 top-1 rounded-full bg-black/75 px-2 py-1 text-[10px] font-bold text-white"
+                        disabled={submitting}
+                        className="absolute right-1 top-1 rounded-full bg-black/75 px-2 py-1 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Quitar
                       </button>
@@ -821,7 +848,8 @@ function CommentSection({
                   <button
                     type="button"
                     onClick={() => setLocation(null)}
-                    className="shrink-0 text-xs font-bold text-red-600"
+                    disabled={submitting}
+                    className="shrink-0 text-xs font-bold text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Quitar
                   </button>
@@ -913,11 +941,17 @@ function CommentSection({
         >
           <button
             type="button"
-            onClick={() => setExpandedImage(null)}
-            className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white text-2xl font-bold leading-none text-gray-900 shadow-lg sm:right-6 sm:top-6"
+            onClick={(event) => {
+              event.stopPropagation()
+              setExpandedImage(null)
+            }}
+            className="fixed right-4 z-[10001] flex h-12 w-12 items-center justify-center rounded-full border-2 border-gray-900 bg-white text-gray-950 shadow-2xl sm:right-6 sm:top-6"
+            style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
             aria-label="Cerrar imagen"
           >
-            ×
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
+            </svg>
           </button>
           <div
             className="relative h-full max-h-[90vh] w-full max-w-6xl"
@@ -1093,6 +1127,11 @@ export default function SolicitudesClient() {
   const [commentsLoading, setCommentsLoading] = useState(true)
   const [session, setSession] = useState(null)
   const [sessionLoading, setSessionLoading] = useState(true)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [notificationBusy, setNotificationBusy] = useState('')
+  const [notificationError, setNotificationError] = useState('')
+  const initialContactsSnapshot = useRef(true)
+  const previousPendingIds = useRef(new Set())
   const requests = useMemo(() => {
     const uniqueIds = new Set()
 
@@ -1117,11 +1156,12 @@ export default function SolicitudesClient() {
   }, [])
 
   useEffect(() => {
-    let cancelled = false
+    initialContactsSnapshot.current = true
+    previousPendingIds.current = new Set()
 
-    getDocs(collection(firestore, CONTACT_COLLECTION))
-      .then((snapshot) => {
-        if (cancelled) return
+    const unsubscribe = onSnapshot(
+      collection(firestore, CONTACT_COLLECTION),
+      (snapshot) => {
         const grouped = {}
         snapshot.docs.forEach((document) => {
           const contact = { id: document.id, ...document.data() }
@@ -1130,15 +1170,76 @@ export default function SolicitudesClient() {
           grouped[key].push(contact)
         })
         setContactsByRequest(grouped)
-      })
-      .catch(() => {
-        if (!cancelled) setContactsByRequest({})
-      })
 
-    return () => {
-      cancelled = true
+        const currentId = sessionParticipantId(session)
+        const pendingIds = new Set(
+          snapshot.docs
+            .map((document) => ({ id: document.id, ...document.data() }))
+            .filter((contact) => contact.propietario_id === currentId && contact.estado === 'pendiente')
+            .map((contact) => contact.id)
+        )
+
+        if (!initialContactsSnapshot.current) {
+          const hasNewRequest = [...pendingIds].some((id) => !previousPendingIds.current.has(id))
+          if (hasNewRequest) {
+            try {
+              const AudioContext = window.AudioContext || window.webkitAudioContext
+              const audioContext = new AudioContext()
+              const oscillator = audioContext.createOscillator()
+              const gain = audioContext.createGain()
+              oscillator.frequency.value = 880
+              gain.gain.setValueAtTime(0.08, audioContext.currentTime)
+              gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.35)
+              oscillator.connect(gain)
+              gain.connect(audioContext.destination)
+              oscillator.start()
+              oscillator.stop(audioContext.currentTime + 0.35)
+            } catch {}
+          }
+        }
+
+        initialContactsSnapshot.current = false
+        previousPendingIds.current = pendingIds
+      },
+      () => setContactsByRequest({})
+    )
+
+    return unsubscribe
+  }, [session])
+
+  const contactNotifications = useMemo(() => {
+    const currentId = sessionParticipantId(session)
+    if (!currentId) return []
+
+    return Object.values(contactsByRequest)
+      .flat()
+      .filter((contact) => contact.propietario_id === currentId && contact.estado === 'pendiente')
+      .map((contact) => {
+        const request = requests.find((item) => String(item.id) === String(contact.solicitud_id))
+        const comments = commentsByRequest[String(contact.solicitud_id)] || []
+        const requester = comments.find((comment) => participantId(comment) === contact.autorizado_id)
+        return {
+          ...contact,
+          request,
+          requesterName: requester?.autor || `Usuario ${String(contact.autorizado_id).slice(-4)}`,
+        }
+      })
+  }, [commentsByRequest, contactsByRequest, requests, session])
+
+  async function answerContactNotification(notification, estado) {
+    setNotificationBusy(notification.id)
+    setNotificationError('')
+    try {
+      await updateDoc(doc(firestore, CONTACT_COLLECTION, notification.id), {
+        estado,
+        actualizado_en: serverTimestamp(),
+      })
+    } catch {
+      setNotificationError('No se pudo responder la solicitud de contacto.')
+    } finally {
+      setNotificationBusy('')
     }
-  }, [])
+  }
   useEffect(() => {
     if (focusId && focusRef.current) {
       focusRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -1296,10 +1397,98 @@ export default function SolicitudesClient() {
               </span>
             </span>
           </Link>
-          <nav className="flex shrink-0 items-center gap-2">
+          <nav className="relative flex shrink-0 items-center gap-2">
             <Link href="/" className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-white sm:inline-flex">
               Inicio
             </Link>
+            {session && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setNotificationsOpen((current) => !current)}
+                  className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-gray-700 bg-gray-900 text-gray-200 transition hover:border-yellow-400 hover:text-yellow-400"
+                  aria-label="Notificaciones"
+                  aria-expanded={notificationsOpen}
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 17H9m9-2V11a6 6 0 1 0-12 0v4l-2 2h16l-2-2Zm-8 5h4" />
+                  </svg>
+                  {contactNotifications.length > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-extrabold text-white">
+                      {contactNotifications.length > 9 ? '9+' : contactNotifications.length}
+                    </span>
+                  )}
+                </button>
+
+                {notificationsOpen && (
+                  <div className="absolute right-0 top-[calc(100%+0.65rem)] z-50 w-[min(90vw,360px)] overflow-hidden rounded-2xl border border-gray-200 bg-white text-gray-900 shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-extrabold">Notificaciones</p>
+                        <p className="text-[11px] text-gray-500">Solicitudes de contacto en tiempo real</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setNotificationsOpen(false)}
+                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                        aria-label="Cerrar notificaciones"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    <div className="max-h-[65vh] overflow-y-auto p-3">
+                      {contactNotifications.length === 0 ? (
+                        <p className="rounded-xl bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
+                          No tienes solicitudes pendientes.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {contactNotifications.map((notification) => (
+                            <article key={notification.id} className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                              <p className="text-sm font-bold text-gray-900">
+                                {notification.requesterName} quiere contactarte
+                              </p>
+                              <p className="mt-1 text-xs leading-relaxed text-gray-600">
+                                Solicitud: {notification.request?.repuesto || notification.solicitud_id}
+                              </p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => answerContactNotification(notification, 'aprobado')}
+                                  disabled={notificationBusy === notification.id}
+                                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                                >
+                                  Aceptar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => answerContactNotification(notification, 'rechazado')}
+                                  disabled={notificationBusy === notification.id}
+                                  className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 disabled:opacity-50"
+                                >
+                                  Rechazar
+                                </button>
+                                <Link
+                                  href={`/solicitados?solicitud=${encodeURIComponent(String(notification.solicitud_id))}`}
+                                  onClick={() => setNotificationsOpen(false)}
+                                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600"
+                                >
+                                  Ver solicitud
+                                </Link>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                      {notificationError && (
+                        <p className="mt-2 text-xs font-semibold text-red-600">{notificationError}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <Link href="/plaza/solicitar" className="shrink-0 rounded-lg bg-yellow-400 px-3 py-2 text-xs font-bold leading-tight text-gray-950 hover:bg-yellow-300 sm:text-sm">
               Solicitar repuesto
             </Link>
