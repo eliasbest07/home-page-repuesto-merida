@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   addDoc,
   collection,
@@ -25,6 +26,7 @@ const REQUEST_COLLECTION = 'solicitudes_repuestos'
 const LOGIN_URL = '/login?redirect=%2Fsolicitados'
 const MAX_COMMENT_IMAGES = 6
 const MAX_SOURCE_IMAGE_SIZE = 20 * 1024 * 1024
+const TARGET_UPLOADED_IMAGE_SIZE = 450 * 1024
 const MAX_UPLOADED_IMAGE_SIZE = 550 * 1024
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
@@ -133,9 +135,13 @@ function commentMapUrl(location) {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
 }
 
-async function prepareImageForUpload(file) {
-  if (file.size <= MAX_UPLOADED_IMAGE_SIZE) return file
+function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB'
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
+async function prepareImageForUpload(file) {
   const objectUrl = URL.createObjectURL(file)
   try {
     const image = new window.Image()
@@ -146,8 +152,13 @@ async function prepareImageForUpload(file) {
       image.src = objectUrl
     })
 
-    const maxSide = 1280
-    let scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+    const maxWidth = 1280
+    const maxHeight = 720
+    let scale = Math.min(
+      1,
+      maxWidth / image.naturalWidth,
+      maxHeight / image.naturalHeight
+    )
     let width = Math.max(1, Math.round(image.naturalWidth * scale))
     let height = Math.max(1, Math.round(image.naturalHeight * scale))
     const canvas = document.createElement('canvas')
@@ -155,9 +166,9 @@ async function prepareImageForUpload(file) {
     if (!context) return file
 
     let blob = null
-    let quality = 0.78
+    let quality = 0.85
 
-    for (let attempt = 0; attempt < 10; attempt += 1) {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
       canvas.width = width
       canvas.height = height
       context.fillStyle = '#ffffff'
@@ -165,15 +176,15 @@ async function prepareImageForUpload(file) {
       context.drawImage(image, 0, 0, width, height)
 
       blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
-      if (!blob || blob.size <= MAX_UPLOADED_IMAGE_SIZE) break
+      if (!blob || blob.size <= TARGET_UPLOADED_IMAGE_SIZE) break
 
-      if (quality > 0.5) {
-        quality -= 0.08
+      if (quality > 0.46) {
+        quality -= 0.07
       } else {
-        scale *= 0.82
+        scale *= 0.85
         width = Math.max(1, Math.round(image.naturalWidth * scale))
         height = Math.max(1, Math.round(image.naturalHeight * scale))
-        quality = 0.68
+        quality = 0.72
       }
     }
 
@@ -297,6 +308,7 @@ function CommentSection({
   const [savingId, setSavingId] = useState(null)
   const [contactBusy, setContactBusy] = useState('')
   const [imageFiles, setImageFiles] = useState([])
+  const [compressingImages, setCompressingImages] = useState(false)
   const [imagePreviews, setImagePreviews] = useState([])
   const [location, setLocation] = useState(null)
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
@@ -304,21 +316,6 @@ function CommentSection({
   const textRef = useRef(null)
   const fileRef = useRef(null)
   const currentParticipantId = sessionParticipantId(session)
-  const participants = useMemo(() => {
-    const unique = new Map()
-    comments.forEach((comment) => {
-      const id = participantId(comment)
-      if (!id) return
-      if (!unique.has(id)) {
-        unique.set(id, {
-          id,
-          autor: comment.autor || 'Usuario',
-          whatsapp: comment.whatsapp || '',
-        })
-      }
-    })
-    return [...unique.values()]
-  }, [comments])
 
   const contactMap = useMemo(() => {
     const map = new Map()
@@ -360,7 +357,7 @@ function CommentSection({
     }
   }, [expandedImage])
 
-  function selectImages(event) {
+  async function selectImages(event) {
     const selectedFiles = [...(event.target.files || [])]
     event.target.value = ''
     setError('')
@@ -383,7 +380,22 @@ function CommentSection({
     }
     if (validFiles.length === 0) return
 
-    setImageFiles((current) => [...current, ...validFiles.slice(0, availableSlots)])
+    setCompressingImages(true)
+    try {
+      const preparedFiles = []
+      for (const [index, file] of validFiles.slice(0, availableSlots).entries()) {
+        const preparedFile = await prepareImageForUpload(file)
+        if (preparedFile.size > MAX_UPLOADED_IMAGE_SIZE) {
+          throw new Error(`La foto ${index + 1} no pudo reducirse por debajo de 550 KB.`)
+        }
+        preparedFiles.push(preparedFile)
+      }
+      setImageFiles((current) => [...current, ...preparedFiles].slice(0, MAX_COMMENT_IMAGES))
+    } catch (compressionError) {
+      setError(compressionError?.message || 'No se pudieron preparar las imágenes.')
+    } finally {
+      setCompressingImages(false)
+    }
   }
 
   async function submit(event) {
@@ -407,8 +419,7 @@ function CommentSection({
 
     try {
       const imageUrls = []
-      for (const [index, originalFile] of imageFiles.entries()) {
-        const imageFile = await prepareImageForUpload(originalFile)
+      for (const [index, imageFile] of imageFiles.entries()) {
         if (imageFile.size > MAX_UPLOADED_IMAGE_SIZE) {
           throw new Error(`La foto ${index + 1} no pudo reducirse por debajo de 550 KB.`)
         }
@@ -590,7 +601,13 @@ function CommentSection({
             </p>
           ) : (
             <div className="mb-4 space-y-2">
-              {comments.map((comment) => (
+              {comments.map((comment) => {
+                const commentOwnerId = participantId(comment)
+                const permissionToMe = contactMap.get(`${commentOwnerId}:${currentParticipantId}`)
+                const permissionFromMe = contactMap.get(`${currentParticipantId}:${commentOwnerId}`)
+                const outgoingId = contactPermissionId(request.id, commentOwnerId, currentParticipantId)
+
+                return (
                 <article key={comment.id} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -684,18 +701,6 @@ function CommentSection({
                         </>
                       )}
                     </div>
-                    {comment.whatsapp &&
-                      participantId(comment) !== currentParticipantId &&
-                      contactMap.get(`${participantId(comment)}:${currentParticipantId}`)?.estado === 'aprobado' && (
-                      <a
-                        href={commenterWhatsappUrl(comment, request)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 rounded-lg bg-green-100 px-2 py-1 text-[10px] font-bold text-green-700 hover:bg-green-200"
-                      >
-                        Contactar
-                      </a>
-                    )}
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-gray-400">
                     <span>{formatCommentDate(comment.creado_en)}</span>
@@ -723,78 +728,37 @@ function CommentSection({
                       </>
                     )}
                   </div>
+                  {commentOwnerId && commentOwnerId !== currentParticipantId && !comment.eliminado && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-2.5">
+                      {permissionToMe?.estado === 'aprobado' ? (
+                        <a
+                          href={commenterWhatsappUrl(comment, request)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white"
+                        >
+                          Contactar por WhatsApp
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setContactPermission(commentOwnerId, currentParticipantId, 'pendiente')}
+                          disabled={permissionToMe?.estado === 'pendiente' || contactBusy === outgoingId}
+                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 disabled:opacity-60"
+                        >
+                          {permissionToMe?.estado === 'pendiente' ? 'Solicitud de contacto enviada' : 'Solicitar contacto'}
+                        </button>
+                      )}
+                      {permissionFromMe?.estado === 'pendiente' && (
+                        <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                          Te solicitó contacto. Responde en la campana.
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </article>
-              ))}
-            </div>
-          )}
-
-          {session && participants.length > 1 && (
-            <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
-              <p className="text-xs font-bold text-gray-800">Permisos para contactar</p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
-                El botón de WhatsApp solo se habilita cuando el dueño del número autoriza al otro participante.
-              </p>
-              <div className="mt-3 space-y-2">
-                {participants
-                  .filter((participant) => participant.id !== currentParticipantId)
-                  .map((participant) => {
-                    const permissionToMe = contactMap.get(`${participant.id}:${currentParticipantId}`)
-                    const permissionFromMe = contactMap.get(`${currentParticipantId}:${participant.id}`)
-                    const outgoingId = contactPermissionId(request.id, participant.id, currentParticipantId)
-                    const incomingId = contactPermissionId(request.id, currentParticipantId, participant.id)
-
-                    return (
-                      <div key={participant.id} className="rounded-lg border border-emerald-100 bg-white p-2.5">
-                        <p className="text-xs font-bold text-gray-800">{participant.autor}</p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {permissionToMe?.estado === 'aprobado' ? (
-                            <a
-                              href={commenterWhatsappUrl(participant, request)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="rounded-lg bg-green-600 px-3 py-1.5 text-[11px] font-bold text-white"
-                            >
-                              Contactar
-                            </a>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setContactPermission(participant.id, currentParticipantId, 'pendiente')}
-                              disabled={permissionToMe?.estado === 'pendiente' || contactBusy === outgoingId}
-                              className="rounded-lg border border-green-200 bg-green-50 px-3 py-1.5 text-[11px] font-bold text-green-700 disabled:opacity-60"
-                            >
-                              {permissionToMe?.estado === 'pendiente' ? 'Solicitud enviada' : 'Solicitar contacto'}
-                            </button>
-                          )}
-
-                          {permissionFromMe?.estado === 'pendiente' ? (
-                            <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-700">
-                              Revisa la campana para responder
-                            </span>
-                          ) : permissionFromMe?.estado === 'aprobado' ? (
-                            <button
-                              type="button"
-                              onClick={() => setContactPermission(currentParticipantId, participant.id, 'rechazado')}
-                              disabled={contactBusy === incomingId}
-                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-bold text-gray-500 disabled:opacity-60"
-                            >
-                              Revocar autorización
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setContactPermission(currentParticipantId, participant.id, 'aprobado')}
-                              disabled={contactBusy === incomingId}
-                              className="rounded-lg border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-[11px] font-bold text-gray-800 disabled:opacity-60"
-                            >
-                              Autorizarle contacto
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-              </div>
+                )
+              })}
             </div>
           )}
 
@@ -833,6 +797,9 @@ function CommentSection({
                       >
                         Quitar
                       </button>
+                      <span className="absolute bottom-1 left-1 rounded-md bg-black/75 px-2 py-1 text-[10px] font-bold text-white">
+                        Lista para subir: {formatFileSize(imageFiles[index]?.size)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -868,13 +835,15 @@ function CommentSection({
                   <button
                     type="button"
                     onClick={() => fileRef.current?.click()}
-                    disabled={submitting || imageFiles.length >= MAX_COMMENT_IMAGES}
+                    disabled={submitting || compressingImages || imageFiles.length >= MAX_COMMENT_IMAGES}
                     className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:border-yellow-400 hover:bg-yellow-50 disabled:opacity-50"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 7a2 2 0 0 1 2-2h2l1.5-2h5L16 5h2a2 2 0 0 1 2 2v11H4V7Zm8 9a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
                     </svg>
-                    Fotos {imageFiles.length > 0 ? `${imageFiles.length}/${MAX_COMMENT_IMAGES}` : ''}
+                    {compressingImages
+                      ? 'Comprimiendo fotos...'
+                      : `Fotos ${imageFiles.length > 0 ? `${imageFiles.length}/${MAX_COMMENT_IMAGES}` : ''}`}
                   </button>
                   <button
                     type="button"
@@ -891,7 +860,7 @@ function CommentSection({
                 </div>
                 <button
                   type="submit"
-                  disabled={(!text.trim() && imageFiles.length === 0 && !location) || submitting}
+                  disabled={(!text.trim() && imageFiles.length === 0 && !location) || submitting || compressingImages}
                   className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-xs font-bold text-yellow-400 transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {submitting ? 'Subiendo y publicando...' : 'Publicar conversación'}
@@ -931,9 +900,9 @@ function CommentSection({
           onClose={() => setLocationPickerOpen(false)}
         />
       )}
-      {expandedImage && (
+      {expandedImage && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/90 p-3 backdrop-blur-sm sm:p-8"
+          className="fixed inset-0 z-[2147483647] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-black/95 px-3 pb-24 pt-4 backdrop-blur-sm sm:p-8"
           role="dialog"
           aria-modal="true"
           aria-label="Imagen ampliada"
@@ -945,8 +914,7 @@ function CommentSection({
               event.stopPropagation()
               setExpandedImage(null)
             }}
-            className="fixed right-4 z-[10001] flex h-12 w-12 items-center justify-center rounded-full border-2 border-gray-900 bg-white text-gray-950 shadow-2xl sm:right-6 sm:top-6"
-            style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
+            className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 z-[2147483647] flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full border-2 border-gray-900 bg-white text-gray-950 shadow-2xl sm:bottom-auto sm:left-auto sm:right-6 sm:top-6 sm:h-12 sm:w-12 sm:translate-x-0"
             aria-label="Cerrar imagen"
           >
             <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24" aria-hidden="true">
@@ -954,20 +922,22 @@ function CommentSection({
             </svg>
           </button>
           <div
-            className="relative h-full max-h-[90vh] w-full max-w-6xl"
-            onClick={(event) => event.stopPropagation()}
+            className="flex h-full w-full max-w-6xl items-center justify-center"
           >
             <Image
               src={expandedImage.url}
               alt={expandedImage.alt}
-              fill
+              width={1600}
+              height={1200}
               unoptimized
               priority
               sizes="100vw"
-              className="object-contain"
+              className="h-auto max-h-full w-auto max-w-full object-contain"
+              onClick={(event) => event.stopPropagation()}
             />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -1213,7 +1183,10 @@ export default function SolicitudesClient() {
 
     return Object.values(contactsByRequest)
       .flat()
-      .filter((contact) => contact.propietario_id === currentId && contact.estado === 'pendiente')
+      .filter((contact) => (
+        contact.propietario_id === currentId
+        && ['pendiente', 'aprobado'].includes(contact.estado)
+      ))
       .map((contact) => {
         const request = requests.find((item) => String(item.id) === String(contact.solicitud_id))
         const comments = commentsByRequest[String(contact.solicitud_id)] || []
@@ -1225,6 +1198,7 @@ export default function SolicitudesClient() {
         }
       })
   }, [commentsByRequest, contactsByRequest, requests, session])
+  const pendingContactCount = contactNotifications.filter((contact) => contact.estado === 'pendiente').length
 
   async function answerContactNotification(notification, estado) {
     setNotificationBusy(notification.id)
@@ -1413,15 +1387,15 @@ export default function SolicitudesClient() {
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 17H9m9-2V11a6 6 0 1 0-12 0v4l-2 2h16l-2-2Zm-8 5h4" />
                   </svg>
-                  {contactNotifications.length > 0 && (
+                  {pendingContactCount > 0 && (
                     <span className="absolute -right-1.5 -top-1.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-extrabold text-white">
-                      {contactNotifications.length > 9 ? '9+' : contactNotifications.length}
+                      {pendingContactCount > 9 ? '9+' : pendingContactCount}
                     </span>
                   )}
                 </button>
 
                 {notificationsOpen && (
-                  <div className="absolute right-0 top-[calc(100%+0.65rem)] z-50 w-[min(90vw,360px)] overflow-hidden rounded-2xl border border-gray-200 bg-white text-gray-900 shadow-2xl">
+                  <div className="fixed left-1/2 top-20 z-50 w-[calc(100vw-1.5rem)] max-w-sm -translate-x-1/2 overflow-hidden rounded-2xl border border-gray-200 bg-white text-gray-900 shadow-2xl sm:absolute sm:left-auto sm:right-0 sm:top-[calc(100%+0.65rem)] sm:w-[360px] sm:translate-x-0">
                     <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                       <div>
                         <p className="text-sm font-extrabold">Notificaciones</p>
@@ -1440,35 +1414,57 @@ export default function SolicitudesClient() {
                     <div className="max-h-[65vh] overflow-y-auto p-3">
                       {contactNotifications.length === 0 ? (
                         <p className="rounded-xl bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
-                          No tienes solicitudes pendientes.
+                          No tienes solicitudes ni autorizaciones activas.
                         </p>
                       ) : (
                         <div className="space-y-2">
                           {contactNotifications.map((notification) => (
-                            <article key={notification.id} className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                            <article
+                              key={notification.id}
+                              className={`rounded-xl border p-3 ${
+                                notification.estado === 'pendiente'
+                                  ? 'border-amber-200 bg-amber-50'
+                                  : 'border-emerald-200 bg-emerald-50'
+                              }`}
+                            >
                               <p className="text-sm font-bold text-gray-900">
-                                {notification.requesterName} quiere contactarte
+                                {notification.estado === 'pendiente'
+                                  ? `${notification.requesterName} quiere contactarte`
+                                  : `${notification.requesterName} tiene autorización`}
                               </p>
                               <p className="mt-1 text-xs leading-relaxed text-gray-600">
                                 Solicitud: {notification.request?.repuesto || notification.solicitud_id}
                               </p>
                               <div className="mt-3 flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => answerContactNotification(notification, 'aprobado')}
-                                  disabled={notificationBusy === notification.id}
-                                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
-                                >
-                                  Aceptar
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => answerContactNotification(notification, 'rechazado')}
-                                  disabled={notificationBusy === notification.id}
-                                  className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 disabled:opacity-50"
-                                >
-                                  Rechazar
-                                </button>
+                                {notification.estado === 'pendiente' ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => answerContactNotification(notification, 'aprobado')}
+                                      disabled={notificationBusy === notification.id}
+                                      className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                                    >
+                                      Aceptar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => answerContactNotification(notification, 'rechazado')}
+                                      disabled={notificationBusy === notification.id}
+                                      className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 disabled:opacity-50"
+                                    >
+                                      Rechazar
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => answerContactNotification(notification, 'rechazado')}
+                                    disabled={notificationBusy === notification.id}
+                                    className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 disabled:opacity-50"
+                                  >
+                                    Revocar autorización
+                                  </button>
+                                )}
                                 <Link
                                   href={`/solicitados?solicitud=${encodeURIComponent(String(notification.solicitud_id))}`}
                                   onClick={() => setNotificationsOpen(false)}

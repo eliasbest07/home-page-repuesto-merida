@@ -38,13 +38,13 @@ const waCustomUrl = (producto, mensaje = '') =>
 // DATOS DEL CATÁLOGO
 // ════════════════════════════════════════════════
 const CATEGORIAS = [
-  { id: 'todos',         nombre: 'Todos',              emoji: '🔧', bg: 'bg-gray-900',   text: 'text-white'    },
-  { id: 'motor',         nombre: 'Motor y Transmisión',emoji: '⚙️', bg: 'bg-amber-100',  text: 'text-amber-900'},
-  { id: 'frenos',        nombre: 'Frenos y Suspensión',emoji: '🛞', bg: 'bg-red-100',    text: 'text-red-900'  },
-  { id: 'electrico',     nombre: 'Sistema Eléctrico',  emoji: '⚡', bg: 'bg-blue-100',   text: 'text-blue-900' },
-  { id: 'carroceria',    nombre: 'Carrocería',         emoji: '🚗', bg: 'bg-purple-100', text: 'text-purple-900'},
-  { id: 'filtros',       nombre: 'Filtros y Lubric.',  emoji: '🛢️', bg: 'bg-green-100',  text: 'text-green-900'},
-  { id: 'refrigeracion', nombre: 'Refrigeración',      emoji: '💧', bg: 'bg-cyan-100',   text: 'text-cyan-900' },
+  { id: 'todos', nombre: 'Todos', emoji: '🔧', bg: 'bg-gray-900', text: 'text-white' },
+  { id: 'motor', nombre: 'Motor y Transmisión', emoji: '⚙️', bg: 'bg-amber-100', text: 'text-amber-900' },
+  { id: 'frenos', nombre: 'Frenos y Suspensión', emoji: '🛞', bg: 'bg-red-100', text: 'text-red-900' },
+  { id: 'electrico', nombre: 'Sistema Eléctrico', emoji: '⚡', bg: 'bg-blue-100', text: 'text-blue-900' },
+  { id: 'carroceria', nombre: 'Carrocería', emoji: '🚗', bg: 'bg-purple-100', text: 'text-purple-900' },
+  { id: 'filtros', nombre: 'Filtros y Lubric.', emoji: '🛢️', bg: 'bg-green-100', text: 'text-green-900' },
+  { id: 'refrigeracion', nombre: 'Refrigeración', emoji: '💧', bg: 'bg-cyan-100', text: 'text-cyan-900' },
 ]
 
 const MOBILE_CATEGORIES = [
@@ -174,50 +174,50 @@ const MOBILE_FEATURED = [
 
 const PRODUCTOS = [
   // ── Motor y Transmisión ──
-  { id: 1,  nombre: 'Filtro de Aceite Universal',       categoria: 'motor',         precio: '$4 – $12',    marca: 'Mann / Bosch',        compat: 'Toyota · Ford · Chevrolet · Kia',      disponible: true,  destacado: true  },
-  { id: 2,  nombre: 'Correa de Distribución',           categoria: 'motor',         precio: '$15 – $45',   marca: 'Gates / Continental', compat: 'Toyota · Hyundai · Mitsubishi',        disponible: true,  destacado: false },
-  { id: 3,  nombre: 'Kit de Empaquetadura Motor',       categoria: 'motor',         precio: '$25 – $80',   marca: 'Victor Reinz',        compat: 'Múltiples modelos',                    disponible: true,  destacado: false },
-  { id: 4,  nombre: 'Junta de Culata',                  categoria: 'motor',         precio: '$20 – $60',   marca: 'Elring / Victor',     compat: 'Toyota Land Cruiser · Hilux',          disponible: false, destacado: false },
-  { id: 5,  nombre: 'Banda Poly-V / Serpentina',        categoria: 'motor',         precio: '$8 – $25',    marca: 'Gates / Dayco',       compat: 'Ford · Chevrolet · Kia',               disponible: true,  destacado: false },
-  { id: 6,  nombre: 'Aceite de Transmisión ATF',        categoria: 'motor',         precio: '$6 – $18',    marca: 'Mobil / Valvoline',   compat: 'Automático y Manual',                  disponible: true,  destacado: true  },
-  { id: 7,  nombre: 'Cadena de Distribución',           categoria: 'motor',         precio: '$35 – $95',   marca: 'Iwis / Morse',        compat: 'Toyota · Mitsubishi · Ford',           disponible: true,  destacado: false },
-  { id: 8,  nombre: 'Sello / Retén Cigüeñal',           categoria: 'motor',         precio: '$8 – $22',    marca: 'SKF / National',      compat: 'Múltiples modelos',                    disponible: true,  destacado: false },
+  { id: 1, nombre: 'Filtro de Aceite Universal', categoria: 'motor', precio: '$4 – $12', marca: 'Mann / Bosch', compat: 'Toyota · Ford · Chevrolet · Kia', disponible: true, destacado: true },
+  { id: 2, nombre: 'Correa de Distribución', categoria: 'motor', precio: '$15 – $45', marca: 'Gates / Continental', compat: 'Toyota · Hyundai · Mitsubishi', disponible: true, destacado: false },
+  { id: 3, nombre: 'Kit de Empaquetadura Motor', categoria: 'motor', precio: '$25 – $80', marca: 'Victor Reinz', compat: 'Múltiples modelos', disponible: true, destacado: false },
+  { id: 4, nombre: 'Junta de Culata', categoria: 'motor', precio: '$20 – $60', marca: 'Elring / Victor', compat: 'Toyota Land Cruiser · Hilux', disponible: false, destacado: false },
+  { id: 5, nombre: 'Banda Poly-V / Serpentina', categoria: 'motor', precio: '$8 – $25', marca: 'Gates / Dayco', compat: 'Ford · Chevrolet · Kia', disponible: true, destacado: false },
+  { id: 6, nombre: 'Aceite de Transmisión ATF', categoria: 'motor', precio: '$6 – $18', marca: 'Mobil / Valvoline', compat: 'Automático y Manual', disponible: true, destacado: true },
+  { id: 7, nombre: 'Cadena de Distribución', categoria: 'motor', precio: '$35 – $95', marca: 'Iwis / Morse', compat: 'Toyota · Mitsubishi · Ford', disponible: true, destacado: false },
+  { id: 8, nombre: 'Sello / Retén Cigüeñal', categoria: 'motor', precio: '$8 – $22', marca: 'SKF / National', compat: 'Múltiples modelos', disponible: true, destacado: false },
   // ── Frenos y Suspensión ──
-  { id: 9,  nombre: 'Pastillas de Freno Delanteras',    categoria: 'frenos',        precio: '$18 – $55',   marca: 'Brembo / ATE',        compat: 'Toyota · Ford · Hyundai · Kia',        disponible: true,  destacado: true  },
-  { id: 10, nombre: 'Discos de Freno Ventilados',       categoria: 'frenos',        precio: '$35 – $90',   marca: 'Brembo / DBA',        compat: 'Toyota Fortuner · Hilux 4×4',          disponible: true,  destacado: false },
-  { id: 11, nombre: 'Amortiguadores Delanteros',        categoria: 'frenos',        precio: '$45 – $120',  marca: 'Gabriel / Monroe',    compat: 'Toyota · Mitsubishi L200',             disponible: true,  destacado: true  },
-  { id: 12, nombre: 'Kit Rótula y Muñón',               categoria: 'frenos',        precio: '$30 – $75',   marca: 'Moog / TRW',          compat: 'Ford Explorer · Expedition',           disponible: false, destacado: false },
-  { id: 13, nombre: 'Líquido de Frenos DOT 4',          categoria: 'frenos',        precio: '$5 – $12',    marca: 'Bosch / Prestone',    compat: 'Universal',                            disponible: true,  destacado: false },
-  { id: 14, nombre: 'Muelles / Espirales Suspensión',   categoria: 'frenos',        precio: '$40 – $100',  marca: 'KYB / Bilstein',      compat: 'Chevrolet D-MAX · Colorado',           disponible: true,  destacado: false },
-  { id: 15, nombre: 'Barra Estabilizadora (Bujes)',     categoria: 'frenos',        precio: '$15 – $40',   marca: 'Moog / Rare Parts',   compat: 'Ford · Chevrolet · Toyota',            disponible: true,  destacado: false },
+  { id: 9, nombre: 'Pastillas de Freno Delanteras', categoria: 'frenos', precio: '$18 – $55', marca: 'Brembo / ATE', compat: 'Toyota · Ford · Hyundai · Kia', disponible: true, destacado: true },
+  { id: 10, nombre: 'Discos de Freno Ventilados', categoria: 'frenos', precio: '$35 – $90', marca: 'Brembo / DBA', compat: 'Toyota Fortuner · Hilux 4×4', disponible: true, destacado: false },
+  { id: 11, nombre: 'Amortiguadores Delanteros', categoria: 'frenos', precio: '$45 – $120', marca: 'Gabriel / Monroe', compat: 'Toyota · Mitsubishi L200', disponible: true, destacado: true },
+  { id: 12, nombre: 'Kit Rótula y Muñón', categoria: 'frenos', precio: '$30 – $75', marca: 'Moog / TRW', compat: 'Ford Explorer · Expedition', disponible: false, destacado: false },
+  { id: 13, nombre: 'Líquido de Frenos DOT 4', categoria: 'frenos', precio: '$5 – $12', marca: 'Bosch / Prestone', compat: 'Universal', disponible: true, destacado: false },
+  { id: 14, nombre: 'Muelles / Espirales Suspensión', categoria: 'frenos', precio: '$40 – $100', marca: 'KYB / Bilstein', compat: 'Chevrolet D-MAX · Colorado', disponible: true, destacado: false },
+  { id: 15, nombre: 'Barra Estabilizadora (Bujes)', categoria: 'frenos', precio: '$15 – $40', marca: 'Moog / Rare Parts', compat: 'Ford · Chevrolet · Toyota', disponible: true, destacado: false },
   // ── Sistema Eléctrico ──
-  { id: 16, nombre: 'Batería 12V / 65Ah',               categoria: 'electrico',     precio: '$60 – $120',  marca: 'Bosch / Varta / Willard', compat: 'Universal',                       disponible: true,  destacado: true  },
-  { id: 17, nombre: 'Alternador Reconstruido',           categoria: 'electrico',     precio: '$80 – $180',  marca: 'Denso / Bosch',       compat: 'Toyota · Ford · Chevrolet',            disponible: true,  destacado: false },
-  { id: 18, nombre: 'Bujías de Iridio',                  categoria: 'electrico',     precio: '$8 – $25',    marca: 'NGK / Bosch',         compat: 'Motores gasolina y diesel',            disponible: true,  destacado: true  },
-  { id: 19, nombre: 'Motor de Arranque',                 categoria: 'electrico',     precio: '$90 – $200',  marca: 'Denso / Bosch',       compat: 'Toyota Land Cruiser · Hilux',          disponible: false, destacado: false },
-  { id: 20, nombre: 'Sensor de Oxígeno (Lambda)',        categoria: 'electrico',     precio: '$25 – $70',   marca: 'Bosch / Denso',       compat: 'Toyota · Hyundai · Kia',               disponible: true,  destacado: false },
-  { id: 21, nombre: 'Bobina de Encendido',               categoria: 'electrico',     precio: '$20 – $55',   marca: 'Bosch / NGK',         compat: 'Ford · Chevrolet · Mitsubishi',        disponible: true,  destacado: false },
-  { id: 22, nombre: 'Cables de Bujías / High Performance',categoria:'electrico',     precio: '$15 – $38',   marca: 'NGK / Belden',        compat: 'Motores gasolina',                     disponible: true,  destacado: false },
+  { id: 16, nombre: 'Batería 12V / 65Ah', categoria: 'electrico', precio: '$60 – $120', marca: 'Bosch / Varta / Willard', compat: 'Universal', disponible: true, destacado: true },
+  { id: 17, nombre: 'Alternador Reconstruido', categoria: 'electrico', precio: '$80 – $180', marca: 'Denso / Bosch', compat: 'Toyota · Ford · Chevrolet', disponible: true, destacado: false },
+  { id: 18, nombre: 'Bujías de Iridio', categoria: 'electrico', precio: '$8 – $25', marca: 'NGK / Bosch', compat: 'Motores gasolina y diesel', disponible: true, destacado: true },
+  { id: 19, nombre: 'Motor de Arranque', categoria: 'electrico', precio: '$90 – $200', marca: 'Denso / Bosch', compat: 'Toyota Land Cruiser · Hilux', disponible: false, destacado: false },
+  { id: 20, nombre: 'Sensor de Oxígeno (Lambda)', categoria: 'electrico', precio: '$25 – $70', marca: 'Bosch / Denso', compat: 'Toyota · Hyundai · Kia', disponible: true, destacado: false },
+  { id: 21, nombre: 'Bobina de Encendido', categoria: 'electrico', precio: '$20 – $55', marca: 'Bosch / NGK', compat: 'Ford · Chevrolet · Mitsubishi', disponible: true, destacado: false },
+  { id: 22, nombre: 'Cables de Bujías / High Performance', categoria: 'electrico', precio: '$15 – $38', marca: 'NGK / Belden', compat: 'Motores gasolina', disponible: true, destacado: false },
   // ── Carrocería ──
-  { id: 23, nombre: 'Espejo Retrovisor Completo',        categoria: 'carroceria',    precio: '$35 – $90',   marca: 'OEM Compatible',      compat: 'Toyota Hilux · Land Cruiser',          disponible: true,  destacado: false },
-  { id: 24, nombre: 'Parachoques Delantero',             categoria: 'carroceria',    precio: '$80 – $250',  marca: 'OEM / Aftermarket',   compat: 'Ford · Chevrolet · Toyota',            disponible: true,  destacado: false },
-  { id: 25, nombre: 'Faro Delantero LED',                categoria: 'carroceria',    precio: '$45 – $150',  marca: 'Depo / TYC',          compat: 'Toyota · Kia · Hyundai',               disponible: true,  destacado: true  },
-  { id: 26, nombre: 'Stop Trasero LED',                  categoria: 'carroceria',    precio: '$35 – $100',  marca: 'Depo / OEM',          compat: 'Múltiples modelos',                    disponible: true,  destacado: false },
-  { id: 27, nombre: 'Guardafango / Salpicadera',         categoria: 'carroceria',    precio: '$40 – $120',  marca: 'OEM / Dorman',        compat: 'Toyota · Ford · Chevrolet',            disponible: false, destacado: false },
+  { id: 23, nombre: 'Espejo Retrovisor Completo', categoria: 'carroceria', precio: '$35 – $90', marca: 'OEM Compatible', compat: 'Toyota Hilux · Land Cruiser', disponible: true, destacado: false },
+  { id: 24, nombre: 'Parachoques Delantero', categoria: 'carroceria', precio: '$80 – $250', marca: 'OEM / Aftermarket', compat: 'Ford · Chevrolet · Toyota', disponible: true, destacado: false },
+  { id: 25, nombre: 'Faro Delantero LED', categoria: 'carroceria', precio: '$45 – $150', marca: 'Depo / TYC', compat: 'Toyota · Kia · Hyundai', disponible: true, destacado: true },
+  { id: 26, nombre: 'Stop Trasero LED', categoria: 'carroceria', precio: '$35 – $100', marca: 'Depo / OEM', compat: 'Múltiples modelos', disponible: true, destacado: false },
+  { id: 27, nombre: 'Guardafango / Salpicadera', categoria: 'carroceria', precio: '$40 – $120', marca: 'OEM / Dorman', compat: 'Toyota · Ford · Chevrolet', disponible: false, destacado: false },
   // ── Filtros y Lubricantes ──
-  { id: 28, nombre: 'Aceite Motor 10W-40 (4L)',          categoria: 'filtros',       precio: '$12 – $30',   marca: 'Mobil / Shell / Castrol', compat: 'Gasolina y diesel',              disponible: true,  destacado: true  },
-  { id: 29, nombre: 'Filtro de Aire Panel',              categoria: 'filtros',       precio: '$6 – $18',    marca: 'Mann / K&N / Bosch',  compat: 'Toyota · Ford · Hyundai',              disponible: true,  destacado: false },
-  { id: 30, nombre: 'Filtro de Combustible',             categoria: 'filtros',       precio: '$8 – $22',    marca: 'Mann / Bosch',        compat: 'Diesel y gasolina',                    disponible: true,  destacado: false },
-  { id: 31, nombre: 'Filtro de Cabina / Habitáculo',     categoria: 'filtros',       precio: '$10 – $28',   marca: 'Mann / Valeo',        compat: 'Toyota · Kia · Hyundai',               disponible: true,  destacado: false },
-  { id: 32, nombre: 'Aceite de Diferencial 80W-90',      categoria: 'filtros',       precio: '$8 – $20',    marca: 'Mobil / Shell',       compat: '4x4 y tracción total',                 disponible: true,  destacado: false },
-  { id: 33, nombre: 'Grasa Multipropósito (1 Kg)',       categoria: 'filtros',       precio: '$4 – $10',    marca: 'Mobil / Shell',       compat: 'Universal',                            disponible: true,  destacado: false },
+  { id: 28, nombre: 'Aceite Motor 10W-40 (4L)', categoria: 'filtros', precio: '$12 – $30', marca: 'Mobil / Shell / Castrol', compat: 'Gasolina y diesel', disponible: true, destacado: true },
+  { id: 29, nombre: 'Filtro de Aire Panel', categoria: 'filtros', precio: '$6 – $18', marca: 'Mann / K&N / Bosch', compat: 'Toyota · Ford · Hyundai', disponible: true, destacado: false },
+  { id: 30, nombre: 'Filtro de Combustible', categoria: 'filtros', precio: '$8 – $22', marca: 'Mann / Bosch', compat: 'Diesel y gasolina', disponible: true, destacado: false },
+  { id: 31, nombre: 'Filtro de Cabina / Habitáculo', categoria: 'filtros', precio: '$10 – $28', marca: 'Mann / Valeo', compat: 'Toyota · Kia · Hyundai', disponible: true, destacado: false },
+  { id: 32, nombre: 'Aceite de Diferencial 80W-90', categoria: 'filtros', precio: '$8 – $20', marca: 'Mobil / Shell', compat: '4x4 y tracción total', disponible: true, destacado: false },
+  { id: 33, nombre: 'Grasa Multipropósito (1 Kg)', categoria: 'filtros', precio: '$4 – $10', marca: 'Mobil / Shell', compat: 'Universal', disponible: true, destacado: false },
   // ── Refrigeración ──
-  { id: 34, nombre: 'Termostato Motor',                  categoria: 'refrigeracion', precio: '$8 – $25',    marca: 'Gates / OEM',         compat: 'Toyota · Ford · Chevrolet',            disponible: true,  destacado: false },
-  { id: 35, nombre: 'Bomba de Agua',                     categoria: 'refrigeracion', precio: '$30 – $80',   marca: 'Aisin / Gates',       compat: 'Toyota · Mitsubishi · Hyundai',        disponible: true,  destacado: true  },
-  { id: 36, nombre: 'Radiador Aluminio',                 categoria: 'refrigeracion', precio: '$120 – $350', marca: 'Denso / Valeo',       compat: 'Toyota Hilux · Land Cruiser',          disponible: false, destacado: false },
-  { id: 37, nombre: 'Anticongelante / Refrigerante (4L)',categoria: 'refrigeracion', precio: '$8 – $20',    marca: 'Prestone / Peak',     compat: 'Universal',                            disponible: true,  destacado: false },
-  { id: 38, nombre: 'Manguera Superior Radiador',        categoria: 'refrigeracion', precio: '$12 – $35',   marca: 'Gates / Goodyear',    compat: 'Múltiples modelos',                    disponible: true,  destacado: false },
-  { id: 39, nombre: 'Tapa de Radiador (Presión)',        categoria: 'refrigeracion', precio: '$5 – $15',    marca: 'Stant / OEM',         compat: 'Universal',                            disponible: true,  destacado: false },
+  { id: 34, nombre: 'Termostato Motor', categoria: 'refrigeracion', precio: '$8 – $25', marca: 'Gates / OEM', compat: 'Toyota · Ford · Chevrolet', disponible: true, destacado: false },
+  { id: 35, nombre: 'Bomba de Agua', categoria: 'refrigeracion', precio: '$30 – $80', marca: 'Aisin / Gates', compat: 'Toyota · Mitsubishi · Hyundai', disponible: true, destacado: true },
+  { id: 36, nombre: 'Radiador Aluminio', categoria: 'refrigeracion', precio: '$120 – $350', marca: 'Denso / Valeo', compat: 'Toyota Hilux · Land Cruiser', disponible: false, destacado: false },
+  { id: 37, nombre: 'Anticongelante / Refrigerante (4L)', categoria: 'refrigeracion', precio: '$8 – $20', marca: 'Prestone / Peak', compat: 'Universal', disponible: true, destacado: false },
+  { id: 38, nombre: 'Manguera Superior Radiador', categoria: 'refrigeracion', precio: '$12 – $35', marca: 'Gates / Goodyear', compat: 'Múltiples modelos', disponible: true, destacado: false },
+  { id: 39, nombre: 'Tapa de Radiador (Presión)', categoria: 'refrigeracion', precio: '$5 – $15', marca: 'Stant / OEM', compat: 'Universal', disponible: true, destacado: false },
 ]
 
 const HOME_CATEGORY_KEYWORDS = [
@@ -420,44 +420,44 @@ function isPhysicalStore(user = {}) {
 // ════════════════════════════════════════════════
 const IconSearch = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
   </svg>
 )
 const IconWhatsApp = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/>
-    <path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.558 4.118 1.531 5.845L.054 23.447a.5.5 0 00.609.61l5.703-1.49A11.943 11.943 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.853 0-3.603-.498-5.11-1.371l-.363-.215-3.755.983.998-3.648-.236-.374A9.944 9.944 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347" />
+    <path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.558 4.118 1.531 5.845L.054 23.447a.5.5 0 00.609.61l5.703-1.49A11.943 11.943 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.853 0-3.603-.498-5.11-1.371l-.363-.215-3.755.983.998-3.648-.236-.374A9.944 9.944 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z" />
   </svg>
 )
 const IconMenu = () => (
   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16"/>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
   </svg>
 )
 const IconX = () => (
   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
   </svg>
 )
 const IconStar = () => (
   <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
   </svg>
 )
 const IconMapPin = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
   </svg>
 )
 const IconClock = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
   </svg>
 )
 const IconShield = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
   </svg>
 )
 const IconStore = () => (
@@ -470,8 +470,8 @@ const IconStore = () => (
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════
 export default function Home() {
-  const [catActiva, setCatActiva]   = useState('todos')
-  const [busqueda, setBusqueda]     = useState('')
+  const [catActiva, setCatActiva] = useState('todos')
+  const [busqueda, setBusqueda] = useState('')
   const [brandType, setBrandType] = useState('carro')
   const [selectedBrand, setSelectedBrand] = useState('')
   const [requestFormOpen, setRequestFormOpen] = useState(false)
@@ -485,11 +485,11 @@ export default function Home() {
   const [requestSessionLoading, setRequestSessionLoading] = useState(true)
   const [requestSending, setRequestSending] = useState(false)
   const [requestMessage, setRequestMessage] = useState('')
-  const [scrolled, setScrolled]     = useState(false)
-  const [menuOpen, setMenuOpen]     = useState(false)
-  const [catalogo, setCatalogo]     = useState(PRODUCTOS)
+  const [scrolled, setScrolled] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [catalogo, setCatalogo] = useState(PRODUCTOS)
   const [catalogoError, setCatalogoError] = useState('')
-  const [usersById, setUsersById]   = useState({})
+  const [usersById, setUsersById] = useState({})
   const [rutaTienda, setRutaTienda] = useState(null)
   const [detalleRepuesto, setDetalleRepuesto] = useState(null)
   const [detalleNota, setDetalleNota] = useState('')
@@ -637,11 +637,11 @@ export default function Home() {
   }, [])
 
   const productosFiltrados = catalogo.filter((p) => {
-    const matchCat    = catActiva === 'todos' || p.categoria === catActiva
-    const q           = busqueda.toLowerCase()
+    const matchCat = catActiva === 'todos' || p.categoria === catActiva
+    const q = busqueda.toLowerCase()
     const matchSearch = !q ||
       p.nombre.toLowerCase().includes(q) ||
-      p.marca.toLowerCase().includes(q)  ||
+      p.marca.toLowerCase().includes(q) ||
       p.compat.toLowerCase().includes(q) ||
       (p.descripcion || '').toLowerCase().includes(q)
     return matchCat && matchSearch
@@ -767,7 +767,7 @@ export default function Home() {
       respuesta: '',
       respondida: false,
       creado_en: serverTimestamp(),
-    }).catch(() => {})
+    }).catch(() => { })
   }
 
   async function publishPartRequest(event) {
@@ -786,7 +786,7 @@ export default function Home() {
           busqueda,
           requestForm,
         }))
-      } catch {}
+      } catch { }
       window.location.href = '/login?redirect=%2F%3Fcrear-solicitud%3D1'
       return
     }
@@ -992,14 +992,14 @@ export default function Home() {
             >
               Repuestos solicitados
             </Link>
-            {['#categorias','#catalogo','#nosotros','#contacto','#servicios'].map((href, i) => (
+            {['#categorias', '#catalogo', '#nosotros', '#contacto', '#servicios'].map((href, i) => (
               <a
                 key={href}
                 href={href}
                 onClick={() => setMenuOpen(false)}
                 className="block text-gray-300 hover:text-[#FFD700] text-sm font-medium py-2 transition-colors"
               >
-                {['Categorías','Catálogo','Nosotros','Contacto','Servicios'][i]}
+                {['Categorías', 'Catálogo', 'Nosotros', 'Contacto', 'Servicios'][i]}
               </a>
             ))}
             <div className="flex gap-2 pt-1">
@@ -1328,7 +1328,7 @@ export default function Home() {
               </span>
             ))}
           </div>
-          
+
         </div>
       </section>
 
@@ -1336,9 +1336,9 @@ export default function Home() {
       <div className="hidden bg-[#FFD700]">
         <div className="max-w-5xl mx-auto px-4 py-4 grid grid-cols-3 gap-4 text-center">
           {[
-            { valor: '39+',  label: 'Repuestos disponibles' },
-            { valor: '15+',  label: 'Marcas de calidad'     },
-            { valor: '100%', label: 'Atención directa'      },
+            { valor: '39+', label: 'Repuestos disponibles' },
+            { valor: '15+', label: 'Marcas de calidad' },
+            { valor: '100%', label: 'Atención directa' },
           ].map((s) => (
             <div key={s.label}>
               <p className="font-brand text-xl sm:text-2xl text-gray-900 leading-none">{s.valor}</p>
@@ -1637,7 +1637,7 @@ export default function Home() {
               </div>
 
               <div className="flex flex-wrap gap-2 relative">
-                {['Publicar anuncio','Buscar repuestos','Contacto directo'].map(t => (
+                {['Publicar anuncio', 'Buscar repuestos', 'Contacto directo'].map(t => (
                   <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
                     {t}
                   </span>
@@ -1673,7 +1673,7 @@ export default function Home() {
               </div>
 
               <div className="flex flex-wrap gap-2 relative">
-                {['Crear sala','Unirse con código','Tiempo real'].map(t => (
+                {['Crear sala', 'Unirse con código', 'Tiempo real'].map(t => (
                   <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
                     {t}
                   </span>
@@ -1704,22 +1704,22 @@ export default function Home() {
             <div>
               <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 mb-2 block">Sobre Nosotros</span>
               <h2 className="font-brand text-3xl sm:text-4xl text-gray-900 mb-4">
-                La ferretería automotriz de Los Andes
+                La application de servicios para Los Andes
               </h2>
               <p className="text-gray-600 leading-relaxed mb-4">
                 Somos <strong>Repuestos Mérida</strong>, parte del ecosistema de <strong>Gochos Group</strong>,
                 comprometidos con llevar los mejores repuestos automotrices a cada rincón del estado Mérida
                 y la región andina venezolana.
               </p>
-            
+
 
               {/* Trust icons */}
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  { icon: '🏆', t: 'Marcas líderes',    d: 'Bosch, NGK, Gates y más' },
-                  { icon: '🛡️', t: 'Repuestos originales', d: 'Calidad garantizada'    },
-                  { icon: '📱', t: 'Atención digital',  d: 'WhatsApp y app móvil'     },
-                  { icon: '🏔️', t: 'Local andino',      d: 'Mérida, Venezuela'        },
+                  { icon: '🏆', t: 'Marcas líderes', d: 'Bosch, NGK, Gates y más' },
+                  { icon: '🛡️', t: 'Repuestos originales', d: 'Calidad garantizada' },
+                  { icon: '📱', t: 'Atención digital', d: 'WhatsApp y app móvil' },
+                  { icon: '🏔️', t: 'Local andino', d: 'Mérida, Venezuela' },
                 ].map((item) => (
                   <div key={item.t} className="flex items-start gap-3 bg-white rounded-lg p-3 border border-gray-100">
                     <span className="text-xl">{item.icon}</span>
@@ -1842,11 +1842,11 @@ export default function Home() {
               <p className="text-white font-semibold text-sm mb-4">Navegación</p>
               <ul className="space-y-2 text-sm">
                 <li><a href="#categorias" className="hover:text-[#FFD700] transition-colors">Categorías</a></li>
-                <li><a href="#catalogo"   className="hover:text-[#FFD700] transition-colors">Catálogo</a></li>
+                <li><a href="#catalogo" className="hover:text-[#FFD700] transition-colors">Catálogo</a></li>
                 <li><Link href="/solicitados" className="hover:text-[#FFD700] transition-colors">Repuestos solicitados</Link></li>
-                <li><a href="#nosotros"   className="hover:text-[#FFD700] transition-colors">Nosotros</a></li>
-                <li><a href="#contacto"   className="hover:text-[#FFD700] transition-colors">Contacto</a></li>
-                <li><a href="#servicios"  className="hover:text-[#FFD700] transition-colors">Servicios</a></li>
+                <li><a href="#nosotros" className="hover:text-[#FFD700] transition-colors">Nosotros</a></li>
+                <li><a href="#contacto" className="hover:text-[#FFD700] transition-colors">Contacto</a></li>
+                <li><a href="#servicios" className="hover:text-[#FFD700] transition-colors">Servicios</a></li>
               </ul>
               <p className="text-white font-semibold text-sm mt-5 mb-3">Servicios</p>
               <ul className="space-y-2 text-sm">
@@ -1869,7 +1869,7 @@ export default function Home() {
               <ul className="space-y-2 text-sm">
                 {CATEGORIAS.filter(c => c.id !== 'todos').map(c => (
                   <li key={c.id}>
-                    <button onClick={() => { handleCat(c.id); document.getElementById('catalogo')?.scrollIntoView({behavior:'smooth'}) }}
+                    <button onClick={() => { handleCat(c.id); document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' }) }}
                       className="hover:text-[#FFD700] transition-colors text-left">
                       {c.emoji} {c.nombre}
                     </button>
@@ -1882,11 +1882,11 @@ export default function Home() {
             <div>
               <p className="text-white font-semibold text-sm mb-4">Legal</p>
               <ul className="space-y-2 text-sm">
-                <li><Link href="/politica-privacidad"  className="hover:text-[#FFD700] transition-colors">Política de Privacidad</Link></li>
-                <li><Link href="/aviso-legal"          className="hover:text-[#FFD700] transition-colors">Aviso Legal</Link></li>
-                <li><Link href="/politica-cookies"     className="hover:text-[#FFD700] transition-colors">Política de Cookies</Link></li>
+                <li><Link href="/politica-privacidad" className="hover:text-[#FFD700] transition-colors">Política de Privacidad</Link></li>
+                <li><Link href="/aviso-legal" className="hover:text-[#FFD700] transition-colors">Aviso Legal</Link></li>
+                <li><Link href="/politica-cookies" className="hover:text-[#FFD700] transition-colors">Política de Cookies</Link></li>
                 <li><Link href="/terminos-condiciones" className="hover:text-[#FFD700] transition-colors">Términos y Condiciones</Link></li>
-                <li><Link href="/eliminar-datos"       className="hover:text-[#FFD700] transition-colors">Eliminar mis datos</Link></li>
+                <li><Link href="/eliminar-datos" className="hover:text-[#FFD700] transition-colors">Eliminar mis datos</Link></li>
               </ul>
             </div>
           </div>
