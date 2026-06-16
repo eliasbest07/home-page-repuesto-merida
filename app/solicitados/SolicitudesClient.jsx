@@ -954,37 +954,13 @@ function RequestCard({
   sessionLoading,
   autoOpen,
   cardRef,
-  adminSecret,
-  onPhotoDeleted,
 }) {
-  const status = STATUS[request.estado] || STATUS.solicitado
   const vehicle = [request.marca, request.modelo, request.anio].filter(Boolean)
   const vehiclePhotos = Array.isArray(request.fotos_vehiculo)
     ? request.fotos_vehiculo.filter((url) => typeof url === 'string' && url)
     : []
   const [debateOpen, setDebateOpen] = useState(Boolean(autoOpen))
   const [zoomPhoto, setZoomPhoto] = useState(null)
-  const [deletingPhoto, setDeletingPhoto] = useState('')
-
-  async function handleDeletePhoto(url) {
-    if (!adminSecret || deletingPhoto) return
-    if (!window.confirm('¿Eliminar esta foto? Se borrará también de Firebase y de las demás solicitudes del mismo vehículo.')) return
-    setDeletingPhoto(url)
-    try {
-      const res = await fetch('/api/solicitados/eliminar-foto', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-secret': adminSecret },
-        body: JSON.stringify({ url }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || `Error ${res.status}`)
-      onPhotoDeleted?.(url)
-    } catch (error) {
-      window.alert('No se pudo eliminar la foto: ' + (error?.message || 'error'))
-    } finally {
-      setDeletingPhoto('')
-    }
-  }
 
   return (
     <article
@@ -1018,10 +994,6 @@ function RequestCard({
                   {titleCase(request.repuesto)}
                 </h2>
               </div>
-              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${status.className}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
-                {status.label}
-              </span>
             </div>
 
             <div className="mt-3 flex flex-wrap gap-1.5">
@@ -1067,11 +1039,11 @@ function RequestCard({
             </p>
             <div className="flex gap-2 overflow-x-auto pb-1">
               {vehiclePhotos.map((url, index) => (
-                <div key={`${url}-${index}`} className="relative h-20 w-28 flex-none">
+                <div key={`${url}-${index}`} className="flex-none">
                   <button
                     type="button"
                     onClick={() => setZoomPhoto({ url, index })}
-                    className="relative block h-full w-full cursor-zoom-in overflow-hidden rounded-lg border border-gray-200 bg-gray-100"
+                    className="relative block h-20 w-28 cursor-zoom-in overflow-hidden rounded-lg border border-gray-200 bg-gray-100"
                     aria-label={`Ampliar foto ${index + 1} del vehículo`}
                   >
                     <Image
@@ -1083,18 +1055,6 @@ function RequestCard({
                       className="object-cover"
                     />
                   </button>
-                  {adminSecret && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeletePhoto(url)}
-                      disabled={Boolean(deletingPhoto)}
-                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border border-white/70 bg-gray-900/85 text-sm leading-none text-white shadow transition hover:bg-red-600 disabled:opacity-50"
-                      aria-label={`Eliminar foto ${index + 1}`}
-                      title="Eliminar foto (también de Firebase)"
-                    >
-                      {deletingPhoto === url ? '…' : '✕'}
-                    </button>
-                  )}
                 </div>
               ))}
             </div>
@@ -1191,7 +1151,6 @@ function RequestCard({
 
 export default function SolicitudesClient() {
   const [firebaseRequests, setFirebaseRequests] = useState([])
-  const [adminSecret, setAdminSecret] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('todos')
   const [brandFilter, setBrandFilter] = useState('todas')
@@ -1205,35 +1164,6 @@ export default function SolicitudesClient() {
   const [notificationError, setNotificationError] = useState('')
   const initialContactsSnapshot = useRef(true)
   const previousPendingIds = useRef(new Set())
-
-  // Modo admin: con ?admin=<secreto> se guarda el secreto y se muestran los
-  // botones para eliminar fotos. El secreto se envía a /api/solicitados/eliminar-foto.
-  useEffect(() => {
-    try {
-      const sp = new URLSearchParams(window.location.search)
-      const fromUrl = sp.get('admin')
-      if (fromUrl) {
-        window.localStorage.setItem('solicitudesAdminSecret', fromUrl)
-        sp.delete('admin')
-        const qs = sp.toString()
-        window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
-      }
-      setAdminSecret(window.localStorage.getItem('solicitudesAdminSecret') || '')
-    } catch {
-      /* noop */
-    }
-  }, [])
-
-  // Quita una foto de TODAS las solicitudes que la usaban (el vehículo es compartido).
-  const handlePhotoDeleted = useCallback((url) => {
-    setFirebaseRequests((current) =>
-      current.map((request) =>
-        Array.isArray(request.fotos_vehiculo) && request.fotos_vehiculo.includes(url)
-          ? { ...request, fotos_vehiculo: request.fotos_vehiculo.filter((u) => u !== url) }
-          : request
-      )
-    )
-  }, [])
 
   const requests = useMemo(() => {
     const uniqueIds = new Set()
@@ -1777,8 +1707,6 @@ export default function SolicitudesClient() {
                   sessionLoading={sessionLoading}
                   autoOpen={isFocus}
                   cardRef={isFocus ? focusRef : null}
-                  adminSecret={adminSecret}
-                  onPhotoDeleted={handlePhotoDeleted}
                 />
               )
             })}

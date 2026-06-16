@@ -9,6 +9,7 @@ import {
   phoneKey,
 } from '@/lib/whatsappAuth'
 import { signRifaToken } from '@/lib/rifaJwt'
+import { resolverPerfil } from '@/lib/perfilUsuario'
 import {
   WA_BROWSER_COOKIE,
   assertSameOrigin,
@@ -68,10 +69,8 @@ export async function POST(request) {
       )
     }
 
-    // Código correcto → cargar perfil y emitir el JWT de sesión.
-    let perfil = null
-    const perfilSnap = await get(ref(rtdb, `rifas_usuarios/${key}`))
-    if (perfilSnap.exists()) perfil = perfilSnap.val()
+    // Código correcto → recuperar perfil (guardado u oficial) y emitir el JWT.
+    const { perfil, prefill } = await resolverPerfil({ telefono, key })
 
     let rifasVendedor = []
     const vendSnap = await get(ref(rtdb, `vendedor_index/${key}`))
@@ -85,6 +84,7 @@ export async function POST(request) {
       ok: true,
       telefono,
       perfil,
+      prefill,
       rifas_vendedor: rifasVendedor,
       token,
       expiresAt,

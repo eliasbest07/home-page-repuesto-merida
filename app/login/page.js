@@ -8,7 +8,6 @@ import { ensureSession } from '@/lib/rifaSession'
 
 // WhatsApp oficial del bot (donde el Oso escucha y responde el enlace).
 const WA_OFICIAL = '584123375417'
-const MSG_LOGIN = 'Hola Oso, quiero iniciar sesión en Repuestos Mérida. Mándame el link, por favor.'
 function waOficialUrl(mensaje) {
   return `https://wa.me/${WA_OFICIAL}?text=${encodeURIComponent(mensaje)}`
 }
@@ -17,6 +16,26 @@ function safeRedirect(value) {
   if (!value || typeof value !== 'string') return '/'
   if (!value.startsWith('/') || value.startsWith('//')) return '/'
   return value
+}
+
+function loginOriginFromRedirect(redirect) {
+  const value = String(redirect || '/').toLowerCase()
+
+  if (value.includes('/plaza')) return 'Plaza'
+  if (value.includes('/bingo')) return 'Bingo'
+  if (value.includes('/rifa')) return 'Rifa'
+  if (value.includes('/solicitados')) return 'Solicitados'
+  if (value.includes('crear-solicitud')) return 'Solicitud de repuesto'
+  if (value.includes('moto-taxi') || value.includes('mototaxi')) return 'Moto Taxi'
+  if (value.includes('/directorio')) return 'Directorio'
+  if (value.includes('/registro')) return 'Registro'
+
+  return 'Página principal'
+}
+
+function loginMessage(redirect) {
+  const origin = loginOriginFromRedirect(redirect)
+  return `Hola Oso, quiero iniciar sesión en Repuestos Mérida desde ${origin}. Mándame el link, por favor.`
 }
 
 export default function LoginPage() {
@@ -31,6 +50,8 @@ function LoginInner() {
   const router        = useRouter()
   const searchParams  = useSearchParams()
   const redirect      = safeRedirect(searchParams.get('redirect'))
+  const origin        = loginOriginFromRedirect(redirect)
+  const message       = loginMessage(redirect)
 
   useEffect(() => {
     let cancelled = false
@@ -75,10 +96,14 @@ function LoginInner() {
               Pulsa el botón: se abrirá WhatsApp con un mensaje listo. Envíalo y el
               Oso te responderá con un enlace. Ábrelo y entrarás automáticamente.
             </p>
+            <p className="rounded-xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-semibold text-yellow-800">
+              Origen: {origin}
+            </p>
             <a
-              href={waOficialUrl(MSG_LOGIN)}
+              href={waOficialUrl(message)}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => { try { localStorage.setItem('login_redirect', redirect) } catch {} }}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-3 font-semibold text-white transition hover:bg-green-500"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

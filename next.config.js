@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
+  experimental: {
+    serverComponentsExternalPackages: ['firebase-admin'],
+  },
   webpack(config, { dev }) {
     if (dev) config.cache = false
     return config

@@ -47,6 +47,13 @@ function RegistroInner() {
       if (!s?.telefono) { router.replace(`/login?redirect=${encodeURIComponent('/registro?redirect=' + redirect)}`); return }
       if (s.perfil) { router.replace(redirect); return }
       setSessionState(s)
+      // Prellenar con la info ya guardada/oficial recuperada por el login.
+      const p = s.prefill
+      if (p) {
+        if (p.nombre) setNombre(p.nombre)
+        if (p.foto_url) setPreview(p.foto_url)
+        if (p.lat != null && p.lng != null) setCoords({ lat: p.lat, lng: p.lng })
+      }
     })
   }, [router, redirect])
 
@@ -65,7 +72,8 @@ function RegistroInner() {
       if (!session?.telefono) throw new Error('Sesión inválida')
 
       const key = phoneKey(session.telefono)
-      let foto_url = null
+      // Conserva la foto oficial/recuperada si el usuario no sube una nueva.
+      let foto_url = session.prefill?.foto_url || null
 
       if (fotoFile) {
         const ext = (fotoFile.name.split('.').pop() || 'jpg').toLowerCase()
@@ -83,10 +91,13 @@ function RegistroInner() {
       setStep('guardando')
       const perfil = {
         telefono: session.telefono,
+        whatsapp: session.telefono,
         nombre: nombre.trim(),
         lat: coords.lat,
         lng: coords.lng,
         foto_url,
+        // Enlaza con el registro oficial de /users si el login lo encontró.
+        ...(session.prefill?.uid ? { uid: session.prefill.uid } : {}),
         creado_en: serverTimestamp(),
       }
       await Promise.race([
@@ -95,7 +106,7 @@ function RegistroInner() {
       ])
 
       setStep('listo')
-      saveSession({ ...session, perfil: { ...perfil, creado_en: Date.now() } })
+      saveSession({ ...session, prefill: null, perfil: { ...perfil, creado_en: Date.now() } })
       router.replace(redirect)
     } catch (e) {
       setError(e.message || 'No se pudo guardar el perfil')

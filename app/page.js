@@ -25,14 +25,28 @@ const CITAS_TECNICAS = [
 // CONFIGURACIÓN DE CONTACTO
 // ════════════════════════════════════════════════
 const WA_NUMBER = '+584123375417' // <— Reemplazar con número real
-const waUrl = (producto) =>
-  `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(
-    `Hola, me interesa el repuesto: *${producto}*. ¿Está disponible y cuál es el precio?`
-  )}`
+const waLink = (texto) =>
+  `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(texto)}`
+
+// Mensajes según la intención del botón (no todo es "me interesa el repuesto").
+const waConsulta = () =>
+  waLink('¡Hola! 👋 Quiero hacer una consulta sobre repuestos. ¿Me pueden ayudar?')
+
+const waBusqueda = (termino) =>
+  waLink(`¡Hola! 👋 Estoy buscando *${termino}*. ¿Lo tienen disponible y a qué precio?`)
+
+const waNoEncontrado = () =>
+  waLink(
+    '¡Hola! 👋 No encontré mi repuesto en el catálogo.\n\n' +
+    '• Vehículo (marca / modelo / año):\n• Repuesto que necesito:\n\n' +
+    '¿Me ayudan a conseguirlo?'
+  )
+
+const waProducto = (nombre) =>
+  waLink(`Hola, me interesa el repuesto: *${nombre}*. ¿Está disponible y cuál es el precio?`)
+
 const waCustomUrl = (producto, mensaje = '') =>
-  `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(
-    mensaje.trim() || `Hola, me interesa el repuesto: *${producto}*. ¿Está disponible y cuál es el precio?`
-  )}`
+  mensaje.trim() ? waLink(mensaje.trim()) : waProducto(producto)
 
 // ════════════════════════════════════════════════
 // DATOS DEL CATÁLOGO
@@ -964,7 +978,7 @@ export default function Home() {
             </a>
 
             <a
-              href={waUrl('consulta general')}
+              href={waConsulta()}
               target="_blank" rel="noopener noreferrer"
               className="mobile-nav-whatsapp"
             >
@@ -1002,24 +1016,31 @@ export default function Home() {
                 {['Categorías', 'Catálogo', 'Nosotros', 'Contacto', 'Servicios'][i]}
               </a>
             ))}
-            <div className="flex gap-2 pt-1">
+            <div className="grid grid-cols-3 gap-2 pt-1">
               <Link
                 href="/plaza"
                 onClick={() => setMenuOpen(false)}
-                className="flex-1 flex items-center justify-center gap-2 bg-[#FFD700] text-gray-900 font-bold text-sm px-4 py-2.5 rounded-lg"
+                className="flex items-center justify-center gap-2 bg-[#FFD700] text-gray-900 font-bold text-sm px-3 py-2.5 rounded-lg"
               >
                 🏪 Plaza
               </Link>
+              <a
+                href="#servicios"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center justify-center gap-2 bg-gray-700 text-white font-bold text-sm px-3 py-2.5 rounded-lg border border-gray-600"
+              >
+                🛵 Moto Taxi
+              </a>
               <Link
                 href="/bingo"
                 onClick={() => setMenuOpen(false)}
-                className="flex-1 flex items-center justify-center gap-2 bg-gray-700 text-white font-bold text-sm px-4 py-2.5 rounded-lg border border-gray-600"
+                className="flex items-center justify-center gap-2 bg-gray-700 text-white font-bold text-sm px-3 py-2.5 rounded-lg border border-gray-600"
               >
                 🎱 Bingo
               </Link>
             </div>
             <a
-              href={waUrl('consulta general')}
+              href={waConsulta()}
               target="_blank" rel="noopener noreferrer"
               className="btn-whatsapp w-full justify-center text-sm"
             >
@@ -1196,7 +1217,7 @@ export default function Home() {
               Ver catálogo completo
             </a>
             <a
-              href={waUrl('consulta general')}
+              href={waConsulta()}
               target="_blank" rel="noopener noreferrer"
               className="btn-whatsapp justify-center"
             >
@@ -1428,7 +1449,7 @@ export default function Home() {
               <p className="text-5xl mb-4">🔍</p>
               <p className="text-gray-500 text-lg font-medium">No encontramos resultados</p>
               <p className="text-gray-400 text-sm mt-1">Intenta con otro término o{' '}
-                <a href={waUrl('consulta: ' + busqueda)} target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium hover:underline">
+                <a href={waBusqueda(busqueda)} target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium hover:underline">
                   consulta por WhatsApp
                 </a>
               </p>
@@ -1582,7 +1603,7 @@ export default function Home() {
             Nuestro equipo te responde de inmediato.
           </p>
           <a
-            href={waUrl('Hola, necesito un repuesto y no lo encontré en el catálogo. ¿Pueden ayudarme?')}
+            href={waNoEncontrado()}
             target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-3 bg-[#25D366] text-white font-bold text-lg px-10 py-4 rounded-xl hover:bg-[#128C7E] transition-all hover:shadow-2xl hover:-translate-y-1"
           >
@@ -1601,7 +1622,7 @@ export default function Home() {
           SERVICIOS
       ────────────────────────────────────────── */}
       <section id="servicios" className="py-16 px-4 bg-white">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <div className="text-center mb-10">
             <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 mb-2 block">
               Plataforma
@@ -1614,7 +1635,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
 
             {/* ── Plaza ── */}
             <Link
@@ -1652,6 +1673,38 @@ export default function Home() {
                 </svg>
               </div>
             </Link>
+
+            {/* ── Moto Taxi ── */}
+            <div
+              className="group relative flex flex-col gap-4 bg-gray-900 rounded-2xl p-6 border border-gray-800 hover:border-[#38BDF8]/60 hover:shadow-xl hover:shadow-sky-500/10 transition-all duration-300 overflow-hidden"
+              aria-disabled="true"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-sky-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+              <div className="flex items-start gap-4 relative">
+                <div className="w-14 h-14 rounded-xl bg-[#38BDF8]/10 border border-[#38BDF8]/20 flex items-center justify-center text-3xl shrink-0 group-hover:scale-110 transition-transform">
+                  🛵
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-brand text-xl font-bold text-white">Moto Taxi</h3>
+                  <p className="text-gray-400 text-sm mt-1 leading-relaxed">
+                    Servicio rápido de traslado en moto dentro de Mérida. Próximamente disponible en la app.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 relative">
+                {['Traslado rápido', 'Mérida', 'WhatsApp directo'].map(t => (
+                  <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
+                    {t}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[#38BDF8] text-sm font-semibold relative">
+                Próximamente en la app
+              </div>
+            </div>
 
             {/* ── Bingo ── */}
             <Link
@@ -1856,6 +1909,11 @@ export default function Home() {
                   </Link>
                 </li>
                 <li>
+                  <a href="#servicios" className="hover:text-[#38BDF8] transition-colors flex items-center gap-1.5">
+                    🛵 Moto Taxi
+                  </a>
+                </li>
+                <li>
                   <Link href="/bingo" className="hover:text-[#22C55E] transition-colors flex items-center gap-1.5">
                     🎱 Bingo
                   </Link>
@@ -1895,7 +1953,7 @@ export default function Home() {
           <div className="border-t border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
             <p>© {new Date().getFullYear()} Repuestos Mérida · Gochos Group · Mérida, Venezuela</p>
             <div className="flex items-center gap-4">
-              <a href={waUrl('Hola!')} target="_blank" rel="noopener noreferrer"
+              <a href={waConsulta()} target="_blank" rel="noopener noreferrer"
                 className="text-green-500 hover:text-green-400 transition-colors font-medium">
                 WhatsApp
               </a>

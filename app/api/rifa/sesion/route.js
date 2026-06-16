@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { rtdb } from '@/lib/firebase'
 import { ref, get } from 'firebase/database'
 import { verifyRifaToken, signRifaToken, shouldRefreshToken } from '@/lib/rifaJwt'
+import { resolverPerfil } from '@/lib/perfilUsuario'
 
 export async function POST(request) {
   try {
@@ -12,17 +13,17 @@ export async function POST(request) {
     }
 
     const tel = payload.tel
-    const [perfilSnap, vendSnap] = await Promise.all([
-      get(ref(rtdb, `rifas_usuarios/${tel}`)),
+    const telefono = payload.telefono || tel
+    const [{ perfil, prefill }, vendSnap] = await Promise.all([
+      resolverPerfil({ telefono, key: tel }),
       get(ref(rtdb, `vendedor_index/${tel}`)),
     ])
-    const perfil = perfilSnap.exists() ? perfilSnap.val() : null
     const rifas_vendedor = vendSnap.exists() ? Object.keys(vendSnap.val() || {}) : []
 
     let outToken = token
     let expiresAt = payload.exp * 1000
     if (shouldRefreshToken(payload)) {
-      const signed = signRifaToken({ tel })
+      const signed = signRifaToken({ tel, telefono })
       outToken = signed.token
       expiresAt = signed.expiresAt
     }
@@ -32,6 +33,7 @@ export async function POST(request) {
       telefono: payload.telefono || null,
       tel,
       perfil,
+      prefill,
       rifas_vendedor,
       token: outToken,
       expiresAt,

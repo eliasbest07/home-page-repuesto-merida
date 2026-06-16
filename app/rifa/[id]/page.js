@@ -12,7 +12,7 @@ import { normalizePhone } from '@/lib/whatsappAuth'
 // WhatsApp oficial del bot: el vendedor le escribe para recibir su enlace de
 // inicio de sesión (magic link), sin depender del servidor del bot por HTTP.
 const WA_OFICIAL = '584123375417'
-const MSG_VENDEDOR = 'Hola Oso, quiero iniciar sesión para vender en una rifa de Repuestos Mérida. Mándame el link, por favor.'
+const MSG_VENDEDOR = 'Hola Oso, quiero iniciar sesión en Repuestos Mérida desde Rifa para vender números. Mándame el link, por favor.'
 
 const ESTADO_COLOR = {
   disponible: 'bg-white border-gray-200 text-gray-800 hover:border-yellow-400',

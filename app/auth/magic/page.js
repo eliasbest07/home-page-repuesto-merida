@@ -43,13 +43,21 @@ function MagicInner() {
         saveSession({
           telefono: data.telefono,
           perfil: data.perfil,
+          prefill: data.prefill || null,
           rifas_vendedor: data.rifas_vendedor || [],
           token: data.token,
           expiresAt: data.expiresAt,
         })
 
-        const dest = safeRedirect(data.redirect)
-        // Si no tiene perfil, primero registro (y de ahí al debate).
+        // Link de origen: el guardado en /login (antes de ir a WhatsApp) manda;
+        // el del magic_link es respaldo (suele venir "/" si el bot no lo capturó).
+        let saved = null
+        try { saved = localStorage.getItem('login_redirect') } catch {}
+        const botDest = safeRedirect(data.redirect)
+        const dest = safeRedirect(saved || (botDest !== '/' ? botDest : null))
+        try { localStorage.removeItem('login_redirect') } catch {}
+
+        // Si no tiene perfil, primero registro (conservando el destino final).
         if (!data.perfil) {
           router.replace(`/registro?redirect=${encodeURIComponent(dest)}`)
         } else {

@@ -38,7 +38,7 @@ const FILTROS = [
 
 // WhatsApp oficial del bot (donde el bot escucha y responde el enlace mágico).
 const WA_OFICIAL = '584123375417';
-const MSG_BINGO = 'Hola Oso, quiero iniciar sesión para crear mi sala de bingo. Mándame el link, por favor.';
+const MSG_BINGO = 'Hola Oso, quiero iniciar sesión en Repuestos Mérida desde Bingo para crear o unirme a una sala. Mándame el link, por favor.';
 function waOficialUrl(mensaje) {
   return `https://wa.me/${WA_OFICIAL}?text=${encodeURIComponent(mensaje)}`;
 }

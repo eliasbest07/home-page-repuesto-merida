@@ -4,6 +4,7 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { ref, get } from 'firebase/database'
 import { phoneKey } from '@/lib/whatsappAuth'
 import { signRifaToken } from '@/lib/rifaJwt'
+import { resolverPerfil } from '@/lib/perfilUsuario'
 
 // Consume el enlace mágico leyendo Firebase DIRECTAMENTE (no llama al bot).
 // El bot ya escribió en Firestore (magic_links/{token}) la autorización para
@@ -39,9 +40,8 @@ export async function POST(request) {
     // Un solo uso: marcar usado (la regla solo permite tocar usado/usado_en).
     await updateDoc(linkRef, { usado: true, usado_en: Date.now() })
 
-    let perfil = null
-    const perfilSnap = await get(ref(rtdb, `rifas_usuarios/${key}`))
-    if (perfilSnap.exists()) perfil = perfilSnap.val()
+    // Recupera el perfil: ya guardado (rifas_usuarios) o el oficial (/users).
+    const { perfil, prefill } = await resolverPerfil({ telefono, key })
 
     let rifasVendedor = []
     const vendSnap = await get(ref(rtdb, `vendedor_index/${key}`))
@@ -53,6 +53,7 @@ export async function POST(request) {
       ok: true,
       telefono,
       perfil,
+      prefill,
       rifas_vendedor: rifasVendedor,
       token: jwt,
       expiresAt,
