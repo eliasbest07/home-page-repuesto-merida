@@ -225,6 +225,11 @@ service cloud.firestore {
                          .hasOnly(['usado', 'usado_en']);
     }
 
+    // Imágenes y datos de verificación de edad — solo servidor/Admin SDK.
+    match /verificaciones_edad/{telefono} {
+      allow read, write: if false;
+    }
+
     // Imágenes y datos de verificación — solo admin
     match /usuarios_plaza/{telefono} {
       allow read, write: if request.auth != null;

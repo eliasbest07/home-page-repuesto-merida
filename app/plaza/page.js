@@ -1021,7 +1021,7 @@ function UserMenu({ session, onClose, onLogout }) {
           {/* Acciones */}
           <div className="space-y-2">
             <Link href="/plaza/publicar" onClick={onClose} className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-yellow-400 text-gray-900 font-semibold text-sm hover:bg-yellow-300 transition-colors">
-              <span>✏️</span> Publicar anuncio
+              <span>🏷️</span> Vender o publicar
             </Link>
             <Link href="/plaza/mis-anuncios" onClick={onClose} className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl bg-gray-100 text-gray-800 font-semibold text-sm hover:bg-gray-200 transition-colors">
               <span>📋</span> Mis anuncios
@@ -1205,7 +1205,7 @@ export default function PlazaPage() {
             href="/plaza/publicar"
             className="shrink-0 bg-yellow-400 text-gray-900 font-bold text-sm px-3 py-2 rounded-xl hover:bg-yellow-300 transition-all active:scale-95 whitespace-nowrap"
           >
-            + Publicar
+            Vender
           </Link>
 
           {/* Botón de usuario */}
@@ -1316,7 +1316,7 @@ export default function PlazaPage() {
                 href="/plaza/publicar"
                 className="inline-flex items-center gap-2 bg-yellow-400 text-gray-900 font-bold px-6 py-2.5 rounded-xl hover:bg-yellow-300 transition-all text-sm"
               >
-                + Publicar gratis
+                Vender gratis
               </Link>
               <p className="mt-3 text-gray-500 text-xs">
                 ¿Buscas algo específico?{' '}

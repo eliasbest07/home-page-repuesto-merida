@@ -46,7 +46,7 @@ export default function PublicarPage() {
   const [authChecked, setAuthChecked] = useState(false)
 
   useEffect(() => {
-    ensureSession().then((s) => {
+    ensureSession().then(async (s) => {
       if (!s?.telefono) {
         router.replace('/login?redirect=' + encodeURIComponent('/plaza/publicar'))
         return
@@ -55,6 +55,22 @@ export default function PublicarPage() {
         router.replace('/registro?redirect=' + encodeURIComponent('/plaza/publicar'))
         return
       }
+
+      try {
+        const res = await fetch('/api/verificacion/edad', {
+          headers: { Authorization: `Bearer ${s.token}` },
+          cache: 'no-store',
+        })
+        const data = await res.json()
+        if (!res.ok || data.estado !== 'aprobado') {
+          router.replace('/verificacion?redirect=' + encodeURIComponent('/plaza/publicar') + '&required=1')
+          return
+        }
+      } catch {
+        router.replace('/verificacion?redirect=' + encodeURIComponent('/plaza/publicar') + '&required=1')
+        return
+      }
+
       setSession({ ...s, whatsapp: s.telefono })
       setAuthChecked(true)
     })
