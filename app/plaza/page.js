@@ -132,6 +132,8 @@ const waUrl = (item) => {
   return `https://wa.me/${num}?text=${encodeURIComponent(texto)}`
 }
 
+const anuncioUrl = (item) => `/anuncio/${encodeURIComponent(String(item.id))}`
+
 // Si el vendedor es un número de teléfono, mostramos "Contactando..."
 const isPhone = (s) => !!s && /^[+\d\s().-]{7,}$/.test(s.trim())
 const vendedorLabel = (s) => (!s || isPhone(s)) ? 'Contactando...' : s
@@ -530,6 +532,9 @@ function FeedCard({ p, onOpen }) {
         <div className="mt-2">
           <CardMeta redes={p.redes ?? []} pagos={p.pagos ?? []} />
         </div>
+        <Link href={anuncioUrl(p)} className="mt-2 inline-flex text-xs font-bold text-yellow-600 hover:text-yellow-700">
+          Ver detalle del anuncio
+        </Link>
       </div>
 
       <div className="px-4 pb-4 pt-2">
@@ -636,6 +641,9 @@ function DesktopCard({ p, onOpen }) {
         <div className="mt-1.5">
           <CardMeta redes={p.redes ?? []} pagos={p.pagos ?? []} small />
         </div>
+        <Link href={anuncioUrl(p)} className="mt-1.5 inline-flex text-[11px] font-bold text-yellow-600 hover:text-yellow-700">
+          Ver detalle
+        </Link>
       </div>
 
       <div className="px-3 pb-3">
@@ -780,16 +788,14 @@ function MobileImageGallery({ items }) {
           {groups.map((group, gi) => (
             <div key={gi} className="grid grid-cols-2 gap-1.5">
               {group.map((p) => (
-                <a
+                <Link
                   key={p.id}
-                  href={p.disponible ? waUrl(p) : undefined}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href={anuncioUrl(p)}
                   className="relative w-[92px] h-[92px] rounded-xl overflow-hidden flex items-center justify-center active:scale-95 transition-transform"
                   style={{ backgroundColor: p.color + '22' }}
                 >
                   <AnuncioImg p={p} emojiClass="text-4xl" inline />
-                </a>
+                </Link>
               ))}
               {group.length < 4 &&
                 Array.from({ length: 4 - group.length }).map((_, k) => (

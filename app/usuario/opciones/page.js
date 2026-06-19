@@ -84,6 +84,12 @@ function normalize(value) {
   return String(value || '').trim().toLowerCase()
 }
 
+function canonPhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '')
+  if (d.startsWith('58') && d.length >= 12) d = d.slice(2)
+  return d.replace(/^0+/, '')
+}
+
 export default function UsuarioOpcionesPage() {
   const router = useRouter()
   const [session, setSession] = useState(null)
@@ -113,6 +119,7 @@ export default function UsuarioOpcionesPage() {
   // Cédula EN VIVO: el bot puede verificar y escribir la cédula en Realtime DB
   // mientras esta página está abierta; con onValue se refleja sin recargar.
   const [cedulaLive, setCedulaLive] = useState('')
+  const [realtimeProfile, setRealtimeProfile] = useState(null)
 
   const maxIndex = Math.max(0, TEAM_IMAGES.length - 1)
   const currentImage = TEAM_IMAGES[currentIndex] || TEAM_IMAGES[0]
@@ -161,24 +168,40 @@ export default function UsuarioOpcionesPage() {
     const tel = session?.telefono
     if (!tel) return undefined
     const key = phoneKey(tel)
+    const targetPhone = canonPhone(tel)
     const uid = session?.perfil?.uid || session?.prefill?.uid
     const offs = []
     const watch = (path) => {
       const off = onValue(dbRef(rtdb, path), (snap) => {
         const v = snap.val()
-        if (v && v.cedula) setCedulaLive(String(v.cedula).trim())
+        if (!v || typeof v !== 'object') return
+        setRealtimeProfile((current) => ({ ...(current || {}), ...v }))
+        if (v.cedula) setCedulaLive(String(v.cedula).trim())
       })
       offs.push(off)
     }
     if (key) watch(`rifas_usuarios/${key}`)
     if (uid) watch(`users/${uid}`)
-    return () => offs.forEach((off) => { try { off() } catch {} })
+    const rootOff = onValue(dbRef(rtdb, '/'), (snap) => {
+      const data = snap.val() || {}
+      for (const value of Object.values(data)) {
+        if (value && typeof value === 'object' && canonPhone(value.whatsapp) === targetPhone) {
+          setRealtimeProfile((current) => ({ ...(current || {}), ...value }))
+          if (value.cedula) setCedulaLive(String(value.cedula).trim())
+          break
+        }
+      }
+    })
+    offs.push(rootOff)
+    return () => offs.forEach((off) => { try { off() } catch { } })
   }, [session?.telefono, session?.perfil?.uid, session?.prefill?.uid])
 
   const perfil = session?.perfil || session?.prefill || {}
   const nombre = perfil?.nombre || 'Usuario'
   const foto = perfil?.foto_url || ''
   const cedulaActual = cedulaLive || perfil?.cedula || ''
+  const edadVerificada = Boolean(cedulaActual || perfil?.cedula_estado === 'aprobado')
+  const vendedorActivo = realtimeProfile?.vender === true || realtimeProfile?.vender === 'true' || perfil?.vender === true || perfil?.vender === 'true'
   const notificationCount = Number(perfil?.notificaciones_nuevas || perfil?.notificacionesNuevas || 0)
   const brandOptions = vehicle.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const selectedBrand = useMemo(
@@ -354,7 +377,18 @@ export default function UsuarioOpcionesPage() {
                 </div>
 
                 <div className="min-w-0 pb-0.5">
-                  <h1 className="truncate text-xl font-extrabold text-gray-950 sm:text-2xl">{nombre}</h1>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <h1 className="truncate text-xl font-extrabold text-gray-950 sm:text-2xl">{nombre}</h1>
+                    <button
+                      type="button"
+                      onClick={scrollToVehiculo}
+                      className="group inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-gray-950 px-3 text-xs font-extrabold text-yellow-400 shadow-sm transition hover:bg-gray-800"
+                    >
+                      {vehicle.tipo_vehiculo === 'moto' ? <MotoIcon className="h-4 w-4" /> : <CarIcon className="h-4 w-4" />}
+                      <span>{vehicle.tipo_vehiculo === 'moto' ? 'Mi moto' : 'Mi carro'}</span>
+                      <ChevronDownIcon className="h-3.5 w-3.5 transition group-hover:translate-y-0.5" />
+                    </button>
+                  </div>
                   <p className="mt-0.5 flex items-center gap-1.5 text-sm text-gray-700">
                     <LocationIcon className="h-4 w-4 shrink-0 text-yellow-600" />
                     <span className="truncate">{locationLabel}</span>
@@ -362,7 +396,6 @@ export default function UsuarioOpcionesPage() {
                   {cedulaActual ? (
                     <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700">
                       <CheckIcon className="h-3.5 w-3.5" />
-                      Edad verificada · Cédula {cedulaActual}
                     </span>
                   ) : (
                     <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
@@ -372,16 +405,16 @@ export default function UsuarioOpcionesPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 self-start sm:self-end">
-                <button
-                  type="button"
-                  onClick={scrollToVehiculo}
-                  className="group inline-flex h-11 items-center gap-2 rounded-xl bg-gray-950 px-4 text-sm font-extrabold text-yellow-400 shadow-sm transition hover:bg-gray-800"
-                >
-                  {vehicle.tipo_vehiculo === 'moto' ? <MotoIcon className="h-5 w-5" /> : <CarIcon className="h-5 w-5" />}
-                  <span>{vehicle.tipo_vehiculo === 'moto' ? 'Mi moto' : 'Mi carro'}</span>
-                  <ChevronDownIcon className="h-4 w-4 transition group-hover:translate-y-0.5" />
-                </button>
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-end">
+                {vendedorActivo && (
+                  <Link
+                    href="/usuario/comercio"
+                    className="inline-flex h-11 items-center gap-2 rounded-xl bg-yellow-400 px-4 text-sm font-extrabold text-gray-950 shadow-sm transition hover:bg-yellow-300"
+                  >
+                    <StoreIcon className="h-5 w-5" />
+                    <span>Mi comercio</span>
+                  </Link>
+                )}
                 <button
                   type="button"
                   title="Notificaciones"
@@ -412,7 +445,8 @@ export default function UsuarioOpcionesPage() {
           </div>
         )}
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(360px,0.8fr)_minmax(0,1fr)]">
+        <div className={`mt-5 grid gap-5 ${edadVerificada ? '' : 'lg:grid-cols-[minmax(360px,0.8fr)_minmax(0,1fr)]'}`}>
+          {!edadVerificada && (
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="mb-5">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-600">Verificación de edad</p>
@@ -451,6 +485,7 @@ export default function UsuarioOpcionesPage() {
               </button>
             </form>
           </section>
+          )}
 
           <section id="seccion-vehiculo" className="scroll-mt-20 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="mb-5">
@@ -640,6 +675,19 @@ function BellIcon({ className = '' }) {
     <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
       <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  )
+}
+
+function StoreIcon({ className = '' }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 10h16" />
+      <path d="M5 10l1-6h12l1 6" />
+      <path d="M6 10v10h12V10" />
+      <path d="M9 20v-5h6v5" />
+      <path d="M6 10a3 3 0 0 0 6 0" />
+      <path d="M12 10a3 3 0 0 0 6 0" />
     </svg>
   )
 }
