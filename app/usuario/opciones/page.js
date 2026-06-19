@@ -5,7 +5,9 @@ import Link from 'next/link'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { clearSession, ensureSession, saveSession } from '@/lib/rifaSession'
+import { onValue, ref as dbRef } from 'firebase/database'
+import { rtdb } from '@/lib/firebase'
+import { clearSession, ensureSession, phoneKey, saveSession } from '@/lib/rifaSession'
 
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
@@ -108,6 +110,9 @@ export default function UsuarioOpcionesPage() {
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  // Cédula EN VIVO: el bot puede verificar y escribir la cédula en Realtime DB
+  // mientras esta página está abierta; con onValue se refleja sin recargar.
+  const [cedulaLive, setCedulaLive] = useState('')
 
   const maxIndex = Math.max(0, TEAM_IMAGES.length - 1)
   const currentImage = TEAM_IMAGES[currentIndex] || TEAM_IMAGES[0]
@@ -149,10 +154,31 @@ export default function UsuarioOpcionesPage() {
   useEffect(() => filePreview(cedulaFoto, setCedulaPreview), [cedulaFoto])
   useEffect(() => filePreview(selfieCedula, setSelfiePreview), [selfieCedula])
 
+  // EN VIVO: escucha el nodo del usuario en Realtime DB (donde el bot escribe la
+  // cédula tras verificarla). rifas_usuarios/{key} es la fuente primaria; users/{uid}
+  // el respaldo, igual que perfilUsuario.js.
+  useEffect(() => {
+    const tel = session?.telefono
+    if (!tel) return undefined
+    const key = phoneKey(tel)
+    const uid = session?.perfil?.uid || session?.prefill?.uid
+    const offs = []
+    const watch = (path) => {
+      const off = onValue(dbRef(rtdb, path), (snap) => {
+        const v = snap.val()
+        if (v && v.cedula) setCedulaLive(String(v.cedula).trim())
+      })
+      offs.push(off)
+    }
+    if (key) watch(`rifas_usuarios/${key}`)
+    if (uid) watch(`users/${uid}`)
+    return () => offs.forEach((off) => { try { off() } catch {} })
+  }, [session?.telefono, session?.perfil?.uid, session?.prefill?.uid])
+
   const perfil = session?.perfil || session?.prefill || {}
   const nombre = perfil?.nombre || 'Usuario'
   const foto = perfil?.foto_url || ''
-  const cedulaActual = perfil?.cedula || ''
+  const cedulaActual = cedulaLive || perfil?.cedula || ''
   const notificationCount = Number(perfil?.notificaciones_nuevas || perfil?.notificacionesNuevas || 0)
   const brandOptions = vehicle.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const selectedBrand = useMemo(
