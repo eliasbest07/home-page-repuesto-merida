@@ -139,53 +139,6 @@ const MOTO_BRANDS = [
   { name: 'Yamaha', icon: '/catalog-assets/moto-brands/yamaha.png' },
 ]
 
-const MOBILE_FEATURED = [
-  {
-    productId: 1,
-    category: 'filtros',
-    label: 'Filtro de Aceite',
-    brand: 'Toyota',
-    model: 'Corolla',
-    years: '2014 - 2019',
-    price: '$18.50',
-    brandIcon: '/mobile-catalog/brands/toyota.png',
-    fallbackIcon: '/mobile-catalog/categories/filtro.png',
-  },
-  {
-    productId: 9,
-    category: 'frenos',
-    label: 'Pastillas de Freno',
-    brand: 'Chevrolet',
-    model: 'Aveo',
-    years: '2006 - 2011',
-    price: '$22.00',
-    brandIcon: '/mobile-catalog/brands/chevrolet.png',
-    fallbackIcon: '/mobile-catalog/categories/freno.png',
-  },
-  {
-    productId: 18,
-    category: 'electrico',
-    label: 'Bujía',
-    brand: 'Ford',
-    model: 'Fiesta',
-    years: '2011 - 2017',
-    price: '$6.80',
-    brandIcon: '/mobile-catalog/brands/ford.png',
-    fallbackIcon: '/mobile-catalog/categories/electricidad.png',
-  },
-  {
-    productId: 2,
-    category: 'motor',
-    label: 'Correa de Tiempo',
-    brand: 'Hyundai',
-    model: 'Elantra',
-    years: '2012 - 2016',
-    price: '$28.00',
-    brandIcon: '/mobile-catalog/brands/hyundai.png',
-    fallbackIcon: '/mobile-catalog/categories/motor.png',
-  },
-]
-
 const PRODUCTOS = [
   // ── Motor y Transmisión ──
   { id: 1, nombre: 'Filtro de Aceite Universal', categoria: 'motor', precio: '$4 – $12', marca: 'Mann / Bosch', compat: 'Toyota · Ford · Chevrolet · Kia', disponible: true, destacado: true },
@@ -308,6 +261,24 @@ function normalizeHomeProduct(item, id) {
     descripcion: item.descripcion || '',
     userID: item.userID || '',
   }
+}
+
+function featuredBrandIcon(producto) {
+  const text = [producto?.marca, producto?.compat, producto?.descripcion, producto?.nombre]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  const brand = CAR_BRANDS.find((item) => text.includes(item.name.toLowerCase()))
+  return brand?.icon || '/mobile-catalog/categories/motor.png'
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 function getSellerCoordinates(user = {}) {
@@ -511,6 +482,18 @@ export default function Home() {
   const [detalleGuardado, setDetalleGuardado] = useState('')
   const [imagenAmpliada, setImagenAmpliada] = useState(false)
   const [detalleQA, setDetalleQA] = useState([])
+  const [catalogFormOpen, setCatalogFormOpen] = useState(false)
+  const [catalogSending, setCatalogSending] = useState(false)
+  const [catalogMessage, setCatalogMessage] = useState('')
+  const [catalogForm, setCatalogForm] = useState({
+    titulo: '',
+    categoria: 'Motor y Transmisión',
+    vehiculo: '',
+    modelos: '',
+    precio: '',
+    descripcion: '',
+  })
+  const [catalogImage, setCatalogImage] = useState(null)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60)
@@ -667,19 +650,22 @@ export default function Home() {
   }
 
   const featuredProducts = catalogo.filter((p) => p.destacado).slice(0, 8)
-  const mobileFeaturedProducts = MOBILE_FEATURED.map((item) => {
-    const exactProduct = catalogo.find((product) => String(product.id) === String(item.productId))
-    const productWithImage =
-      exactProduct?.imagen
-        ? exactProduct
-        : catalogo.find((product) => product.categoria === item.category && product.imagen)
-    return {
-      ...item,
-      product: exactProduct || PRODUCTOS.find((product) => product.id === item.productId),
-      image: productWithImage?.imagen || item.fallbackIcon,
-      isFallbackImage: !productWithImage?.imagen,
-    }
-  })
+  const mobileFeaturedProducts = (featuredProducts.length ? featuredProducts : catalogo.filter((p) => p.imagen))
+    .slice(0, 8)
+    .map((product) => ({
+      product,
+      image: product.imagen || '/mobile-catalog/categories/motor.png',
+      isFallbackImage: !product.imagen,
+      label: product.nombre,
+      brand: product.marca || 'Catálogo Mérida',
+      model: product.compat || 'Compatibilidad por confirmar',
+      price: product.precio || 'Consultar',
+      brandIcon: featuredBrandIcon(product),
+    }))
+  const sessionProfile = requestSession?.perfil || requestSession?.prefill || null
+  const sessionName = sessionProfile?.nombre || 'Nombre'
+  const sessionPhoto = sessionProfile?.foto_url || ''
+  const sessionHasCedula = Boolean(sessionProfile?.cedula)
   const visibleBrands = brandType === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const homepageUrl = `${SITE_URL}/`
   const flattenedTrendPatterns = LOCAL_SEO_SIGNALS.intentClusters.flatMap((cluster) => cluster.patterns)
@@ -849,6 +835,63 @@ export default function Home() {
     }
   }
 
+  async function publishCatalogProduct(event) {
+    event.preventDefault()
+    setCatalogMessage('')
+
+    if (!requestSession?.telefono) {
+      try {
+        window.localStorage.setItem(REQUEST_DRAFT_KEY, JSON.stringify({ selectedBrand, busqueda, requestForm }))
+      } catch {}
+      window.location.href = `/login?redirect=${encodeURIComponent('/')}`
+      return
+    }
+
+    if (!sessionHasCedula) {
+      setCatalogMessage('Necesitas tener cédula registrada para publicar repuestos destacados.')
+      return
+    }
+
+    if (!catalogImage) {
+      setCatalogMessage('Agrega una foto real del repuesto.')
+      return
+    }
+
+    setCatalogSending(true)
+    try {
+      const imageData = await readFileAsDataUrl(catalogImage)
+      const res = await fetch('/api/catalogo/repuestos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${requestSession.token}`,
+        },
+        body: JSON.stringify({ ...catalogForm, imagen: imageData }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'No se pudo publicar el repuesto.')
+
+      setCatalogMessage('Repuesto publicado como destacado correctamente.')
+      setCatalogForm({
+        titulo: '',
+        categoria: 'Motor y Transmisión',
+        vehiculo: '',
+        modelos: '',
+        precio: '',
+        descripcion: '',
+      })
+      setCatalogImage(null)
+
+      const snap = await getDocs(collection(firestore, 'merida'))
+      const items = snap.docs.map((doc) => normalizeHomeProduct(doc.data(), doc.id)).filter((item) => item.imagen)
+      if (items.length > 0) setCatalogo(items)
+    } catch (err) {
+      setCatalogMessage(err.message || 'No se pudo publicar el repuesto.')
+    } finally {
+      setCatalogSending(false)
+    }
+  }
+
   const jsonLd = [
     {
       '@context': 'https://schema.org',
@@ -999,6 +1042,34 @@ export default function Home() {
         {/* Menú móvil */}
         {menuOpen && (
           <div className="bg-gray-800 border-t border-gray-700 px-4 py-4 space-y-3">
+            {requestSession?.telefono ? (
+              <Link
+                href="/usuario/opciones"
+                onClick={() => setMenuOpen(false)}
+                className="-mx-4 -mt-4 mb-1 flex items-center gap-3 bg-white/10 px-4 py-3.5 text-white transition-colors hover:bg-white/15"
+              >
+                <span className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 text-gray-500">
+                  {sessionPhoto ? (
+                    <Image src={sessionPhoto} alt={sessionName} fill unoptimized sizes="56px" className="object-cover" />
+                  ) : null}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-base font-semibold">{sessionName}</span>
+                  <span className={`mt-0.5 block text-sm font-medium ${sessionHasCedula ? 'text-green-300' : 'text-yellow-300'}`}>
+                    {sessionHasCedula ? 'Verificado' : 'Sin cédula registrada'}
+                  </span>
+                </span>
+              </Link>
+            ) : (
+              <Link
+                href={`/login?redirect=${encodeURIComponent('/')}`}
+                onClick={() => setMenuOpen(false)}
+                className="-mx-4 -mt-4 mb-1 flex items-center justify-center gap-2 bg-green-500 px-4 py-3.5 text-sm font-extrabold text-white transition-colors hover:bg-green-600"
+              >
+                <IconWhatsApp />
+                Iniciar sesión con WhatsApp
+              </Link>
+            )}
             <Link
               href="/solicitados"
               onClick={() => setMenuOpen(false)}
@@ -1234,15 +1305,28 @@ export default function Home() {
             <span aria-hidden="true">★</span>
             Repuestos destacados
           </h2>
-          <a href="#catalogo">
-            Ver todos
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="m9 5 7 7-7 7" />
-            </svg>
-          </a>
+          <div className="mobile-featured-actions">
+            <a href="#catalogo">
+              Ver todos
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="m9 5 7 7-7 7" />
+              </svg>
+            </a>
+          </div>
         </div>
 
         <div className="mobile-featured-scroller scrollbar-none">
+          {sessionHasCedula && (
+            <button
+              type="button"
+              className="mobile-featured-card mobile-featured-publish-card"
+              onClick={() => setCatalogFormOpen(true)}
+              aria-label="Publicar repuesto destacado"
+            >
+              <span className="mobile-featured-plus" aria-hidden="true">+</span>
+              <span className="mobile-featured-publish-label">Publicar Repuesto</span>
+            </button>
+          )}
           {mobileFeaturedProducts.map((item) => (
             <button
               type="button"
@@ -1266,7 +1350,6 @@ export default function Home() {
                 {item.brand}
               </span>
               <span className="mobile-product-model">{item.model}</span>
-              <span className="mobile-product-years">{item.years}</span>
               <span className="mobile-product-price">{item.price}</span>
             </button>
           ))}
@@ -2383,6 +2466,106 @@ export default function Home() {
               className="object-contain"
             />
           </div>
+        </div>
+      )}
+
+      {catalogFormOpen && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 p-0 sm:items-center sm:p-4" onClick={() => setCatalogFormOpen(false)}>
+          <form
+            className="w-full max-w-lg rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-2xl"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={publishCatalogProduct}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-extrabold text-gray-900">Crear repuesto destacado</h3>
+                <p className="mt-1 text-xs text-gray-500">
+                  Solo usuarios con WhatsApp verificado y cédula registrada pueden publicar.
+                </p>
+              </div>
+              <button type="button" onClick={() => setCatalogFormOpen(false)} className="rounded-full border border-gray-200 p-2 text-gray-500">
+                <IconX />
+              </button>
+            </div>
+
+            <div className="grid gap-3">
+              <input
+                value={catalogForm.titulo}
+                onChange={(event) => setCatalogForm((current) => ({ ...current, titulo: event.target.value }))}
+                placeholder="Nombre del repuesto"
+                required
+                maxLength={90}
+                className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <select
+                  value={catalogForm.categoria}
+                  onChange={(event) => setCatalogForm((current) => ({ ...current, categoria: event.target.value }))}
+                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
+                >
+                  {CATEGORIAS.filter((category) => category.id !== 'todos').map((category) => (
+                    <option key={category.id} value={category.nombre}>{category.nombre}</option>
+                  ))}
+                </select>
+                <input
+                  value={catalogForm.precio}
+                  onChange={(event) => setCatalogForm((current) => ({ ...current, precio: event.target.value }))}
+                  placeholder="Precio"
+                  required
+                  maxLength={40}
+                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
+                />
+              </div>
+              <input
+                value={catalogForm.vehiculo}
+                onChange={(event) => setCatalogForm((current) => ({ ...current, vehiculo: event.target.value }))}
+                placeholder="Vehículo o marca compatible"
+                maxLength={120}
+                className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
+              />
+              <input
+                value={catalogForm.modelos}
+                onChange={(event) => setCatalogForm((current) => ({ ...current, modelos: event.target.value }))}
+                placeholder="Compatibilidad: modelo, año, motor"
+                required
+                maxLength={140}
+                className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
+              />
+              <textarea
+                value={catalogForm.descripcion}
+                onChange={(event) => setCatalogForm((current) => ({ ...current, descripcion: event.target.value }))}
+                placeholder="Descripción, estado, marca o garantía"
+                rows={3}
+                maxLength={500}
+                className="resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
+              />
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-600 hover:border-yellow-400 hover:bg-yellow-50">
+                <span>{catalogImage ? catalogImage.name : 'Agregar foto principal'}</span>
+                <span className="font-bold text-gray-900">+</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) => setCatalogImage(event.target.files?.[0] || null)}
+                  required={!catalogImage}
+                />
+              </label>
+            </div>
+
+            {catalogMessage && (
+              <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-semibold ${catalogMessage.includes('correctamente') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                {catalogMessage}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={catalogSending}
+              className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-yellow-400 px-4 py-3 text-sm font-extrabold text-gray-900 transition hover:bg-yellow-300 disabled:opacity-50"
+            >
+              {catalogSending ? 'Publicando...' : 'Publicar destacado'}
+            </button>
+          </form>
         </div>
       )}
 

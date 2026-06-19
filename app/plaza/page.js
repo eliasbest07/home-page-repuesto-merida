@@ -1053,7 +1053,11 @@ export default function PlazaPage() {
   useEffect(() => {
     import('@/lib/rifaSession').then(({ ensureSession }) => {
       ensureSession().then((s) => {
-        if (s?.telefono) setSession({ ...s, whatsapp: s.telefono, token: s.token })
+        if (s?.telefono) {
+          setSession({ ...s, whatsapp: s.telefono, token: s.token })
+          const params = new URLSearchParams(window.location.search)
+          if (params.get('menu') === 'usuario') setMenuOpen(true)
+        }
       })
     })
   }, [])

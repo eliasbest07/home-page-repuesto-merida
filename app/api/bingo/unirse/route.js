@@ -11,6 +11,14 @@ import {
 import { generateCartonId } from '@/lib/bingo';
 import { verifyRifaToken } from '@/lib/rifaJwt';
 
+const MAX_AVATAR_LENGTH = 160_000;
+
+function cleanAvatarUrl(value) {
+  const avatar = String(value || '');
+  if (!avatar.startsWith('data:image/') || avatar.length > MAX_AVATAR_LENGTH) return '';
+  return avatar;
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -23,6 +31,7 @@ export async function POST(request) {
     const codigo = String(body.codigo || '').trim().toUpperCase();
     const directRoomId = String(body.roomId || '').trim();
     const nombre = String(body.nombreJugador || '').trim();
+    const avatarUrl = cleanAvatarUrl(body.avatarUrl);
 
     if (!directRoomId && codigo.length !== 6) {
       return NextResponse.json({ error: 'El código de sala debe tener 6 caracteres.' }, { status: 400 });
@@ -49,6 +58,7 @@ export async function POST(request) {
     const player = existing || {
       nombre,
       telefono: session.phone,
+      avatarUrl,
       cartones: { [generateCartonId()]: newCartonEntry() },
       gano: false,
       isHost: false,
@@ -59,6 +69,7 @@ export async function POST(request) {
       [`${roomPath(roomId)}/players/${playerId}`]: {
         ...player,
         nombre,
+        avatarUrl: avatarUrl || player.avatarUrl || '',
       },
       [`${roomPath(roomId)}/updatedAt`]: Date.now(),
       [`bingoRoomMemberships/${playerId}/${roomId}`]: {

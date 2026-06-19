@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { rtdb } from '@/lib/firebase'
 import { ref as dbRef, onValue, update, remove, serverTimestamp } from 'firebase/database'
 import { phoneKey, ensureSession } from '@/lib/rifaSession'
@@ -151,7 +152,7 @@ export default function RifaDetallePage() {
         {/* Header con info */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 mb-4 flex flex-col sm:flex-row gap-4">
           {rifa.foto_url ? (
-            <img src={rifa.foto_url} alt="" className="w-full sm:w-40 h-32 sm:h-32 object-cover rounded-xl" />
+            <Image src={rifa.foto_url} alt="" width={320} height={256} unoptimized className="w-full sm:w-40 h-32 sm:h-32 object-cover rounded-xl" />
           ) : (
             <div className="w-full sm:w-40 h-32 bg-gradient-to-br from-yellow-400 to-emerald-500 rounded-xl flex items-center justify-center text-5xl">🎁</div>
           )}

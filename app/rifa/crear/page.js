@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { rtdb, storage } from '@/lib/firebase'
 import { ref as dbRef, push, set, serverTimestamp, update } from 'firebase/database'
 import { ref as stRef, uploadBytes, getDownloadURL } from 'firebase/storage'
@@ -115,7 +116,7 @@ export default function RifaCrearPage() {
               <label className="cursor-pointer block">
                 <div className="aspect-video bg-gray-100 rounded-2xl border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden hover:border-yellow-400 transition-colors">
                   {fotoPreview ? (
-                    <img src={fotoPreview} alt="" className="w-full h-full object-cover" />
+                    <Image src={fotoPreview} alt="" width={720} height={405} unoptimized className="w-full h-full object-cover" />
                   ) : (
                     <div className="text-gray-400 text-sm">Toca para subir imagen</div>
                   )}

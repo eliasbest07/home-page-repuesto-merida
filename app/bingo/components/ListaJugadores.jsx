@@ -1,5 +1,7 @@
 'use client';
 
+import Image from 'next/image';
+
 /**
  * Lista de jugadores en la sala.
  *
@@ -37,11 +39,15 @@ export default function ListaJugadores({ jugadores = [], hostNombre = '', miJuga
                     : 'bg-gray-800/60',
                 ].join(' ')}
               >
-                {/* Avatar inicial */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                {/* Avatar */}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center overflow-hidden text-sm font-bold shrink-0 ${
                   j.gano ? 'bg-brand-yellow text-gray-900' : 'bg-gray-700 text-white'
                 }`}>
-                  {j.nombre?.[0]?.toUpperCase() || '?'}
+                  {j.avatarUrl ? (
+                    <Image src={j.avatarUrl} alt="" width={32} height={32} unoptimized className="h-full w-full object-cover" />
+                  ) : (
+                    j.nombre?.[0]?.toUpperCase() || '?'
+                  )}
                 </div>
 
                 {/* Nombre */}

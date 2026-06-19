@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { onValue, ref } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
 import { playerCartones } from '@/lib/bingo';
@@ -50,6 +51,7 @@ const GRADIENTES_SALA = [
   'from-violet-500 via-purple-500 to-blue-500',
   'from-emerald-400 via-teal-500 to-cyan-500',
 ];
+const PROFILE_PHOTO_KEY = 'bingo_profile_photo';
 
 function saveDisplayName(name) {
   if (typeof window === 'undefined') return;
@@ -59,6 +61,46 @@ function saveDisplayName(name) {
 function getDisplayName() {
   if (typeof window === 'undefined') return '';
   return localStorage.getItem('bingo_display_name') || '';
+}
+
+function saveProfilePhoto(value) {
+  if (typeof window === 'undefined') return;
+  if (value) localStorage.setItem(PROFILE_PHOTO_KEY, value);
+  else localStorage.removeItem(PROFILE_PHOTO_KEY);
+}
+
+function getProfilePhoto() {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(PROFILE_PHOTO_KEY) || '';
+}
+
+function resizeProfilePhoto(file) {
+  return new Promise((resolve, reject) => {
+    if (!file?.type?.startsWith('image/')) {
+      reject(new Error('Selecciona una imagen válida.'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 160;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const minSide = Math.min(img.width, img.height);
+        const sx = (img.width - minSide) / 2;
+        const sy = (img.height - minSide) / 2;
+        ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function formatMoney(value) {
@@ -164,6 +206,8 @@ export default function BingoLobby() {
   const [perfilAbierto, setPerfilAbierto] = useState(false);
   const [cartonBusy, setCartonBusy] = useState('');
   const [error, setError] = useState('');
+  const [perfilError, setPerfilError] = useState('');
+  const [fotoPerfil, setFotoPerfil] = useState('');
 
   // Formularios
   const [nombreJugador, setNombreJugador] = useState('');
@@ -180,6 +224,7 @@ export default function BingoLobby() {
 
   useEffect(() => {
     setNombreJugador(getDisplayName());
+    setFotoPerfil(getProfilePhoto());
     // La sesión la deja el enlace mágico (rifaSession en localStorage).
     ensureSession()
       .then((s) => {
@@ -266,6 +311,31 @@ export default function BingoLobby() {
     setPerfilAbierto(false);
   }
 
+  function guardarNombrePerfil(value) {
+    setNombreJugador(value);
+    saveDisplayName(value.trim());
+  }
+
+  async function cambiarFotoPerfil(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setPerfilError('');
+    try {
+      const resized = await resizeProfilePhoto(file);
+      setFotoPerfil(resized);
+      saveProfilePhoto(resized);
+    } catch (err) {
+      setPerfilError(err.message || 'No se pudo guardar la foto.');
+    } finally {
+      event.target.value = '';
+    }
+  }
+
+  function quitarFotoPerfil() {
+    setFotoPerfil('');
+    saveProfilePhoto('');
+  }
+
   // ── Salas ──
   async function crearSala(e) {
     e.preventDefault();
@@ -288,6 +358,7 @@ export default function BingoLobby() {
           premio: Number(premio) || 0,
           precioCarton: Number(precioCarton) || 0,
           enMinutos,
+          avatarUrl: fotoPerfil,
         }),
       });
       const data = await res.json();
@@ -310,7 +381,13 @@ export default function BingoLobby() {
       const res = await fetch('/api/bingo/unirse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: getSession()?.token, roomId, codigo: codigoSala, nombreJugador: trimmedName }),
+        body: JSON.stringify({
+          token: getSession()?.token,
+          roomId,
+          codigo: codigoSala,
+          nombreJugador: trimmedName,
+          avatarUrl: fotoPerfil,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'No se pudo entrar a la sala.');
@@ -323,15 +400,7 @@ export default function BingoLobby() {
 
   function verSala(sala) {
     setError('');
-    if (!session.authenticated) {
-      setModal('auth');
-      return;
-    }
-    if (sala.players?.[miId]) {
-      router.push(`/bingo/sala/${sala.id}`);
-      return;
-    }
-    setJoinTarget(sala);
+    router.push(`/bingo/sala/${sala.id}`);
   }
 
   async function accionCarton(salaId, action, cartonId) {
@@ -388,7 +457,7 @@ export default function BingoLobby() {
       <header className="sticky top-0 z-40 border-b border-gray-800/70 bg-gray-950/95 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center gap-2.5 px-3 py-3 sm:gap-3 sm:px-4">
           <Link href="/" className="flex shrink-0 items-center gap-2">
-            <img src="/iconorm.png" alt="Repuestos Mérida" className="h-9 w-9 rounded-full object-cover" />
+            <Image src="/iconorm.png" alt="Repuestos Mérida" width={36} height={36} unoptimized className="h-9 w-9 rounded-full object-cover" />
             <span className="font-brand text-2xl font-extrabold text-brand-yellow">Bingo</span>
           </Link>
 
@@ -421,15 +490,69 @@ export default function BingoLobby() {
                   : 'border-gray-800 bg-gray-900 text-gray-400 hover:text-white'
               }`}
             >
-              <IconUser className="h-5 w-5" />
+              {fotoPerfil ? (
+                <Image src={fotoPerfil} alt="" width={40} height={40} unoptimized className="h-full w-full rounded-full object-cover" />
+              ) : (
+                <IconUser className="h-5 w-5" />
+              )}
             </button>
             {perfilAbierto && session.authenticated && (
-              <div className="absolute right-0 top-12 w-56 rounded-2xl border border-gray-800 bg-gray-900 p-4 shadow-2xl">
-                <p className="text-xs uppercase tracking-[0.2em] text-gray-500">WhatsApp verificado</p>
-                <p className="mt-1 truncate font-semibold text-white">{session.phone}</p>
+              <div className="absolute right-0 top-12 w-72 rounded-2xl border border-gray-800 bg-gray-900 p-4 shadow-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full border border-gray-700 bg-gray-800">
+                    {fotoPerfil ? (
+                      <Image src={fotoPerfil} alt="" width={56} height={56} unoptimized className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-lg font-bold text-gray-300">
+                        {nombreJugador.trim()?.[0]?.toUpperCase() || <IconUser className="h-6 w-6" />}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Perfil de jugador</p>
+                    <p className="mt-1 truncate text-sm font-semibold text-white">{session.phone}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <label className="flex h-10 cursor-pointer items-center justify-center rounded-xl border border-gray-700 px-3 text-sm font-semibold text-gray-300 transition hover:border-brand-green hover:text-brand-green">
+                    Cambiar foto
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={cambiarFotoPerfil}
+                      className="hidden"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={quitarFotoPerfil}
+                    disabled={!fotoPerfil}
+                    className="h-10 rounded-xl border border-gray-700 px-3 text-sm font-semibold text-gray-300 transition hover:border-red-500/60 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Quitar
+                  </button>
+                </div>
+
+                <label className="mt-4 block">
+                  <span className="mb-1.5 block text-xs font-bold uppercase tracking-[0.18em] text-gray-500">
+                    Nombre visible
+                  </span>
+                  <input
+                    type="text"
+                    value={nombreJugador}
+                    onChange={(event) => guardarNombrePerfil(event.target.value)}
+                    maxLength={30}
+                    placeholder="Ej: María"
+                    className="w-full rounded-xl border border-gray-700 bg-gray-950 px-3 py-2.5 text-sm font-semibold text-white outline-none transition placeholder:text-gray-600 focus:border-brand-yellow"
+                  />
+                </label>
+
+                {perfilError && <p className="mt-3 text-xs font-semibold text-red-300">{perfilError}</p>}
+
                 <button
                   onClick={logout}
-                  className="mt-3 w-full rounded-xl border border-gray-700 px-3 py-2 text-sm text-gray-300 transition hover:border-gray-500 hover:text-white"
+                  className="mt-4 w-full rounded-xl border border-gray-700 px-3 py-2.5 text-sm font-semibold text-gray-300 transition hover:border-gray-500 hover:text-white"
                 >
                   Cerrar sesión
                 </button>

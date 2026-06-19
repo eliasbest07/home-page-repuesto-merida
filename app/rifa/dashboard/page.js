@@ -78,7 +78,7 @@ export default function RifaDashboardPage() {
         </Link>
         <div className="flex items-center gap-3">
           {session.perfil?.foto_url ? (
-            <img src={session.perfil.foto_url} alt="" className="w-8 h-8 rounded-full object-cover border border-gray-700" />
+            <Image src={session.perfil.foto_url} alt="" width={32} height={32} unoptimized className="w-8 h-8 rounded-full object-cover border border-gray-700" />
           ) : (
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-emerald-500 flex items-center justify-center text-xs font-bold text-white font-brand">
               {(session.perfil?.nombre || '').trim().split(/\s+/).slice(0, 2).map(s => s[0]?.toUpperCase()).filter(Boolean).join('') || '?'}
@@ -109,7 +109,7 @@ export default function RifaDashboardPage() {
               {rifasVendo.map((r) => (
                 <Link key={r.id} href={`/rifa/${r.id}/vender`} className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 hover:shadow-md transition-all flex items-center gap-3">
                   {r.foto_url ? (
-                    <img src={r.foto_url} alt="" className="w-12 h-12 rounded-lg object-cover" />
+                    <Image src={r.foto_url} alt="" width={48} height={48} unoptimized className="w-12 h-12 rounded-lg object-cover" />
                   ) : (
                     <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-yellow-400 to-emerald-500 flex items-center justify-center text-xl">🎁</div>
                   )}
@@ -138,7 +138,7 @@ export default function RifaDashboardPage() {
               <Link key={r.id} href={`/rifa/${r.id}`} className="bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all border border-gray-100 overflow-hidden flex flex-col">
                 {r.foto_url ? (
                   <div className="h-32 bg-gray-100 overflow-hidden">
-                    <img src={r.foto_url} alt={r.titulo} className="w-full h-full object-cover" />
+                    <Image src={r.foto_url} alt={r.titulo} width={640} height={256} unoptimized className="w-full h-full object-cover" />
                   </div>
                 ) : (
                   <div className="h-32 bg-gradient-to-br from-yellow-400 to-emerald-500 flex items-center justify-center text-5xl">🎁</div>

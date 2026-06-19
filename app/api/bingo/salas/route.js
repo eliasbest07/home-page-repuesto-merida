@@ -10,6 +10,13 @@ import {
 import { verifyRifaToken } from '@/lib/rifaJwt';
 
 const VALID_MODES = new Set(['linea', 'L', 'T', 'lleno']);
+const MAX_AVATAR_LENGTH = 160_000;
+
+function cleanAvatarUrl(value) {
+  const avatar = String(value || '');
+  if (!avatar.startsWith('data:image/') || avatar.length > MAX_AVATAR_LENGTH) return '';
+  return avatar;
+}
 
 export async function POST(request) {
   try {
@@ -27,6 +34,7 @@ export async function POST(request) {
     const intervaloSeg = Math.max(3, Math.min(20, Number(body.intervalo) || 6));
     const premio = Math.max(0, Math.min(1_000_000_000, Math.round(Number(body.premio) || 0)));
     const precioCarton = Math.max(0, Math.min(1_000_000_000, Math.round(Number(body.precioCarton) || 0)));
+    const avatarUrl = cleanAvatarUrl(body.avatarUrl);
     // Minutos hasta el inicio programado (0 = sin horario, máx 7 días)
     const enMinutos = Math.max(0, Math.min(10080, Math.round(Number(body.enMinutos) || 0)));
     const comienzaEn = enMinutos > 0 ? Date.now() + enMinutos * 60_000 : null;
@@ -44,6 +52,7 @@ export async function POST(request) {
       roomName,
       hostName,
       hostPhone: session.phone,
+      hostAvatarUrl: avatarUrl,
       modo,
       intervaloSeg,
       premio,

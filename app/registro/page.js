@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { rtdb, storage } from '@/lib/firebase'
 import { ref as dbRef, set, serverTimestamp } from 'firebase/database'
@@ -151,7 +152,7 @@ function RegistroInner() {
               <label className="cursor-pointer group relative">
                 <div className="w-24 h-24 rounded-full bg-gradient-to-br from-yellow-400 to-emerald-500 border-2 border-white shadow-lg flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform">
                   {fotoPreview ? (
-                    <img src={fotoPreview} alt="" className="w-full h-full object-cover" />
+                    <Image src={fotoPreview} alt="" width={96} height={96} unoptimized className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-3xl font-bold font-brand text-white select-none">{iniciales}</span>
                   )}

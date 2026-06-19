@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ensureSession } from '@/lib/rifaSession'
 
@@ -167,7 +168,7 @@ function PhotoInput({ label, hint, preview, onChange, capture }) {
       <span className="mt-1 block min-h-8 text-xs leading-relaxed text-gray-500">{hint}</span>
       <span className="mt-3 flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg border border-dashed border-gray-300 bg-white">
         {preview ? (
-          <img src={preview} alt="" className="h-full w-full object-cover" />
+          <Image src={preview} alt="" width={480} height={360} unoptimized className="h-full w-full object-cover" />
         ) : (
           <svg className="h-8 w-8 text-gray-300" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.38a2 2 0 0 0 1.66-.9l.42-.62A2 2 0 0 1 10.62 3.6h2.76a2 2 0 0 1 1.66.88l.42.62a2 2 0 0 0 1.66.9h1.38A2.5 2.5 0 0 1 21 8.5v9A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-9Z" />

@@ -8,7 +8,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.co
 const localKeywordText = LOCAL_SEO_SIGNALS.highValueKeywords.join(', ')
 
 export const metadata = {
-  title: 'Repuestos Mérida Ciudad | Catálogo de Repuestos Automotrices en Mérida, Venezuela',
+  title: 'Repuestos Mérida App Ciudad | Catálogo de Repuestos Automotrices en Mérida, Venezuela',
   description: 'Repuestos automotrices en Mérida ciudad (Municipio Libertador), estado Mérida, Venezuela. Atención por WhatsApp, compatibilidad por modelo y disponibilidad rápida.',
   keywords: `repuestos Mérida ciudad, repuestos Municipio Libertador, repuestos estado Mérida, repuestos automotrices Venezuela, ${localKeywordText}`,
   other: {
@@ -30,7 +30,7 @@ export const metadata = {
     },
   },
   openGraph: {
-    title: 'Repuestos Mérida Ciudad | Tu Repuesto Automotriz en Los Andes',
+    title: 'Repuestos Mérida App Ciudad | Tu Repuesto Automotriz en Los Andes',
     description: 'Catálogo de repuestos automotrices en Mérida ciudad y zona metropolitana. Consulta por WhatsApp, precio y compatibilidad.',
     url: SITE_URL,
     siteName: 'Repuestos Mérida',
@@ -47,7 +47,7 @@ export const metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Repuestos Mérida Ciudad | Catálogo de Repuestos Automotrices',
+    title: 'Repuestos Mérida App Ciudad | Catálogo de Repuestos Automotrices',
     description: 'Inventario automotriz para Mérida ciudad y estado Mérida. Respuesta rápida por WhatsApp.',
     images: ['/iconorm.png'],
   },

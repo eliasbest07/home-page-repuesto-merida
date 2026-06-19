@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { onValue, ref } from 'firebase/database';
 import Carton from '../../components/Carton';
 import ControlesHost from '../../components/ControlesHost';
@@ -12,10 +13,33 @@ import { normalizePlayersMap, roomPath } from '@/lib/bingoRealtime';
 import { playerCartones } from '@/lib/bingo';
 import { rtdb } from '@/lib/firebase';
 import { phoneKey } from '@/lib/whatsappAuth';
+import { ensureSession, getSession } from '@/lib/rifaSession';
+
+const WA_OFICIAL = '584123375417';
+const MSG_BINGO = 'Hola Oso, quiero iniciar sesión en Repuestos Mérida desde Bingo para comprar un cartón. Mándame el link, por favor.';
+const PROFILE_PHOTO_KEY = 'bingo_profile_photo';
+
+function waOficialUrl(mensaje) {
+  return `https://wa.me/${WA_OFICIAL}?text=${encodeURIComponent(mensaje)}`;
+}
 
 function getStoredName() {
   if (typeof window === 'undefined') return '';
   return localStorage.getItem('bingo_display_name') || '';
+}
+
+function saveStoredName(name) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('bingo_display_name', name);
+}
+
+function getStoredProfilePhoto() {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(PROFILE_PHOTO_KEY) || '';
+}
+
+function formatMoney(value) {
+  return `$${new Intl.NumberFormat('es-VE').format(value || 0)}`;
 }
 
 export default function SalaBingo() {
@@ -24,9 +48,14 @@ export default function SalaBingo() {
 
   const [room, setRoom] = useState(null);
   const [session, setSession] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
+  const [joinError, setJoinError] = useState('');
+  const [joinLoading, setJoinLoading] = useState(false);
+  const [nombreJugador, setNombreJugador] = useState('');
+  const [fotoPerfil, setFotoPerfil] = useState('');
   const [cantando, setCantando] = useState(false);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [ganadorModal, setGanadorModal] = useState(null);
@@ -37,26 +66,26 @@ export default function SalaBingo() {
   useEffect(() => {
     let mounted = true;
 
-    fetch('/api/bingo/auth/session', { cache: 'no-store' })
-      .then((res) => res.json())
+    setNombreJugador(getStoredName());
+    setFotoPerfil(getStoredProfilePhoto());
+    ensureSession()
       .then((data) => {
         if (!mounted) return;
-        if (!data.authenticated) {
-          router.replace('/bingo');
-          return;
-        }
-        setSession(data);
+        setSession(data?.telefono ? { authenticated: true, phone: data.telefono } : { authenticated: false, phone: '' });
       })
       .catch(() => {
         if (mounted) {
-          router.replace('/bingo');
+          setSession({ authenticated: false, phone: '' });
         }
+      })
+      .finally(() => {
+        if (mounted) setAuthChecked(true);
       });
 
     return () => {
       mounted = false;
     };
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     if (!id) return undefined;
@@ -103,13 +132,14 @@ export default function SalaBingo() {
   const esHost = room?.hostPlayerId === miJugadorId;
   const cantadas = room?.numerosCantados || [];
   const esTuGanador = Boolean(ganadorModal && ganadorModal.jugadorId === miJugadorId);
+  const puedeComprarCarton = room?.estado === 'esperando' && !miJugador;
 
   async function runAction(action) {
     setActionError('');
     const res = await fetch(`/api/bingo/salas/${id}/accion`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ token: getSession()?.token, action }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -165,6 +195,44 @@ export default function SalaBingo() {
     }
   }
 
+  async function comprarCarton(event) {
+    event.preventDefault();
+    setJoinError('');
+
+    if (!session?.authenticated) {
+      setJoinError('Verifica tu WhatsApp para comprar un cartón.');
+      return;
+    }
+
+    const trimmedName = nombreJugador.trim();
+    if (!trimmedName) {
+      setJoinError('Ingresa tu nombre visible.');
+      return;
+    }
+
+    setJoinLoading(true);
+    try {
+      saveStoredName(trimmedName);
+      const res = await fetch('/api/bingo/unirse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: getSession()?.token,
+          roomId: id,
+          nombreJugador: trimmedName,
+          avatarUrl: fotoPerfil,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo tomar el cartón.');
+      setActiveTab('carton');
+    } catch (err) {
+      setJoinError(err.message || 'No se pudo tomar el cartón.');
+    } finally {
+      setJoinLoading(false);
+    }
+  }
+
   useEffect(() => {
     clearInterval(autoIntervalRef.current);
 
@@ -192,7 +260,7 @@ export default function SalaBingo() {
     window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
   }
 
-  if (loading || !session) {
+  if (loading || !authChecked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-950">
         <div className="text-center">
@@ -229,6 +297,11 @@ export default function SalaBingo() {
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-2 lg:grid lg:grid-cols-2 lg:overflow-visible">
+        {jugadores.length === 0 && (
+          <div className="min-w-full rounded-2xl border border-dashed border-gray-800 bg-gray-900 p-6 text-center text-sm text-gray-500">
+            Todavía no hay cartones comprados en esta sala.
+          </div>
+        )}
         {jugadores.flatMap((player) => {
           const cartones = playerCartones(player);
           return cartones.map((entry, index) => (
@@ -245,7 +318,12 @@ export default function SalaBingo() {
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-white">
-                    {player.nombre}
+                    <span className="inline-flex items-center gap-2">
+                      {player.avatarUrl && (
+                        <Image src={player.avatarUrl} alt="" width={24} height={24} unoptimized className="h-6 w-6 rounded-full object-cover" />
+                      )}
+                      <span className="truncate">{player.nombre}</span>
+                    </span>
                     {player.id === miJugadorId ? ' (tú)' : ''}
                   </p>
                   <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">
@@ -304,11 +382,23 @@ export default function SalaBingo() {
             <div className="space-y-6">
               <ListaJugadores jugadores={jugadores} hostNombre={room.hostNombre} miJugadorId={miJugadorId} />
               {actionError && <p className="text-sm text-red-400">{actionError}</p>}
-              {esHost ? (
-                <ControlesHost sala={room} jugadores={jugadores} onIniciar={iniciarJuego} />
+                {esHost ? (
+                  <ControlesHost sala={room} jugadores={jugadores} onIniciar={iniciarJuego} />
+              ) : puedeComprarCarton ? (
+                <ComprarCartonPanel
+                  room={room}
+                  authenticated={session?.authenticated}
+                  nombreJugador={nombreJugador}
+                  onNombreChange={setNombreJugador}
+                  onSubmit={comprarCarton}
+                  loading={joinLoading}
+                  error={joinError}
+                />
               ) : (
                 <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5 text-sm text-gray-400">
-                  Esperando al anfitrión. Cuando inicie la partida, los cartones se sincronizan en tiempo real.
+                  {miJugador
+                    ? 'Ya tienes cartón en esta sala. Esperando al anfitrión para iniciar.'
+                    : 'La partida ya inició. Puedes ver la sala, pero la compra de cartones está cerrada.'}
                 </div>
               )}
             </div>
@@ -405,7 +495,14 @@ export default function SalaBingo() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-center text-sm text-gray-500">Aún no apareces en esta sala.</p>
+                  <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-950 p-5 text-center">
+                    <p className="text-sm font-semibold text-white">Aún no tienes cartón en esta sala.</p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {room.estado === 'esperando'
+                        ? 'Compra un cartón antes de que el anfitrión inicie.'
+                        : 'La partida ya inició y la compra de cartones está cerrada.'}
+                    </p>
+                  </div>
                 )}
 
                 {!esHost && room.estado === 'jugando' && miJugador && !miJugador.gano && (
@@ -465,6 +562,18 @@ export default function SalaBingo() {
             </div>
           )}
 
+          {puedeComprarCarton && (
+            <ComprarCartonPanel
+              room={room}
+              authenticated={session?.authenticated}
+              nombreJugador={nombreJugador}
+              onNombreChange={setNombreJugador}
+              onSubmit={comprarCarton}
+              loading={joinLoading}
+              error={joinError}
+            />
+          )}
+
           {esHost && (
             <div className="rounded-3xl border border-gray-800 bg-gray-900 p-5">
               <ControlesHost
@@ -491,5 +600,67 @@ export default function SalaBingo() {
         />
       )}
     </main>
+  );
+}
+
+function ComprarCartonPanel({
+  room,
+  authenticated,
+  nombreJugador,
+  onNombreChange,
+  onSubmit,
+  loading,
+  error,
+}) {
+  const esGratis = !(room?.precioCarton > 0);
+
+  return (
+    <form onSubmit={onSubmit} className="rounded-2xl border border-brand-yellow/30 bg-yellow-500/10 p-5">
+      <p className="text-xs font-bold uppercase tracking-[0.25em] text-brand-yellow">
+        {esGratis ? 'Tomar cartón' : 'Comprar cartón'}
+      </p>
+      <h2 className="mt-2 text-xl font-bold text-white">
+        {esGratis ? 'Entra con un cartón gratis' : `Cartón ${formatMoney(room.precioCarton)}`}
+      </h2>
+      <p className="mt-2 text-sm leading-relaxed text-yellow-100/80">
+        Verás quiénes ya tienen cartón mientras el anfitrión inicia la partida.
+        {esGratis ? '' : ' El pago se coordina con el anfitrión por WhatsApp.'}
+      </p>
+
+      {!authenticated ? (
+        <a
+          href={waOficialUrl(MSG_BINGO)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 flex w-full items-center justify-center rounded-xl bg-[#25D366] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#128C7E]"
+        >
+          Verificar WhatsApp
+        </a>
+      ) : (
+        <>
+          <label className="mt-4 block">
+            <span className="mb-1.5 block text-xs font-bold uppercase tracking-[0.18em] text-yellow-100/70">
+              Tu nombre visible
+            </span>
+            <input
+              type="text"
+              value={nombreJugador}
+              onChange={(event) => onNombreChange(event.target.value)}
+              maxLength={30}
+              placeholder="Ej: María"
+              className="w-full rounded-xl border border-yellow-500/30 bg-gray-950 px-4 py-3 text-sm font-semibold text-white outline-none transition placeholder:text-gray-600 focus:border-brand-yellow"
+            />
+          </label>
+          {error && <p className="mt-3 text-sm font-semibold text-red-300">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-4 w-full rounded-xl bg-brand-yellow px-4 py-3 text-sm font-extrabold text-gray-950 transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? 'Entrando...' : esGratis ? 'Tomar cartón' : 'Comprar cartón'}
+          </button>
+        </>
+      )}
+    </form>
   );
 }
