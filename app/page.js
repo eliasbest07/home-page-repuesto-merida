@@ -318,14 +318,30 @@ function normalizeHomeProduct(item, id) {
   }
 }
 
-function featuredBrandIcon(producto) {
+// Resuelve la marca real del producto (objeto {name, icon}) o null si ninguna
+// de las marcas conocidas aparece en sus textos.
+function resolveProductBrand(producto) {
   const text = [producto?.marca, producto?.compat, producto?.descripcion, producto?.nombre]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
   const brandSource = producto?.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
-  const brand = brandSource.find((item) => text.includes(item.name.toLowerCase()))
-  return brand?.icon || '/mobile-catalog/categories/motor.png'
+  return brandSource.find((item) => text.includes(item.name.toLowerCase())) || null
+}
+
+function featuredBrandIcon(producto) {
+  return resolveProductBrand(producto)?.icon || '/mobile-catalog/categories/motor.png'
+}
+
+// Badge con el logo de la marca para la esquina de la imagen del card.
+function ProductBrandBadge({ producto }) {
+  const brand = resolveProductBrand(producto)
+  if (!brand) return null
+  return (
+    <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center justify-center">
+      <Image src={brand.icon} alt={brand.name} width={36} height={36} className="h-9 w-9 object-contain drop-shadow-md" />
+    </span>
+  )
 }
 
 function readFileAsDataUrl(file) {
@@ -1616,6 +1632,17 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+              {selectedBrand && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedBrand('')}
+                  title="Quitar filtro de marca"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-yellow-400 bg-yellow-50 px-3 py-2 text-xs font-extrabold text-gray-900 transition hover:bg-yellow-100"
+                >
+                  <span>{selectedBrand}</span>
+                  <span className="text-sm leading-none text-gray-500">×</span>
+                </button>
+              )}
               <div className="relative max-w-xs w-full sm:w-auto">
                 <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
                   <IconSearch />
@@ -1673,6 +1700,7 @@ export default function Home() {
                     ) : (
                       <div className="flex h-full items-center justify-center text-5xl">📦</div>
                     )}
+                    <ProductBrandBadge producto={p} />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
                       <p className="line-clamp-2 text-sm font-semibold text-white">{p.nombre}</p>
                     </div>
