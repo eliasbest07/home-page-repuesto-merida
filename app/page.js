@@ -187,6 +187,21 @@ const PRODUCTOS = [
   { id: 39, nombre: 'Tapa de Radiador (Presión)', categoria: 'refrigeracion', precio: '$5 – $15', marca: 'Stant / OEM', compat: 'Universal', disponible: true, destacado: false },
 ]
 
+const MOTO_PRODUCTS = [
+  { id: 'moto-filtro-aceite', nombre: 'Filtro de Aceite para Moto', categoria: 'filtros', precio: '$4 – $12', marca: 'Motores 150cc · 200cc · 250cc', compat: 'Bera · Empire · Suzuki · Yamaha · Honda', disponible: true, destacado: true, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/filtro.png', descripcion: 'Filtro de aceite para mantenimiento preventivo de motos.' },
+  { id: 'moto-pastillas-freno', nombre: 'Pastillas de Freno para Moto', categoria: 'frenos', precio: '$8 – $22', marca: 'Sistema de frenos', compat: 'Motos automáticas y sincronicas por muestra', disponible: true, destacado: true, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/freno.png', descripcion: 'Pastillas delanteras o traseras según modelo.' },
+  { id: 'moto-bateria', nombre: 'Batería para Moto 12V', categoria: 'electrico', precio: '$18 – $45', marca: 'Baterías 12V', compat: 'Scooter · Paseo · Trabajo · Alta cilindrada', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/bateria.png', descripcion: 'Baterías selladas y convencionales para moto.' },
+  { id: 'moto-bujia', nombre: 'Bujía para Moto', categoria: 'electrico', precio: '$3 – $12', marca: 'NGK / Bosch / Denso', compat: 'Motores gasolina 2T y 4T', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/electricidad.png', descripcion: 'Bujías por código, rosca y grado térmico.' },
+  { id: 'moto-cadena', nombre: 'Cadena de Transmisión', categoria: 'motor', precio: '$12 – $35', marca: 'Transmisión de moto', compat: 'Paso 428 · 520 · 525 · 530', disponible: true, destacado: true, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/transmision.png', descripcion: 'Cadenas de transmisión para motos de paseo, trabajo y alta cilindrada.' },
+  { id: 'moto-corona-pinon', nombre: 'Kit Corona y Piñón', categoria: 'motor', precio: '$20 – $55', marca: 'Kit de arrastre', compat: 'Bera · Empire · Suzuki · Yamaha · Honda', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/transmision.png', descripcion: 'Kit de arrastre por relación y modelo.' },
+  { id: 'moto-guayas', nombre: 'Guayas de Clutch, Freno o Acelerador', categoria: 'motor', precio: '$5 – $18', marca: 'Mandos de moto', compat: 'Universal y por modelo', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/correa.png', descripcion: 'Guayas para clutch, freno delantero, acelerador y velocímetro.' },
+  { id: 'moto-caucho', nombre: 'Caucho para Moto', categoria: 'todos', precio: '$25 – $90', marca: 'Cauchos de moto', compat: 'Medidas 17 · 18 · scooter · tripa o tubeless', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/caucho.png', descripcion: 'Cauchos por medida, labrado y rin.' },
+  { id: 'moto-amortiguador', nombre: 'Amortiguadores para Moto', categoria: 'frenos', precio: '$25 – $80', marca: 'Suspensión de moto', compat: 'Traseros por medida y anclaje', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/amortiguador.png', descripcion: 'Amortiguadores traseros y componentes de suspensión.' },
+  { id: 'moto-kit-empacaduras', nombre: 'Kit de Empacaduras para Moto', categoria: 'motor', precio: '$10 – $35', marca: 'Motor de moto', compat: '150cc · 200cc · 250cc · por muestra', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/empaque.png', descripcion: 'Empacaduras para tapa válvula, cilindro, clutch y motor.' },
+  { id: 'moto-bomba-gasolina', nombre: 'Bomba de Gasolina para Moto', categoria: 'electrico', precio: '$18 – $60', marca: 'Inyección / carburada', compat: 'Scooter e inyección electrónica', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/motor.png', descripcion: 'Bombas eléctricas o mecánicas según sistema.' },
+  { id: 'moto-luces', nombre: 'Luces, Bombillos y Cruces', categoria: 'electrico', precio: '$3 – $25', marca: 'Iluminación de moto', compat: 'LED · halógeno · cocuyo · stop', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/electricidad.png', descripcion: 'Bombillos, faros, stop y luces de cruce.' },
+]
+
 const HOME_CATEGORY_KEYWORDS = [
   { id: 'motor', terms: ['motor', 'transmision', 'transmisión', 'correa', 'empaque', 'culata', 'reten', 'retén'] },
   { id: 'frenos', terms: ['freno', 'suspension', 'suspensión', 'amortiguador', 'rotula', 'rótula', 'muñon', 'muñón', 'disco'] },
@@ -220,6 +235,45 @@ function inferHomeCategory(item) {
   }
 
   return 'motor'
+}
+
+function inferVehicleType(item) {
+  const explicitType = normalizeText(item.tipo_vehiculo || item.tipoVehiculo || item.vehiculo_tipo)
+  const haystack = normalizeText([
+    item.categoria,
+    item.marca,
+    item.descripcion,
+    item.modelos,
+    item.vehiculo,
+    item.nombre,
+  ].filter(Boolean).join(' '))
+
+  const hasCarBrand = CAR_BRANDS.some((brand) => haystack.includes(normalizeText(brand.name)))
+  const hasMotoBrand = MOTO_BRANDS.some((brand) => haystack.includes(normalizeText(brand.name)))
+  const hasMotoWord = /\bmoto\b|\bmotos\b|\bscooter\b|\btx\b|\barsen\b|\b150cc\b|\b200cc\b|\b250cc\b/.test(haystack)
+
+  if (explicitType === 'carro') return 'carro'
+  if (explicitType === 'moto' && !hasCarBrand) return 'moto'
+  if (hasCarBrand && !hasMotoWord) return 'carro'
+  if (hasMotoWord || hasMotoBrand) {
+    return 'moto'
+  }
+
+  return 'carro'
+}
+
+function matchesCatalogBrand(product, brandName) {
+  const brand = normalizeText(brandName)
+  if (!brand) return true
+
+  const haystack = normalizeText([
+    product.nombre,
+    product.marca,
+    product.compat,
+    product.descripcion,
+  ].filter(Boolean).join(' '))
+
+  return haystack.includes(brand)
 }
 
 function formatPrice(value) {
@@ -257,6 +311,7 @@ function normalizeHomeProduct(item, id) {
     disponible: item.publicado !== 'agotado' && item.estado !== 'agotado',
     destacado: item.relevancia === '0' || item.relevancia === 0,
     imagen: typeof img === 'string' ? img : '',
+    tipo_vehiculo: item.tipo_vehiculo || item.tipoVehiculo || item.vehiculo_tipo || inferVehicleType(item),
     whatsapp: item.whatsapp || WA_NUMBER,
     descripcion: item.descripcion || '',
     userID: item.userID || '',
@@ -268,7 +323,8 @@ function featuredBrandIcon(producto) {
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
-  const brand = CAR_BRANDS.find((item) => text.includes(item.name.toLowerCase()))
+  const brandSource = producto?.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
+  const brand = brandSource.find((item) => text.includes(item.name.toLowerCase()))
   return brand?.icon || '/mobile-catalog/categories/motor.png'
 }
 
@@ -458,6 +514,7 @@ export default function Home() {
   const [catActiva, setCatActiva] = useState('todos')
   const [busqueda, setBusqueda] = useState('')
   const [brandType, setBrandType] = useState('carro')
+  const [catalogVehicleType, setCatalogVehicleType] = useState('carro')
   const [selectedBrand, setSelectedBrand] = useState('')
   const [requestFormOpen, setRequestFormOpen] = useState(false)
   const [requestForm, setRequestForm] = useState({
@@ -472,7 +529,7 @@ export default function Home() {
   const [requestMessage, setRequestMessage] = useState('')
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [catalogo, setCatalogo] = useState(PRODUCTOS)
+  const [catalogo, setCatalogo] = useState([...PRODUCTOS, ...MOTO_PRODUCTS])
   const [catalogoError, setCatalogoError] = useState('')
   const [usersById, setUsersById] = useState({})
   const [rutaTienda, setRutaTienda] = useState(null)
@@ -547,16 +604,16 @@ export default function Home() {
           .filter((item) => item.imagen)
 
         if (items.length > 0) {
-          setCatalogo(items)
+          setCatalogo([...items, ...MOTO_PRODUCTS])
           setCatalogoError('')
         } else {
-          setCatalogo(PRODUCTOS)
+          setCatalogo([...PRODUCTOS, ...MOTO_PRODUCTS])
           setCatalogoError('La colección de repuestos no devolvió imágenes visibles.')
         }
       })
       .catch(() => {
         if (cancelled) return
-        setCatalogo(PRODUCTOS)
+        setCatalogo([...PRODUCTOS, ...MOTO_PRODUCTS])
         setCatalogoError('No se pudo cargar el catálogo de repuestos desde Firebase.')
       })
 
@@ -634,6 +691,8 @@ export default function Home() {
   }, [])
 
   const productosFiltrados = catalogo.filter((p) => {
+    const matchVehicle = !catalogVehicleType || (p.tipo_vehiculo || 'carro') === catalogVehicleType
+    const matchBrand = matchesCatalogBrand(p, selectedBrand)
     const matchCat = catActiva === 'todos' || p.categoria === catActiva
     const q = busqueda.toLowerCase()
     const matchSearch = !q ||
@@ -641,7 +700,7 @@ export default function Home() {
       p.marca.toLowerCase().includes(q) ||
       p.compat.toLowerCase().includes(q) ||
       (p.descripcion || '').toLowerCase().includes(q)
-    return matchCat && matchSearch
+    return matchVehicle && matchBrand && matchCat && matchSearch
   })
 
   const handleCat = (id) => {
@@ -649,7 +708,22 @@ export default function Home() {
     setBusqueda('')
   }
 
-  const featuredProducts = catalogo.filter((p) => p.destacado).slice(0, 8)
+  const selectVehicleType = (type) => {
+    setBrandType(type)
+    setCatalogVehicleType(type)
+    setSelectedBrand('')
+    setCatActiva('todos')
+    setBusqueda('')
+    setRequestForm((current) => ({ ...current, tipoVehiculo: type }))
+  }
+
+  const featuredProducts = catalogo
+    .filter((p) => (
+      p.destacado &&
+      (p.tipo_vehiculo || 'carro') === catalogVehicleType &&
+      matchesCatalogBrand(p, selectedBrand)
+    ))
+    .slice(0, 8)
   const mobileFeaturedProducts = (featuredProducts.length ? featuredProducts : catalogo.filter((p) => p.imagen))
     .slice(0, 8)
     .map((product) => ({
@@ -1148,11 +1222,7 @@ export default function Home() {
                 key={type.id}
                 aria-selected={brandType === type.id}
                 className={brandType === type.id ? 'is-active' : ''}
-                onClick={() => {
-                  setBrandType(type.id)
-                  setSelectedBrand('')
-                  setRequestForm((current) => ({ ...current, tipoVehiculo: type.id }))
-                }}
+                onClick={() => selectVehicleType(type.id)}
               >
                 {type.label}
               </button>
@@ -1166,7 +1236,12 @@ export default function Home() {
                 key={brand.name}
                 aria-pressed={selectedBrand === brand.name}
                 className={`home-brand-card ${selectedBrand === brand.name ? 'is-active' : ''}`}
-                onClick={() => setSelectedBrand(brand.name)}
+                onClick={() => {
+                  setSelectedBrand(brand.name)
+                  setCatalogVehicleType(brandType)
+                  setCatActiva('todos')
+                  setBusqueda('')
+                }}
               >
                 <span className="home-brand-logo">
                   <Image src={brand.icon} alt="" width={54} height={54} />
@@ -1208,7 +1283,14 @@ export default function Home() {
                     <span>Tipo</span>
                     <select
                       value={requestForm.tipoVehiculo}
-                      onChange={(event) => setRequestForm((current) => ({ ...current, tipoVehiculo: event.target.value }))}
+                      onChange={(event) => {
+                        const nextType = event.target.value
+                        if (nextType === 'carro' || nextType === 'moto') {
+                          selectVehicleType(nextType)
+                        } else {
+                          setRequestForm((current) => ({ ...current, tipoVehiculo: nextType }))
+                        }
+                      }}
                     >
                       <option value="carro">Carro</option>
                       <option value="moto">Moto</option>
@@ -1330,7 +1412,7 @@ export default function Home() {
           {mobileFeaturedProducts.map((item) => (
             <button
               type="button"
-              key={item.label}
+              key={item.product.id}
               className="mobile-featured-card"
               onClick={() => openDetallePara(item.product)}
             >
@@ -1499,7 +1581,9 @@ export default function Home() {
             <div>
               <h2 className="font-brand text-2xl sm:text-3xl text-gray-900">
                 {catActiva === 'todos'
-                  ? 'Catálogo Completo'
+                  ? catalogVehicleType === 'moto'
+                    ? 'Repuestos de Moto'
+                    : 'Catálogo de Repuestos para Carro'
                   : CATEGORIAS.find(c => c.id === catActiva)?.nombre}
               </h2>
               <p className="text-gray-500 text-sm mt-1">
@@ -1512,17 +1596,38 @@ export default function Home() {
             </div>
 
             {/* Búsqueda inline */}
-            <div className="relative max-w-xs w-full sm:w-auto">
-              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
-                <IconSearch />
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+              <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
+                {[
+                  { id: 'carro', label: 'Carros' },
+                  { id: 'moto', label: 'Motos' },
+                ].map((type) => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    onClick={() => selectVehicleType(type.id)}
+                    className={`rounded-lg px-3 py-2 text-xs font-extrabold transition ${
+                      catalogVehicleType === type.id
+                        ? 'bg-gray-950 text-yellow-400 shadow-sm'
+                        : 'text-gray-600 hover:bg-white'
+                    }`}
+                  >
+                    {type.label}
+                  </button>
+                ))}
               </div>
-              <input
-                type="text"
-                placeholder="Buscar…"
-                value={busqueda}
-                onChange={(e) => { setBusqueda(e.target.value); setCatActiva('todos') }}
-                className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm w-full focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
-              />
+              <div className="relative max-w-xs w-full sm:w-auto">
+                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
+                  <IconSearch />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Buscar…"
+                  value={busqueda}
+                  onChange={(e) => { setBusqueda(e.target.value); setCatActiva('todos') }}
+                  className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm w-full focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
+                />
+              </div>
             </div>
           </div>
 

@@ -15,7 +15,8 @@ async function resolveGoogleUser(idToken) {
   if (!token) return null
   try {
     const { getAdminAuth } = await import('@/lib/firebaseAdmin')
-    const decoded = await getAdminAuth().verifyIdToken(token)
+    const auth = await getAdminAuth()
+    const decoded = await auth.verifyIdToken(token)
     return {
       uid: decoded.uid,
       email: cleanText(decoded.email, 180),
