@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ensureSession } from '@/lib/rifaSession'
+import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 
 function safeRedirect(value) {
   if (!value || typeof value !== 'string') return '/'
@@ -32,6 +33,7 @@ function VerificacionEdadInner() {
   const [cedulaPreview, setCedulaPreview] = useState('')
   const [selfiePreview, setSelfiePreview] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [preparingImage, setPreparingImage] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -63,11 +65,32 @@ function VerificacionEdadInner() {
   }, [selfie])
 
   function pickFile(setter) {
-    return (event) => {
-      const file = event.target.files?.[0] || null
-      setter(file)
+    return async (event) => {
+      const file = event.target.files?.[0]
+      event.target.value = ''
       setError('')
       setMessage('')
+      if (!file) {
+        setter(null)
+        return
+      }
+      if (!file.type.startsWith('image/') || file.size > MAX_SOURCE_IMAGE_SIZE) {
+        setError('Selecciona una imagen válida de hasta 20 MB.')
+        return
+      }
+
+      setPreparingImage(true)
+      try {
+        const prepared = await prepareImageForUpload(file)
+        if (prepared.size > MAX_UPLOADED_IMAGE_SIZE) {
+          throw new Error('La foto no pudo reducirse por debajo de 550 KB.')
+        }
+        setter(prepared)
+      } catch (compressionError) {
+        setError(compressionError?.message || 'No se pudo preparar la imagen.')
+      } finally {
+        setPreparingImage(false)
+      }
     }
   }
 
@@ -137,7 +160,6 @@ function VerificacionEdadInner() {
               hint="Tu cara y la cédula deben verse en la misma foto."
               preview={selfiePreview}
               onChange={pickFile(setSelfie)}
-              capture="user"
             />
           </div>
 
@@ -150,10 +172,10 @@ function VerificacionEdadInner() {
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || preparingImage}
             className="mt-5 inline-flex h-12 w-full items-center justify-center rounded-xl bg-yellow-400 px-4 text-sm font-extrabold text-gray-950 transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {submitting ? 'Enviando...' : 'Enviar verificación'}
+            {preparingImage ? 'Preparando fotos...' : submitting ? 'Enviando...' : 'Enviar verificación'}
           </button>
         </form>
       </main>
@@ -161,7 +183,7 @@ function VerificacionEdadInner() {
   )
 }
 
-function PhotoInput({ label, hint, preview, onChange, capture }) {
+function PhotoInput({ label, hint, preview, onChange }) {
   return (
     <label className="block rounded-xl border border-gray-200 bg-gray-50 p-3">
       <span className="block text-sm font-extrabold text-gray-950">{label}</span>
@@ -182,7 +204,6 @@ function PhotoInput({ label, hint, preview, onChange, capture }) {
       <input
         type="file"
         accept="image/jpeg,image/png,image/webp"
-        capture={capture}
         onChange={onChange}
         className="hidden"
       />

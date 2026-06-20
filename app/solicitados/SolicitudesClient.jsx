@@ -18,6 +18,7 @@ import {
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
 import { firestore, storage } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
+import { formatFileSize, MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 import AdSenseBlock from '@/app/components/AdSenseBlock'
 
 const COMMENT_COLLECTION = 'solicitudes_comentarios'
@@ -25,14 +26,12 @@ const CONTACT_COLLECTION = 'solicitudes_contactos'
 const REQUEST_COLLECTION = 'solicitudes_repuestos'
 const LOGIN_URL = '/login?redirect=%2Fsolicitados'
 const MAX_COMMENT_IMAGES = 6
-const MAX_SOURCE_IMAGE_SIZE = 20 * 1024 * 1024
-const TARGET_UPLOADED_IMAGE_SIZE = 450 * 1024
-const MAX_UPLOADED_IMAGE_SIZE = 550 * 1024
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
 const BRAND_ICONS = {
   chevrolet: '/mobile-catalog/brands/chevrolet.png',
   daihatsu: '/mobile-catalog/brands/Daihatsu.png',
+  dodge: '/catalog-assets/car-brands/dodge.png',
   ford: '/mobile-catalog/brands/ford.png',
   hyundai: '/mobile-catalog/brands/hyundai.png',
   mazda: '/mobile-catalog/brands/mazda.png',
@@ -117,6 +116,17 @@ function sessionParticipantId(session) {
   return String(session?.telefono || '').replace(/\D/g, '')
 }
 
+function participantInitials(name = '') {
+  const letters = String(name || 'Usuario')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .filter(Boolean)
+    .join('')
+  return letters || 'U'
+}
+
 function contactPermissionId(requestId, ownerId, granteeId) {
   return `${requestId}_${ownerId}_${granteeId}`
 }
@@ -133,75 +143,6 @@ function commentMapUrl(location) {
   const lng = Number(location.lng)
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
-}
-
-function formatFileSize(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB'
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-async function prepareImageForUpload(file) {
-  const objectUrl = URL.createObjectURL(file)
-  try {
-    const image = new window.Image()
-    image.decoding = 'async'
-    await new Promise((resolve, reject) => {
-      image.onload = resolve
-      image.onerror = reject
-      image.src = objectUrl
-    })
-
-    const maxWidth = 1280
-    const maxHeight = 720
-    let scale = Math.min(
-      1,
-      maxWidth / image.naturalWidth,
-      maxHeight / image.naturalHeight
-    )
-    let width = Math.max(1, Math.round(image.naturalWidth * scale))
-    let height = Math.max(1, Math.round(image.naturalHeight * scale))
-    const canvas = document.createElement('canvas')
-    const context = canvas.getContext('2d')
-    if (!context) return file
-
-    let blob = null
-    let quality = 0.85
-
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      canvas.width = width
-      canvas.height = height
-      context.fillStyle = '#ffffff'
-      context.fillRect(0, 0, width, height)
-      context.drawImage(image, 0, 0, width, height)
-
-      blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
-      if (!blob || blob.size <= TARGET_UPLOADED_IMAGE_SIZE) break
-
-      if (quality > 0.46) {
-        quality -= 0.07
-      } else {
-        scale *= 0.85
-        width = Math.max(1, Math.round(image.naturalWidth * scale))
-        height = Math.max(1, Math.round(image.naturalHeight * scale))
-        quality = 0.72
-      }
-    }
-
-    if (!blob || blob.size > MAX_UPLOADED_IMAGE_SIZE) {
-      throw new Error('No se pudo comprimir la imagen a 550 KB.')
-    }
-
-    const baseName = file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '-') || 'foto'
-    return new File([blob], `${baseName}.jpg`, {
-      type: 'image/jpeg',
-      lastModified: Date.now(),
-    })
-  } catch {
-    return file
-  } finally {
-    URL.revokeObjectURL(objectUrl)
-  }
 }
 
 async function uploadImageDirect(path, file) {
@@ -608,12 +549,74 @@ function CommentSection({
                 const outgoingId = contactPermissionId(request.id, commentOwnerId, currentParticipantId)
 
                 return (
-                <article key={comment.id} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-gray-800">{comment.autor || 'Anónimo'}</p>
+                <article key={comment.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-sm font-extrabold text-indigo-700 sm:h-14 sm:w-14 sm:text-base">
+                      {participantInitials(comment.autor)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <p className="min-w-0 text-base font-extrabold leading-tight text-gray-900 sm:text-lg">{comment.autor || 'Anónimo'}</p>
+                        {commentOwnerId && commentOwnerId !== currentParticipantId && !comment.eliminado && (
+                          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                            {permissionToMe?.estado === 'aprobado' && (
+                              <>
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-extrabold text-emerald-700">
+                                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.4} viewBox="0 0 24 24" aria-hidden="true">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m5 13 4 4L19 7" />
+                                  </svg>
+                                  Contacto autorizado
+                                </span>
+                                <a
+                                  href={commenterWhatsappUrl(comment, request)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-50"
+                                >
+                                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                    <path d="M12.04 2a9.9 9.9 0 0 0-8.42 15.13L2.5 21.5l4.47-1.08A9.9 9.9 0 1 0 12.04 2Zm5.76 14.1c-.24.68-1.2 1.25-1.9 1.42-.5.12-1.15.22-3.35-.7-2.8-1.16-4.6-4.02-4.74-4.2-.13-.18-1.13-1.5-1.13-2.86 0-1.36.7-2.03.96-2.3.24-.26.54-.38.86-.38h.62c.2 0 .46.04.7.54.26.62.88 2.14.96 2.3.08.16.13.35.03.56-.1.22-.15.35-.3.54-.16.18-.33.4-.47.53-.16.16-.32.33-.14.65.18.32.8 1.32 1.72 2.14 1.18 1.05 2.16 1.38 2.48 1.54.32.16.5.13.7-.08.2-.24.82-.96 1.04-1.28.22-.32.43-.27.73-.16.3.1 1.9.9 2.22 1.06.32.16.54.24.62.38.08.14.08.8-.16 1.48Z" />
+                                  </svg>
+                                  Contactar
+                                </a>
+                              </>
+                            )}
+                            {permissionToMe?.estado === 'pendiente' && (
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-100 bg-amber-50 px-3 py-1.5 text-xs font-extrabold text-amber-700">
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2" />
+                                  <circle cx="12" cy="12" r="9" />
+                                </svg>
+                                Solicitud de contacto enviada
+                              </span>
+                            )}
+                            {permissionToMe?.estado === 'rechazado' && (
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-100 bg-gray-100 px-3 py-1.5 text-xs font-extrabold text-gray-600">
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
+                                </svg>
+                                Contacto rechazado
+                              </span>
+                            )}
+                            {!permissionToMe && (
+                              <button
+                                type="button"
+                                onClick={() => setContactPermission(commentOwnerId, currentParticipantId, 'pendiente')}
+                                disabled={contactBusy === outgoingId}
+                                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60"
+                              >
+                                Solicitar contacto
+                              </button>
+                            )}
+                            {permissionFromMe?.estado === 'pendiente' && (
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-extrabold text-emerald-700">
+                                Te solicitó contacto
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       {comment.eliminado ? (
-                        <p className="mt-1 text-sm italic text-gray-400">Mensaje eliminado por su autor.</p>
+                        <p className="mt-4 text-sm italic text-gray-400">Mensaje eliminado por su autor.</p>
                       ) : editingId === comment.id ? (
                         <div className="mt-2 space-y-2">
                           <textarea
@@ -647,12 +650,10 @@ function CommentSection({
                       ) : (
                         <>
                           {comment.texto && (
-                            <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-600">{comment.texto}</p>
+                            <p className="mt-4 whitespace-pre-wrap break-words text-base leading-7 text-gray-700">{comment.texto}</p>
                           )}
                           {commentImageUrls(comment).length > 0 && (
-                            <div className={`mt-2 grid max-w-lg gap-1.5 ${
-                              commentImageUrls(comment).length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-                            }`}>
+                            <div className="-mx-1 mt-3 flex max-w-full gap-2 overflow-x-auto px-1 pb-1">
                               {commentImageUrls(comment).map((imageUrl, imageIndex) => (
                                 <button
                                   key={`${imageUrl}-${imageIndex}`}
@@ -661,7 +662,7 @@ function CommentSection({
                                     url: imageUrl,
                                     alt: `Imagen ${imageIndex + 1} compartida por ${comment.autor || 'usuario'}`,
                                   })}
-                                  className="relative block aspect-video w-full cursor-zoom-in overflow-hidden rounded-xl border border-gray-200 bg-gray-100"
+                                  className="relative block aspect-video w-32 shrink-0 cursor-zoom-in overflow-hidden rounded-xl border border-gray-200 bg-gray-100 sm:w-40"
                                   aria-label={`Ampliar imagen ${imageIndex + 1}`}
                                 >
                                   <Image
@@ -669,7 +670,7 @@ function CommentSection({
                                     alt={`Imagen ${imageIndex + 1} compartida por ${comment.autor || 'usuario'}`}
                                     fill
                                     unoptimized
-                                    sizes="(max-width: 640px) 45vw, 240px"
+                                    sizes="(max-width: 640px) 128px, 160px"
                                     className="object-cover"
                                   />
                                 </button>
@@ -700,62 +701,41 @@ function CommentSection({
                           )}
                         </>
                       )}
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500">
+                        <span>{formatCommentDate(comment.creado_en)}</span>
+                        {participantId(comment) === currentParticipantId && !comment.eliminado && editingId !== comment.id && (
+                          <span className="ml-auto flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingId(comment.id)
+                                setEditingText(comment.texto || '')
+                              }}
+                              className="inline-flex items-center gap-1.5 font-extrabold text-blue-600 hover:text-blue-700"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24" aria-hidden="true">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m16.86 4.49 2.65 2.65M5 19l4.7-1.07L19.5 8.12a1.87 1.87 0 0 0 0-2.64l-.98-.98a1.87 1.87 0 0 0-2.64 0l-9.8 9.8L5 19Z" />
+                              </svg>
+                              Editar
+                            </button>
+                            <span className="h-5 w-px bg-gray-200" aria-hidden="true" />
+                            <button
+                              type="button"
+                              onClick={() => removeComment(comment)}
+                              disabled={savingId === comment.id}
+                              className="inline-flex items-center gap-1.5 font-extrabold text-red-600 hover:text-red-700 disabled:opacity-50"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24" aria-hidden="true">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M10 11v6M14 11v6M9 7l.5-2h5l.5 2M8 7l1 13h6l1-13" />
+                              </svg>
+                              Borrar
+                            </button>
+                          </span>
+                        )}
+                        {comment.editado_en && !comment.eliminado && <span>Editado</span>}
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-gray-400">
-                    <span>{formatCommentDate(comment.creado_en)}</span>
-                    {comment.editado_en && !comment.eliminado && <span>· Editado</span>}
-                    {participantId(comment) === currentParticipantId && !comment.eliminado && editingId !== comment.id && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingId(comment.id)
-                            setEditingText(comment.texto || '')
-                          }}
-                          className="font-bold text-blue-600 hover:text-blue-700"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeComment(comment)}
-                          disabled={savingId === comment.id}
-                          className="font-bold text-red-600 hover:text-red-700 disabled:opacity-50"
-                        >
-                          Borrar
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {commentOwnerId && commentOwnerId !== currentParticipantId && !comment.eliminado && (
-                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-2.5">
-                      {permissionToMe?.estado === 'aprobado' ? (
-                        <a
-                          href={commenterWhatsappUrl(comment, request)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white"
-                        >
-                          Contactar por WhatsApp
-                        </a>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setContactPermission(commentOwnerId, currentParticipantId, 'pendiente')}
-                          disabled={permissionToMe?.estado === 'pendiente' || contactBusy === outgoingId}
-                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 disabled:opacity-60"
-                        >
-                          {permissionToMe?.estado === 'pendiente' ? 'Solicitud de contacto enviada' : 'Solicitar contacto'}
-                        </button>
-                      )}
-                      {permissionFromMe?.estado === 'pendiente' && (
-                        <span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
-                          Te solicitó contacto. Responde en la campana.
-                        </span>
-                      )}
-                    </div>
-                  )}
                 </article>
                 )
               })}
@@ -777,9 +757,9 @@ function CommentSection({
                 className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
               />
               {imagePreviews.length > 0 && (
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
                   {imagePreviews.map((previewUrl, index) => (
-                    <div key={previewUrl} className="relative overflow-hidden rounded-xl border border-gray-200 bg-gray-100">
+                    <div key={previewUrl} className="relative w-36 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-100 sm:w-44">
                       <div className="relative aspect-video">
                         <Image
                           src={previewUrl}
@@ -1646,6 +1626,7 @@ export default function SolicitudesClient() {
 
               {brands.map((brand) => {
                 const selected = brandFilter === brand
+                const icon = BRAND_ICONS[brand]
                 return (
                   <button
                     type="button"
@@ -1658,13 +1639,19 @@ export default function SolicitudesClient() {
                         : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'}`}
                   >
                     <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-gray-100 bg-white">
-                      <Image
-                        src={BRAND_ICONS[brand]}
-                        alt=""
-                        width={40}
-                        height={40}
-                        className="h-9 w-9 object-contain"
-                      />
+                      {icon ? (
+                        <Image
+                          src={icon}
+                          alt=""
+                          width={40}
+                          height={40}
+                          className="h-9 w-9 object-contain"
+                        />
+                      ) : (
+                        <span className="text-sm font-extrabold uppercase text-gray-700">
+                          {brand.charAt(0)}
+                        </span>
+                      )}
                     </span>
                     <span className="max-w-[68px] overflow-hidden text-ellipsis whitespace-nowrap text-[10px] font-bold">
                       {titleCase(brand)}

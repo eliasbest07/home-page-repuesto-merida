@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { saveSession } from '@/lib/rifaSession'
+import { auth } from '@/lib/firebase'
 
 function safeRedirect(value) {
   if (!value || typeof value !== 'string') return '/solicitados'
@@ -32,10 +33,20 @@ function MagicInner() {
     if (!token) { setError('Enlace inválido.'); return }
     ;(async () => {
       try {
+        let googleIdToken = ''
+        try {
+          if (auth.currentUser) {
+            googleIdToken = await auth.currentUser.getIdToken()
+          } else {
+            const pending = JSON.parse(localStorage.getItem('login_google_pending') || '{}')
+            googleIdToken = pending?.idToken || ''
+          }
+        } catch {}
+
         const res = await fetch('/api/auth/magic', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ token, googleIdToken }),
         })
         const data = await res.json()
         if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo validar el enlace.')
@@ -56,6 +67,7 @@ function MagicInner() {
         const botDest = safeRedirect(data.redirect)
         const dest = safeRedirect(saved || (botDest !== '/' ? botDest : null))
         try { localStorage.removeItem('login_redirect') } catch {}
+        try { localStorage.removeItem('login_google_pending') } catch {}
 
         // Si no tiene perfil, primero registro (conservando el destino final).
         if (!data.perfil) {

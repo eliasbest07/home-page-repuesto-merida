@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import { onValue, ref as dbRef } from 'firebase/database'
 import { rtdb } from '@/lib/firebase'
 import { clearSession, ensureSession, phoneKey, saveSession } from '@/lib/rifaSession'
+import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
@@ -114,6 +115,7 @@ export default function UsuarioOpcionesPage() {
   const [cedulaPreview, setCedulaPreview] = useState('')
   const [selfiePreview, setSelfiePreview] = useState('')
   const [sending, setSending] = useState(false)
+  const [preparingCedulaImage, setPreparingCedulaImage] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   // Cédula EN VIVO: el bot puede verificar y escribir la cédula en Realtime DB
@@ -306,6 +308,34 @@ export default function UsuarioOpcionesPage() {
     }
   }
 
+  async function selectCedulaImage(event, setter) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    setError('')
+    setMessage('')
+    if (!file) {
+      setter(null)
+      return
+    }
+    if (!file.type.startsWith('image/') || file.size > MAX_SOURCE_IMAGE_SIZE) {
+      setError('Selecciona una imagen válida de hasta 20 MB.')
+      return
+    }
+
+    setPreparingCedulaImage(true)
+    try {
+      const prepared = await prepareImageForUpload(file)
+      if (prepared.size > MAX_UPLOADED_IMAGE_SIZE) {
+        throw new Error('La foto no pudo reducirse por debajo de 550 KB.')
+      }
+      setter(prepared)
+    } catch (compressionError) {
+      setError(compressionError?.message || 'No se pudo preparar la imagen.')
+    } finally {
+      setPreparingCedulaImage(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -462,14 +492,13 @@ export default function UsuarioOpcionesPage() {
                   label="Foto de la cédula"
                   preview={cedulaPreview}
                   placeholder="/placeholder-cedula.png"
-                  onChange={(event) => setCedulaFoto(event.target.files?.[0] || null)}
+                  onChange={(event) => selectCedulaImage(event, setCedulaFoto)}
                 />
                 <PhotoInput
                   label="Selfie con la cédula"
                   preview={selfiePreview}
                   placeholder="/placeholder-selfie-cedula.png"
-                  capture="user"
-                  onChange={(event) => setSelfieCedula(event.target.files?.[0] || null)}
+                  onChange={(event) => selectCedulaImage(event, setSelfieCedula)}
                 />
               </div>
 
@@ -478,10 +507,10 @@ export default function UsuarioOpcionesPage() {
 
               <button
                 type="submit"
-                disabled={sending}
+                disabled={sending || preparingCedulaImage}
                 className="inline-flex h-12 items-center justify-center rounded-xl bg-gray-950 px-4 text-sm font-extrabold text-yellow-400 transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {sending ? 'Verificando fotos...' : 'Enviar fotos para verificar edad'}
+                {preparingCedulaImage ? 'Preparando fotos...' : sending ? 'Verificando fotos...' : 'Enviar fotos para verificar edad'}
               </button>
             </form>
           </section>
@@ -692,7 +721,7 @@ function StoreIcon({ className = '' }) {
   )
 }
 
-function PhotoInput({ label, preview, placeholder, onChange, capture }) {
+function PhotoInput({ label, preview, placeholder, onChange }) {
   return (
     <label className="block rounded-xl border border-gray-200 bg-gray-50 p-3">
       <span className="block text-sm font-extrabold text-gray-900">{label}</span>
@@ -709,7 +738,7 @@ function PhotoInput({ label, preview, placeholder, onChange, capture }) {
       <span className="mt-2 block text-center text-xs font-semibold text-gray-500">
         Toca para seleccionar foto
       </span>
-      <input type="file" accept="image/jpeg,image/png,image/webp" capture={capture} onChange={onChange} className="hidden" />
+      <input type="file" accept="image/jpeg,image/png,image/webp" onChange={onChange} className="hidden" />
     </label>
   )
 }

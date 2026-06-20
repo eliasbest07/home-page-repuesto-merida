@@ -5,7 +5,10 @@ import Link from 'next/link'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { collection, getDocs } from 'firebase/firestore'
-import { firestore } from '../../lib/firebase'
+import { get, onValue, ref as dbRef, serverTimestamp, update } from 'firebase/database'
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
+import { firestore, rtdb, storage } from '../../lib/firebase'
+import { phoneKey, saveSession } from '@/lib/rifaSession'
 
 const PlazaChat = dynamic(() => import('../components/PlazaChat'), { ssr: false })
 
@@ -141,6 +144,12 @@ const hasRealName = (s) => !!s && !isPhone(s)
 
 const initials = (name) =>
   name ? name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'
+
+function canonPhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '')
+  if (d.startsWith('58') && d.length >= 12) d = d.slice(2)
+  return d.replace(/^0+/, '')
+}
 
 function chunk(arr, size) {
   return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
@@ -814,12 +823,6 @@ function MobileImageGallery({ items }) {
 // USER MENU — bottom sheet con sesión y logout
 // ════════════════════════════════════════════════
 function UserMenu({ session, onClose, onLogout }) {
-  const AUTH = useMemo(() => ({
-    'Authorization': `Bearer ${session.token}`,
-    'ngrok-skip-browser-warning': '1',
-    'Content-Type': 'application/json',
-  }), [session.token])
-
   const [perfil,        setPerfil]        = useState(null)
   const [editando,      setEditando]      = useState(false)
   const [form,          setForm]          = useState({ nombre: '', cedula: '', edad: '', direccion: '' })
@@ -827,19 +830,93 @@ function UserMenu({ session, onClose, onLogout }) {
   const [geoLoading,    setGeoLoading]    = useState(false)
   const [geoError,      setGeoError]      = useState(null)
   const [saving,        setSaving]        = useState(false)
+  const [fotoSaving,    setFotoSaving]    = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
 
   useEffect(() => {
-    fetch(`${API_BASE}/perfil`, { headers: AUTH })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data) return
-        setPerfil(data)
-        setForm({ nombre: data.nombre || '', cedula: data.cedula || '', edad: data.edad || '', direccion: data.direccion || '' })
-        if (data.latitud && data.longitud) setCoords({ lat: data.latitud, lng: data.longitud, accuracy: null })
-      })
-      .catch(() => {})
-  }, [AUTH])
+    const initial = { ...(session.prefill || {}), ...(session.perfil || {}) }
+    setPerfil(initial)
+    setForm({
+      nombre: initial.nombre || '',
+      cedula: initial.cedula || '',
+      edad: initial.edad || '',
+      direccion: initial.direccion || initial.ubicacion_texto || initial.zona || '',
+    })
+    if (initial.lat != null && initial.lng != null) setCoords({ lat: initial.lat, lng: initial.lng, accuracy: null })
+    else if (initial.latitud != null && initial.longitud != null) setCoords({ lat: initial.latitud, lng: initial.longitud, accuracy: null })
+  }, [session])
+
+  useEffect(() => {
+    const tel = session?.telefono || session?.whatsapp
+    if (!tel) return undefined
+    const key = phoneKey(tel)
+    const uid = session?.perfil?.uid || session?.prefill?.uid
+    const targetPhone = canonPhone(tel)
+    const offs = []
+
+    const mergeProfile = (data) => {
+      if (!data || typeof data !== 'object') return
+      setPerfil((current) => ({ ...(current || {}), ...data }))
+      setForm((current) => ({
+        ...current,
+        nombre: data.nombre ?? current.nombre,
+        cedula: data.cedula ?? current.cedula,
+        edad: data.edad ?? current.edad,
+        direccion: data.direccion ?? data.ubicacion_texto ?? current.direccion,
+      }))
+      const lat = data.lat ?? data.latitud
+      const lng = data.lng ?? data.longitud
+      if (lat != null && lng != null) setCoords({ lat, lng, accuracy: null })
+    }
+
+    const watch = (path) => {
+      const off = onValue(dbRef(rtdb, path), (snap) => mergeProfile(snap.val()))
+      offs.push(off)
+    }
+
+    if (key) watch(`rifas_usuarios/${key}`)
+    if (uid) watch(`users/${uid}`)
+    const rootOff = onValue(dbRef(rtdb, '/'), (snap) => {
+      const data = snap.val() || {}
+      for (const value of Object.values(data)) {
+        if (value && typeof value === 'object' && canonPhone(value.whatsapp) === targetPhone) {
+          mergeProfile(value)
+          break
+        }
+      }
+    })
+    offs.push(rootOff)
+
+    return () => offs.forEach((off) => { try { off() } catch {} })
+  }, [session])
+
+  async function updateProfileEverywhere(patch) {
+    const tel = session?.telefono || session?.whatsapp
+    if (!tel) throw new Error('Sesión inválida')
+    const key = phoneKey(tel)
+    const uid = session?.perfil?.uid || session?.prefill?.uid || perfil?.uid
+    const targetPhone = canonPhone(tel)
+    const updates = {}
+
+    updates[`rifas_usuarios/${key}`] = patch
+    if (uid) updates[`users/${uid}`] = patch
+
+    try {
+      const snap = await get(dbRef(rtdb, '/'))
+      const data = snap.val() || {}
+      for (const [rootKey, value] of Object.entries(data)) {
+        if (value && typeof value === 'object' && canonPhone(value.whatsapp) === targetPhone) {
+          updates[rootKey] = patch
+          break
+        }
+      }
+    } catch {}
+
+    await update(dbRef(rtdb), updates)
+    const nextPerfil = { ...(session.perfil || session.prefill || {}), ...(perfil || {}), ...patch }
+    saveSession({ ...session, prefill: null, perfil: nextPerfil })
+    setPerfil(nextPerfil)
+  }
 
   async function handleGeolocate() {
     if (!navigator.geolocation) { setGeoError('Tu dispositivo no soporta geolocalización'); return }
@@ -888,11 +965,37 @@ function UserMenu({ session, onClose, onLogout }) {
   async function handleSave() {
     setSaving(true)
     try {
-      const body = { ...form, ...(coords ? { latitud: coords.lat, longitud: coords.lng } : {}) }
-      const res = await fetch(`${API_BASE}/perfil`, { method: 'PUT', headers: AUTH, body: JSON.stringify(body) })
-      if (res.ok) { const d = await res.json(); setPerfil(d); setEditando(false) }
+      const patch = {
+        telefono: session.telefono || session.whatsapp,
+        whatsapp: session.whatsapp || session.telefono,
+        nombre: form.nombre.trim(),
+        cedula: form.cedula.trim(),
+        edad: form.edad,
+        direccion: form.direccion.trim(),
+        ubicacion_texto: form.direccion.trim(),
+        ...(coords ? { lat: coords.lat, lng: coords.lng, latitud: coords.lat, longitud: coords.lng } : {}),
+        actualizado_en: serverTimestamp(),
+      }
+      await updateProfileEverywhere(patch)
+      setEditando(false)
     } catch (_) {}
     setSaving(false)
+  }
+
+  async function handlePhotoChange(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setFotoSaving(true)
+    try {
+      const tel = session.telefono || session.whatsapp
+      const key = phoneKey(tel)
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+      const snap = await uploadBytes(storageRef(storage, `rifas_usuarios/${key}.${ext}`), file)
+      const foto_url = await getDownloadURL(snap.ref)
+      await updateProfileEverywhere({ foto_url, foto: foto_url, actualizado_en: serverTimestamp() })
+    } catch (_) {}
+    setFotoSaving(false)
+    event.target.value = ''
   }
 
   async function handleLogout() {
@@ -905,6 +1008,8 @@ function UserMenu({ session, onClose, onLogout }) {
   }
 
   const perfilCompleto = perfil?.nombre && perfil?.cedula
+  const fotoPerfil = perfil?.foto_url || perfil?.foto || ''
+  const nombrePerfil = perfil?.nombre || session?.perfil?.nombre || session?.prefill?.nombre || 'Usuario'
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-end justify-center" onClick={onClose}>
@@ -920,14 +1025,29 @@ function UserMenu({ session, onClose, onLogout }) {
 
           {/* Avatar + teléfono */}
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-yellow-400 flex items-center justify-center text-2xl shrink-0">
-              {perfilCompleto ? '👤' : '⚠️'}
-            </div>
-            <div>
-              <p className="font-bold text-gray-900 text-base">{perfil?.nombre || 'Sin nombre'}</p>
+            <label className="relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-full border-4 border-white bg-gray-100 shadow-md ring-1 ring-gray-200">
+              {fotoPerfil ? (
+                <Image src={fotoPerfil} alt={nombrePerfil} fill unoptimized sizes="64px" className="object-cover" />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center bg-yellow-400 text-xl font-extrabold text-gray-950">
+                  {initials(nombrePerfil)}
+                </span>
+              )}
+              <span className="absolute inset-x-0 bottom-0 bg-black/55 py-0.5 text-center text-[9px] font-bold text-white">
+                {fotoSaving ? '...' : 'Foto'}
+              </span>
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoChange} className="hidden" />
+            </label>
+            <div className="min-w-0">
+              <p className="truncate font-bold text-gray-900 text-base">{nombrePerfil}</p>
               <p className="text-gray-500 text-sm">{session.whatsapp || session.telefono}</p>
               {!perfilCompleto && (
                 <p className="text-xs text-yellow-600 font-medium mt-0.5">Completa tu perfil</p>
+              )}
+              {perfil?.cedula && (
+                <p className="mt-0.5 inline-flex rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-bold text-green-700">
+                  Verificado
+                </p>
               )}
             </div>
           </div>

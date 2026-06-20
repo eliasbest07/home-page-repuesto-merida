@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { ensureSession } from '@/lib/rifaSession'
+import { auth } from '@/lib/firebase'
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 
 // WhatsApp oficial del bot (donde el Oso escucha y responde el enlace).
 const WA_OFICIAL = '584123375417'
@@ -38,6 +40,12 @@ function loginMessage(redirect) {
   return `Hola Oso, quiero iniciar sesión en Repuestos Mérida desde ${origin}. Mándame el link, por favor.`
 }
 
+function googleLoginMessage(redirect, user) {
+  const origin = loginOriginFromRedirect(redirect)
+  const name = user?.displayName || user?.email || 'mi cuenta de Google'
+  return `Hola Oso, inicié con Google (${name}) en Repuestos Mérida desde ${origin}. Verifica mi WhatsApp y mándame el link, por favor.`
+}
+
 export default function LoginPage() {
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-500">Cargando…</div>}>
@@ -52,6 +60,8 @@ function LoginInner() {
   const redirect      = safeRedirect(searchParams.get('redirect'))
   const origin        = loginOriginFromRedirect(redirect)
   const message       = loginMessage(redirect)
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [googleError, setGoogleError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -71,6 +81,33 @@ function LoginInner() {
       window.clearInterval(intervalId)
     }
   }, [router, redirect])
+
+  async function loginWithGoogle() {
+    setGoogleError('')
+    setGoogleLoading(true)
+    try {
+      const provider = new GoogleAuthProvider()
+      provider.setCustomParameters({ prompt: 'select_account' })
+      const credential = await signInWithPopup(auth, provider)
+      const user = credential.user
+      const idToken = await user.getIdToken()
+      try {
+        localStorage.setItem('login_redirect', redirect)
+        localStorage.setItem('login_google_pending', JSON.stringify({
+          uid: user.uid,
+          email: user.email || '',
+          displayName: user.displayName || '',
+          photoURL: user.photoURL || '',
+          idToken,
+          at: Date.now(),
+        }))
+      } catch {}
+      window.location.href = waOficialUrl(googleLoginMessage(redirect, user))
+    } catch (error) {
+      setGoogleError(error?.message || 'No se pudo iniciar con Google.')
+      setGoogleLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-white to-emerald-50 flex flex-col">
@@ -99,6 +136,20 @@ function LoginInner() {
             <p className="rounded-xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-semibold text-yellow-800">
               Origen: {origin}
             </p>
+            <button
+              type="button"
+              onClick={loginWithGoogle}
+              disabled={googleLoading}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 font-semibold text-gray-800 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <GoogleIcon />
+              {googleLoading ? 'Abriendo Google...' : 'Iniciar sesión con Google'}
+            </button>
+            {googleError && (
+              <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                {googleError}
+              </p>
+            )}
             <a
               href={waOficialUrl(message)}
               target="_blank"
@@ -112,11 +163,22 @@ function LoginInner() {
               Iniciar sesión por WhatsApp
             </a>
             <p className="text-xs text-gray-500 text-center">
-              Se abrirá un chat con nuestro WhatsApp oficial (+{WA_OFICIAL}).
+              Con Google también se abrirá WhatsApp para verificar tu número con el bot oficial (+{WA_OFICIAL}).
             </p>
           </div>
         </div>
       </main>
     </div>
+  )
+}
+
+function GoogleIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M21.6 12.23c0-.78-.07-1.53-.2-2.23H12v4.22h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.9-1.75 2.98-4.33 2.98-7.52z" />
+      <path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.44l-3.24-2.51c-.9.6-2.05.96-3.38.96-2.6 0-4.8-1.76-5.6-4.12H3.05v2.59A10 10 0 0 0 12 22z" />
+      <path fill="#FBBC05" d="M6.4 13.89a6 6 0 0 1 0-3.78V7.52H3.05a10 10 0 0 0 0 8.96l3.35-2.59z" />
+      <path fill="#EA4335" d="M12 5.99c1.47 0 2.8.51 3.84 1.5l2.86-2.86A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.95 5.52l3.35 2.59C7.2 7.75 9.4 5.99 12 5.99z" />
+    </svg>
   )
 }
