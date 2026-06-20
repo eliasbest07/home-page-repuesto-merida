@@ -45,7 +45,9 @@ async function findRealtimeUserByPhone(rtdb, telefono) {
   const paths = ['users', '']
 
   for (const path of paths) {
-    const snap = await rtdb.ref(path).get()
+    // El SDK Admin rechaza rtdb.ref('') ("path must be non-empty"); la raíz
+    // se obtiene con ref() sin argumento.
+    const snap = await (path ? rtdb.ref(path) : rtdb.ref()).get()
     if (!snap.exists()) continue
 
     const users = snap.val() || {}

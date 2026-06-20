@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import { onValue, ref as dbRef } from 'firebase/database'
 import { rtdb } from '@/lib/firebase'
 import { clearSession, ensureSession, phoneKey, saveSession } from '@/lib/rifaSession'
+import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
 import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
@@ -17,55 +18,6 @@ const TEAM_IMAGES = Array.from({ length: 8 }).map((_, index) => ({
   title: `Imagen ${index + 1}`,
   image: `https://picsum.photos/800/600?random=${index + 1}`,
 }))
-
-const CAR_BRANDS = [
-  { name: 'Audi', icon: '/catalog-assets/car-brands/audi.png' },
-  { name: 'BMW', icon: '/catalog-assets/car-brands/bmw.png' },
-  { name: 'Chevrolet', icon: '/mobile-catalog/brands/chevrolet.png' },
-  { name: 'Chevy', icon: '/catalog-assets/car-brands/chevy.png' },
-  { name: 'Daihatsu', icon: '/mobile-catalog/brands/Daihatsu.png' },
-  { name: 'Daewoo', icon: '/catalog-assets/car-brands/daewoo.png' },
-  { name: 'Dodge', icon: '/catalog-assets/car-brands/dodge.png' },
-  { name: 'Dongfeng', icon: '/catalog-assets/car-brands/dongfeng.png' },
-  { name: 'Fiat', icon: '/catalog-assets/car-brands/fiat.png' },
-  { name: 'Ford', icon: '/mobile-catalog/brands/ford.png' },
-  { name: 'Honda', icon: '/catalog-assets/car-brands/honda.png' },
-  { name: 'Hyundai', icon: '/mobile-catalog/brands/hyundai.png' },
-  { name: 'Jeep', icon: '/catalog-assets/car-brands/jeep.png' },
-  { name: 'Kia', icon: '/catalog-assets/car-brands/kia.png' },
-  { name: 'Mazda', icon: '/mobile-catalog/brands/mazda.png' },
-  { name: 'Mercedes-Benz', icon: '/catalog-assets/car-brands/mercedesbenz.png' },
-  { name: 'Mitsubishi', icon: '/mobile-catalog/brands/mitsubishi.png' },
-  { name: 'Nissan', icon: '/catalog-assets/car-brands/nissan.png' },
-  { name: 'Peugeot', icon: '/catalog-assets/car-brands/peugeot.png' },
-  { name: 'Renault', icon: '/mobile-catalog/brands/renault.png' },
-  { name: 'Subaru', icon: '/catalog-assets/car-brands/subaru.png' },
-  { name: 'Suzuki', icon: '/mobile-catalog/brands/suzuki.png' },
-  { name: 'Toyota', icon: '/mobile-catalog/brands/toyota.png' },
-  { name: 'Volkswagen', icon: '/mobile-catalog/brands/volkswagen.png' },
-]
-const MOTO_BRANDS = [
-  { name: 'AVA', icon: '/catalog-assets/moto-brands/ava.png' },
-  { name: 'Bajaj', icon: '/catalog-assets/moto-brands/bajaj.png' },
-  { name: 'Bera', icon: '/catalog-assets/moto-brands/bera.png' },
-  { name: 'CFMoto', icon: '/catalog-assets/moto-brands/cfmoto.png' },
-  { name: 'Ducati', icon: '/catalog-assets/moto-brands/ducati.png' },
-  { name: 'Empire', icon: '/catalog-assets/moto-brands/empire.png' },
-  { name: 'Forza', icon: '/catalog-assets/moto-brands/forza.png' },
-  { name: 'Haojue', icon: '/catalog-assets/moto-brands/haojue.png' },
-  { name: 'Harley-Davidson', icon: '/catalog-assets/moto-brands/harley-davidson.png' },
-  { name: 'Honda', icon: '/catalog-assets/moto-brands/honda.png' },
-  { name: 'Kawasaki', icon: '/catalog-assets/moto-brands/kawasaki.png' },
-  { name: 'Keeway', icon: '/catalog-assets/moto-brands/keeway.png' },
-  { name: 'KTM', icon: '/catalog-assets/moto-brands/ktm.png' },
-  { name: 'Kymco', icon: '/catalog-assets/moto-brands/kymco.png' },
-  { name: 'Loncin', icon: '/catalog-assets/moto-brands/loncin.png' },
-  { name: 'Skygo', icon: '/catalog-assets/moto-brands/skygo.png' },
-  { name: 'Suzuki', icon: '/catalog-assets/moto-brands/suzuki.png' },
-  { name: 'UM', icon: '/catalog-assets/moto-brands/um.png' },
-  { name: 'Vespa', icon: '/catalog-assets/moto-brands/vespa.png' },
-  { name: 'Yamaha', icon: '/catalog-assets/moto-brands/yamaha.png' },
-]
 
 function filePreview(file, setter) {
   if (!file) {
@@ -95,6 +47,9 @@ export default function UsuarioOpcionesPage() {
   const router = useRouter()
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [confirmLogout, setConfirmLogout] = useState(false)
+  const [fotoUploading, setFotoUploading] = useState(false)
+  const [fotoError, setFotoError] = useState('')
   const [currentIndex, setCurrentIndex] = useState(0)
   const [selectedImage, setSelectedImage] = useState(null)
   const [mapOpen, setMapOpen] = useState(false)
@@ -215,6 +170,42 @@ export default function UsuarioOpcionesPage() {
   function logout() {
     clearSession()
     router.replace('/')
+  }
+
+  async function selectProfilePhoto(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    setFotoError('')
+    if (!file) return
+    if (!file.type.startsWith('image/') || file.size > MAX_SOURCE_IMAGE_SIZE) {
+      setFotoError('Selecciona una imagen válida de hasta 20 MB.')
+      return
+    }
+    if (!session?.token) { setFotoError('Sesión inválida.'); return }
+
+    setFotoUploading(true)
+    try {
+      const prepared = await prepareImageForUpload(file)
+      if (prepared.size > MAX_UPLOADED_IMAGE_SIZE) throw new Error('La foto no pudo reducirse lo suficiente.')
+      const form = new FormData()
+      form.append('foto', prepared, 'perfil.jpg')
+      const res = await fetch('/api/usuario/foto', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.token}` },
+        body: form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo subir la foto.')
+
+      const nextPerfil = { ...(session.perfil || session.prefill || {}), foto_url: data.foto_url, foto: data.foto_url }
+      const nextSession = { ...session, perfil: nextPerfil }
+      saveSession(nextSession)
+      setSession(nextSession)
+    } catch (err) {
+      setFotoError(err?.message || 'No se pudo subir la foto.')
+    } finally {
+      setFotoUploading(false)
+    }
   }
 
   function scrollToVehiculo() {
@@ -349,7 +340,7 @@ export default function UsuarioOpcionesPage() {
       <nav className="sticky top-0 z-20 flex h-14 items-center justify-between bg-gray-950 px-4 text-white shadow-lg">
         <Link href="/" className="text-sm font-semibold text-gray-300 hover:text-white">Inicio</Link>
         <span className="text-sm font-bold">Opciones de usuario</span>
-        <button type="button" onClick={logout} className="text-sm font-semibold text-gray-300 hover:text-white">Salir</button>
+        <button type="button" onClick={() => setConfirmLogout(true)} className="text-sm font-semibold text-gray-300 hover:text-white">Salir</button>
       </nav>
 
       <main className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
@@ -398,13 +389,31 @@ export default function UsuarioOpcionesPage() {
             <div className="absolute inset-0 bg-[#d9d9d9]/85" />
             <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex min-w-0 items-end gap-4">
-                <div className="-mt-16 h-20 w-20 shrink-0 overflow-hidden rounded-full border-4 border-white bg-gray-100 shadow-lg ring-1 ring-black/5 sm:-mt-20 sm:h-24 sm:w-24">
+                <label
+                  title="Cambiar foto de perfil"
+                  className="group relative -mt-16 block h-20 w-20 shrink-0 cursor-pointer overflow-hidden rounded-full border-4 border-white bg-gray-100 shadow-lg ring-1 ring-black/5 sm:-mt-20 sm:h-24 sm:w-24"
+                >
                   {foto ? (
                     <Image src={foto} alt={nombre} width={96} height={96} unoptimized className="h-full w-full object-cover" />
                   ) : (
                     <span className="flex h-full w-full items-center justify-center text-2xl font-bold text-gray-400">{initials(nombre)}</span>
                   )}
-                </div>
+                  <span className="absolute inset-x-0 bottom-0 flex h-7 items-center justify-center bg-black/55 text-white opacity-0 transition group-hover:opacity-100">
+                    <CameraIcon className="h-4 w-4" />
+                  </span>
+                  {fotoUploading && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/45">
+                      <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    </span>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={selectProfilePhoto}
+                    disabled={fotoUploading}
+                    className="hidden"
+                  />
+                </label>
 
                 <div className="min-w-0 pb-0.5">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -418,11 +427,21 @@ export default function UsuarioOpcionesPage() {
                       <span>{vehicle.tipo_vehiculo === 'moto' ? 'Mi moto' : 'Mi carro'}</span>
                       <ChevronDownIcon className="h-3.5 w-3.5 transition group-hover:translate-y-0.5" />
                     </button>
+                    {edadVerificada && (
+                      <Link
+                        href="/usuario/comercio"
+                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-yellow-400 px-3 text-xs font-extrabold text-gray-950 shadow-sm transition hover:bg-yellow-300"
+                      >
+                        <StoreIcon className="h-4 w-4" />
+                        <span>Mi tienda</span>
+                      </Link>
+                    )}
                   </div>
                   <p className="mt-0.5 flex items-center gap-1.5 text-sm text-gray-700">
                     <LocationIcon className="h-4 w-4 shrink-0 text-yellow-600" />
                     <span className="truncate">{locationLabel}</span>
                   </p>
+                  {fotoError && <p className="mt-1 text-xs font-semibold text-red-600">{fotoError}</p>}
                   {cedulaActual ? (
                     <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700">
                       <CheckIcon className="h-3.5 w-3.5" />
@@ -436,7 +455,7 @@ export default function UsuarioOpcionesPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 self-start sm:self-end">
-                {vendedorActivo && (
+                {vendedorActivo && !edadVerificada && (
                   <Link
                     href="/usuario/comercio"
                     className="inline-flex h-11 items-center gap-2 rounded-xl bg-yellow-400 px-4 text-sm font-extrabold text-gray-950 shadow-sm transition hover:bg-yellow-300"
@@ -648,6 +667,37 @@ export default function UsuarioOpcionesPage() {
           }}
         />
       )}
+
+      {confirmLogout && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setConfirmLogout(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="text-lg font-extrabold text-gray-950">¿Cerrar sesión?</h2>
+            <p className="mt-2 text-sm text-gray-600">Tendrás que volver a iniciar sesión para acceder a tus opciones.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmLogout(false)}
+                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={logout}
+                className="rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-extrabold text-yellow-400 hover:bg-gray-800"
+              >
+                Cerrar sesión
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -657,6 +707,15 @@ function LocationIcon({ className = '' }) {
     <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0Z" />
       <circle cx="12" cy="10" r="3" />
+    </svg>
+  )
+}
+
+function CameraIcon({ className = '' }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
     </svg>
   )
 }

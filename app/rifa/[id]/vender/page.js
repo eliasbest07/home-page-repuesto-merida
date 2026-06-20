@@ -49,7 +49,7 @@ export default function VenderPage() {
     // Verificar autorización
     get(dbRef(rtdb, `rifas/${id}/vendedores/${key}`)).then((snap) => {
       const esVendedor = snap.exists()
-      const esCreador = session.telefono && rifa && phoneKey(session.telefono) === phoneKey(rifa.creador || '')
+      const esCreador = Boolean(session.telefono && rifa?.creador && phoneKey(session.telefono) === phoneKey(rifa.creador))
       setAutorizado(esVendedor || esCreador)
     })
     return () => { r1(); r2() }

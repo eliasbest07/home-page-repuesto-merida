@@ -87,8 +87,9 @@ export default function PlazaChat({ hideMobileLauncher = false }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    const timeouts = timeoutsRef.current
     return () => {
-      timeoutsRef.current.forEach(clearTimeout)
+      timeouts.forEach(clearTimeout)
     }
   }, [])
 

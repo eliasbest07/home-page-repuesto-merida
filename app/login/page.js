@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ensureSession } from '@/lib/rifaSession'
+import { ensureSession, saveSession } from '@/lib/rifaSession'
 import { auth } from '@/lib/firebase'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 
@@ -91,6 +91,33 @@ function LoginInner() {
       const credential = await signInWithPopup(auth, provider)
       const user = credential.user
       const idToken = await user.getIdToken()
+
+      // Si esta cuenta de Google ya tiene un WhatsApp vinculado, entra directo
+      // sin volver a pedir verificación por WhatsApp.
+      try {
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (res.ok && data.ok && data.linked && data.token) {
+          saveSession({
+            telefono: data.telefono,
+            perfil: data.perfil,
+            prefill: data.prefill || null,
+            rifas_vendedor: data.rifas_vendedor || [],
+            token: data.token,
+            expiresAt: data.expiresAt,
+          })
+          if (!data.perfil) router.replace(`/registro?redirect=${encodeURIComponent(redirect)}`)
+          else router.replace(redirect)
+          return
+        }
+      } catch {
+        // Si falla el atajo, seguimos con la verificación por WhatsApp.
+      }
+
       try {
         localStorage.setItem('login_redirect', redirect)
         localStorage.setItem('login_google_pending', JSON.stringify({

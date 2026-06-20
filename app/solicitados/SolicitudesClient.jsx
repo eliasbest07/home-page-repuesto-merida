@@ -257,6 +257,8 @@ function CommentSection({
   const textRef = useRef(null)
   const fileRef = useRef(null)
   const currentParticipantId = sessionParticipantId(session)
+  // Solo usuarios con edad verificada (cédula) pueden publicar en el debate.
+  const isVerified = Boolean(session?.perfil?.cedula) || session?.perfil?.cedula_estado === 'aprobado'
 
   const contactMap = useMemo(() => {
     const map = new Map()
@@ -344,6 +346,10 @@ function CommentSection({
 
     if (!session?.telefono) {
       window.location.href = LOGIN_URL
+      return
+    }
+    if (!isVerified) {
+      setError('Debes verificar tu edad con tu cédula para publicar.')
       return
     }
 
@@ -742,7 +748,20 @@ function CommentSection({
             </div>
           )}
 
-          {session ? (
+          {session && !isVerified ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center">
+              <p className="text-sm font-semibold text-amber-900">Verifica tu edad para participar</p>
+              <p className="mt-1 text-xs text-amber-800">
+                Para publicar en las conversaciones debes verificar tu edad con tu cédula.
+              </p>
+              <a
+                href="/usuario/opciones"
+                className="mt-3 inline-flex rounded-lg bg-gray-900 px-4 py-2 text-xs font-bold text-yellow-400 hover:bg-gray-800"
+              >
+                Verificar mi edad
+              </a>
+            </div>
+          ) : session ? (
             <form onSubmit={submit} className="space-y-2 rounded-xl border border-gray-200 bg-white p-3">
               <p className="text-xs text-gray-500">
                 Participas como <strong className="text-gray-700">{session.perfil?.nombre || session.telefono}</strong>
