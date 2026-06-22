@@ -53,16 +53,13 @@ function cleanYear(value) {
   return n >= 1900 && n <= 2100 ? year : ''
 }
 
-function cleanPrice(value) {
-  if (value === null || value === undefined || value === '') return null
-  const n = Number(value)
-  if (!Number.isFinite(n) || n < 0) return null
-  return Math.round(n * 100) / 100
-}
-
+// Precio como texto libre (ej. "10", "10 verdes", "Consultar"). Para mostrarlo
+// se antepone "$" solo si es puramente numérico.
 function priceLabel(value) {
   if (value === null || value === undefined || value === '') return 'Consultar'
-  return `$${value}`
+  const s = String(value).trim()
+  if (!s) return 'Consultar'
+  return /^\d+(\.\d+)?$/.test(s) ? `$${s}` : s
 }
 
 // Slug ASCII para deduplicar modelos: "Toyota" -> "toyota".
@@ -89,7 +86,8 @@ function serializeRepuesto(doc) {
     anio: data.anio || '',
     nombre: data.nombre || '',
     nota: data.nota || '',
-    precio: data.precio ?? null,
+    precio: data.precio ?? '',
+    fotos: Array.isArray(data.fotos) ? data.fotos : [],
     aprobado: Boolean(data.aprobado),
     catalogo_id: data.catalogo_id || '',
     creado_en: data.creado_en?.toMillis ? data.creado_en.toMillis() : null,
@@ -165,7 +163,7 @@ export async function POST(request) {
     const anio = cleanYear(body.anio)
     const nombre = cleanText(body.nombre, 120)
     const nota = cleanText(body.nota, 500)
-    const precio = cleanPrice(body.precio)
+    const precio = cleanText(body.precio, 40)
 
     if (!marca) return NextResponse.json({ error: 'Selecciona la marca.' }, { status: 400 })
     if (!modelo) return NextResponse.json({ error: 'Escribe el modelo.' }, { status: 400 })
@@ -187,6 +185,7 @@ export async function POST(request) {
       nombre,
       nota,
       precio,
+      fotos: [],
       aprobado: false,
       catalogo_id: '',
       creado_en: adminFieldValue.serverTimestamp(),
@@ -226,6 +225,7 @@ export async function POST(request) {
         nombre,
         nota,
         precio,
+        fotos: [],
         aprobado: false,
         catalogo_id: '',
         creado_en: Date.now(),

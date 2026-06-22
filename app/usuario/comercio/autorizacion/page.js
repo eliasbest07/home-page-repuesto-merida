@@ -56,6 +56,13 @@ function isAuthorized(value) {
   return value === true || value === 'true' || value === 1 || value === '1'
 }
 
+// Precio en texto libre: antepone "$" solo si es puramente numérico.
+function formatPrecio(value) {
+  const s = String(value ?? '').trim()
+  if (!s) return 'Consultar'
+  return /^\d+(\.\d+)?$/.test(s) ? `$${s}` : s
+}
+
 function fieldReady(value) {
   if (Array.isArray(value)) return value.length > 0
   return String(value || '').trim().length > 0
@@ -161,6 +168,7 @@ export default function ComercioAutorizacionPage() {
   const [repuestosLoading, setRepuestosLoading] = useState(false)
   const [repuestoSaving, setRepuestoSaving] = useState(false)
   const [repuestoForm, setRepuestoForm] = useState(EMPTY_REPUESTO)
+  const [uploadingPhotoId, setUploadingPhotoId] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -509,13 +517,49 @@ export default function ComercioAutorizacionPage() {
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo guardar el repuesto.')
-      setRepuestos((items) => [body.item, ...items])
+      setRepuestos((items) => [{ ...body.item, fotos: body.item.fotos || [] }, ...items])
       setRepuestoForm({ ...EMPTY_REPUESTO, marca: repuestoForm.marca })
       setMessage('Repuesto creado. Puedes aprobarlo para publicarlo en el catalogo.')
     } catch (err) {
       setError(err.message || 'No se pudo guardar el repuesto.')
     } finally {
       setRepuestoSaving(false)
+    }
+  }
+
+  async function uploadRepuestoPhoto(item, file) {
+    setError('')
+    setMessage('')
+    if (!file) return
+    if (!file.type.startsWith('image/') || file.size > MAX_SOURCE_IMAGE_SIZE) {
+      setError('Selecciona una imagen valida de hasta 20 MB.')
+      return
+    }
+    if ((item.fotos || []).length >= 4) {
+      setError('Maximo 4 fotos por repuesto.')
+      return
+    }
+    setUploadingPhotoId(item.id)
+    try {
+      // Misma reduccion de peso que la foto del comercio antes de subir a Firebase.
+      const prepared = await prepareImageForUpload(file)
+      if (prepared.size > MAX_UPLOADED_IMAGE_SIZE) throw new Error('La foto no pudo reducirse lo suficiente.')
+      const data = new FormData()
+      data.append('id', item.id)
+      data.append('foto', prepared, 'repuesto.jpg')
+      const res = await fetch('/api/usuario/comercio/repuestos/foto', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.token}` },
+        body: data,
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo subir la foto.')
+      setRepuestos((items) => items.map((it) => (it.id === item.id ? { ...it, fotos: body.fotos } : it)))
+      setMessage('Foto agregada al repuesto.')
+    } catch (err) {
+      setError(err?.message || 'No se pudo subir la foto.')
+    } finally {
+      setUploadingPhotoId('')
     }
   }
 
@@ -596,8 +640,8 @@ export default function ComercioAutorizacionPage() {
         </div>
       </nav>
 
-      <main className="mx-auto grid max-w-6xl gap-5 px-4 py-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="space-y-4">
+      <main className="mx-auto grid max-w-6xl grid-cols-1 gap-5 px-4 py-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="min-w-0 space-y-4">
           <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-extrabold uppercase text-slate-500">Dia de venta</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
@@ -677,7 +721,7 @@ export default function ComercioAutorizacionPage() {
           </section>
         </aside>
 
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           {error && <p className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
           {message && <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{message}</p>}
 
@@ -882,7 +926,7 @@ export default function ComercioAutorizacionPage() {
                     </div>
                     <div className="flex items-center gap-2 sm:shrink-0">
                       <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
-                        {item.precio == null ? 'Consultar' : `$${item.precio}`}
+                        {formatPrecio(item.precio)}
                       </span>
                       <PrimaryButton onClick={() => approveRepuesto(item.id)} className="flex-1 sm:flex-none">
                         Aprobar publicacion
@@ -1002,9 +1046,10 @@ export default function ComercioAutorizacionPage() {
                   />
                   <input
                     value={repuestoForm.precio}
-                    onChange={(event) => setRepuestoForm((current) => ({ ...current, precio: event.target.value.replace(/[^\d.]/g, '').slice(0, 12) }))}
+                    onChange={(event) => setRepuestoForm((current) => ({ ...current, precio: event.target.value.slice(0, 40) }))}
                     placeholder="Precio"
-                    inputMode="decimal"
+                    type="text"
+                    inputMode="text"
                     className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-amber-400"
                   />
                 </div>
@@ -1040,12 +1085,54 @@ export default function ComercioAutorizacionPage() {
                       </div>
                       <div className="flex items-center gap-2 sm:shrink-0">
                         <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
-                          {item.precio == null ? 'Consultar' : `$${item.precio}`}
+                          {formatPrecio(item.precio)}
                         </span>
                         <PrimaryButton onClick={() => approveRepuesto(item.id)} disabled={item.aprobado} className="flex-1 sm:flex-none">
                           {item.aprobado ? 'Aprobado' : 'Aprobar publicacion'}
                         </PrimaryButton>
                       </div>
+                    </div>
+
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                      <div className="flex gap-2 overflow-x-auto">
+                        {(item.fotos || []).map((url) => (
+                          <a
+                            key={url}
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="relative aspect-square w-[calc(50%-4px)] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
+                          >
+                            <Image src={url} alt="Foto del repuesto" fill unoptimized className="object-cover" />
+                          </a>
+                        ))}
+                        {(item.fotos || []).length < 4 && (
+                          <label
+                            className={`flex aspect-square w-[calc(50%-4px)] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2 text-center text-xs font-bold text-slate-500 hover:border-amber-400 ${uploadingPhotoId === item.id ? 'pointer-events-none opacity-60' : ''}`}
+                          >
+                            {uploadingPhotoId === item.id ? (
+                              <span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
+                            ) : (
+                              <>
+                                <span className="text-lg leading-none">+</span>
+                                <span>Agregar foto</span>
+                              </>
+                            )}
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              className="hidden"
+                              disabled={uploadingPhotoId === item.id}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0]
+                                event.target.value = ''
+                                uploadRepuestoPhoto(item, file)
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-400">{(item.fotos || []).length}/4 fotos</p>
                     </div>
                   </article>
                 ))}
