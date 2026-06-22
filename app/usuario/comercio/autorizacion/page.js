@@ -586,13 +586,13 @@ export default function ComercioAutorizacionPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-950">
-      <nav className="border-b border-slate-200 bg-[#20263a] px-4 py-4 text-white">
+      <nav className="border-b border-slate-200 bg-[#20263a] px-4 py-3 text-white sm:py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-bold uppercase text-amber-300">Panel de comercio</p>
-            <h1 className="text-xl font-extrabold">Ventas y repuestos autorizados</h1>
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase text-amber-300 sm:text-xs">Panel de comercio</p>
+            <h1 className="text-base font-extrabold leading-tight sm:text-xl">Ventas y repuestos autorizados</h1>
           </div>
-          <Link href="/usuario/opciones" className="rounded-lg bg-white/10 px-3 py-2 text-sm font-bold">Volver</Link>
+          <Link href="/usuario/opciones" className="shrink-0 rounded-lg bg-white/10 px-3 py-2 text-sm font-bold">Volver</Link>
         </div>
       </nav>
 
@@ -848,7 +848,7 @@ export default function ComercioAutorizacionPage() {
 
             <div className="flex flex-col gap-3 border-t border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-500">Guarda el comercio despues de cambiar datos, ventas o marcas.</p>
-              <PrimaryButton onClick={saveCommerce} disabled={saving || preparingPhoto} className="sm:min-w-64">
+              <PrimaryButton onClick={saveCommerce} disabled={saving || preparingPhoto} className="w-full sm:w-auto sm:min-w-64">
                 {preparingPhoto ? 'Preparando foto...' : saving ? 'Guardando...' : `Guardar comercio para ${dayLabel}`}
               </PrimaryButton>
             </div>
@@ -880,11 +880,11 @@ export default function ComercioAutorizacionPage() {
                       </p>
                       {item.nota && <p className="mt-1 text-sm text-slate-500">{item.nota}</p>}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 sm:shrink-0">
                       <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
                         {item.precio == null ? 'Consultar' : `$${item.precio}`}
                       </span>
-                      <PrimaryButton onClick={() => approveRepuesto(item.id)}>
+                      <PrimaryButton onClick={() => approveRepuesto(item.id)} className="flex-1 sm:flex-none">
                         Aprobar publicacion
                       </PrimaryButton>
                     </div>
@@ -901,7 +901,7 @@ export default function ComercioAutorizacionPage() {
                   <p className="text-xs font-extrabold uppercase text-amber-600">Lista visible en esta pagina</p>
                   <h2 className="text-xl font-extrabold">Ventas de repuestos</h2>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 sm:w-auto">
                   <input
                     value={draftItem}
                     onChange={(event) => setDraftItem(event.target.value.slice(0, 80))}
@@ -912,9 +912,9 @@ export default function ComercioAutorizacionPage() {
                       }
                     }}
                     placeholder="Ej: Frenos, filtros, motor"
-                    className="h-11 min-w-0 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-amber-400"
+                    className="h-11 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-amber-400 sm:flex-none"
                   />
-                  <PrimaryButton onClick={addListItem}>Agregar</PrimaryButton>
+                  <PrimaryButton onClick={addListItem} className="shrink-0">Agregar</PrimaryButton>
                 </div>
               </div>
 
@@ -1038,11 +1038,11 @@ export default function ComercioAutorizacionPage() {
                         </p>
                         {item.nota && <p className="mt-1 text-sm text-slate-500">{item.nota}</p>}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 sm:shrink-0">
                         <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
                           {item.precio == null ? 'Consultar' : `$${item.precio}`}
                         </span>
-                        <PrimaryButton onClick={() => approveRepuesto(item.id)} disabled={item.aprobado}>
+                        <PrimaryButton onClick={() => approveRepuesto(item.id)} disabled={item.aprobado} className="flex-1 sm:flex-none">
                           {item.aprobado ? 'Aprobado' : 'Aprobar publicacion'}
                         </PrimaryButton>
                       </div>
