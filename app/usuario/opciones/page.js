@@ -13,12 +13,6 @@ import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload }
 
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
-const TEAM_IMAGES = Array.from({ length: 8 }).map((_, index) => ({
-  id: index + 1,
-  title: `Imagen ${index + 1}`,
-  image: `https://picsum.photos/800/600?random=${index + 1}`,
-}))
-
 function filePreview(file, setter) {
   if (!file) {
     setter('')
@@ -37,6 +31,20 @@ function normalize(value) {
   return String(value || '').trim().toLowerCase()
 }
 
+function firstCommercePhoto(value) {
+  if (!value || typeof value !== 'object') return ''
+  for (const dayValue of Object.values(value)) {
+    if (!dayValue || typeof dayValue !== 'object') continue
+    if (dayValue.comercios && typeof dayValue.comercios === 'object') {
+      for (const commerce of Object.values(dayValue.comercios)) {
+        if (commerce?.comercio_foto_url) return commerce.comercio_foto_url
+      }
+    }
+    if (dayValue.comercio_foto_url) return dayValue.comercio_foto_url
+  }
+  return ''
+}
+
 function canonPhone(raw) {
   let d = String(raw || '').replace(/\D/g, '')
   if (d.startsWith('58') && d.length >= 12) d = d.slice(2)
@@ -50,7 +58,6 @@ export default function UsuarioOpcionesPage() {
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [fotoUploading, setFotoUploading] = useState(false)
   const [fotoError, setFotoError] = useState('')
-  const [currentIndex, setCurrentIndex] = useState(0)
   const [selectedImage, setSelectedImage] = useState(null)
   const [mapOpen, setMapOpen] = useState(false)
   const [vehicleSaving, setVehicleSaving] = useState(false)
@@ -77,19 +84,6 @@ export default function UsuarioOpcionesPage() {
   // mientras esta página está abierta; con onValue se refleja sin recargar.
   const [cedulaLive, setCedulaLive] = useState('')
   const [realtimeProfile, setRealtimeProfile] = useState(null)
-
-  const maxIndex = Math.max(0, TEAM_IMAGES.length - 1)
-  const currentImage = TEAM_IMAGES[currentIndex] || TEAM_IMAGES[0]
-  const nextImage = TEAM_IMAGES[currentIndex >= maxIndex ? 0 : currentIndex + 1] || TEAM_IMAGES[0]
-  const nextSlide = () => setCurrentIndex((index) => (index >= maxIndex ? 0 : index + 1))
-  const prevSlide = () => setCurrentIndex((index) => (index <= 0 ? maxIndex : index - 1))
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentIndex((index) => (index >= maxIndex ? 0 : index + 1))
-    }, 8000)
-    return () => clearInterval(timer)
-  }, [maxIndex])
 
   useEffect(() => {
     let cancelled = false
@@ -139,7 +133,7 @@ export default function UsuarioOpcionesPage() {
     }
     if (key) watch(`rifas_usuarios/${key}`)
     if (uid) watch(`users/${uid}`)
-    const rootOff = onValue(dbRef(rtdb, '/'), (snap) => {
+    const usersOff = onValue(dbRef(rtdb, 'users'), (snap) => {
       const data = snap.val() || {}
       for (const value of Object.values(data)) {
         if (value && typeof value === 'object' && canonPhone(value.whatsapp) === targetPhone) {
@@ -149,13 +143,14 @@ export default function UsuarioOpcionesPage() {
         }
       }
     })
-    offs.push(rootOff)
+    offs.push(usersOff)
     return () => offs.forEach((off) => { try { off() } catch { } })
   }, [session?.telefono, session?.perfil?.uid, session?.prefill?.uid])
 
-  const perfil = session?.perfil || session?.prefill || {}
+  const perfil = { ...(session?.perfil || session?.prefill || {}), ...(realtimeProfile || {}) }
   const nombre = perfil?.nombre || 'Usuario'
-  const foto = perfil?.foto_url || ''
+  const foto = perfil?.foto_url || perfil?.foto || ''
+  const comercioFoto = perfil?.comercio_foto_url || perfil?.comercio_autorizado?.comercio_foto_url || firstCommercePhoto(perfil?.comercios_por_dia)
   const cedulaActual = cedulaLive || perfil?.cedula || ''
   const edadVerificada = Boolean(cedulaActual || perfil?.cedula_estado === 'aprobado')
   const vendedorActivo = realtimeProfile?.vender === true || realtimeProfile?.vender === 'true' || perfil?.vender === true || perfil?.vender === 'true'
@@ -345,47 +340,39 @@ export default function UsuarioOpcionesPage() {
 
       <main className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
         <section className="overflow-hidden rounded-[8px] border border-gray-300 bg-white shadow-sm">
-          <div className="relative overflow-hidden bg-[#5a5252] p-2 sm:p-4">
-            <div
-              className="absolute inset-0 bg-cover bg-center opacity-45 blur-sm scale-105"
-              style={{ backgroundImage: `url(${currentImage.image})` }}
-            />
-            <div className="relative overflow-hidden rounded-[8px] border border-white/10 bg-black/50 backdrop-blur-sm">
+          <div className="relative overflow-hidden bg-gradient-to-br from-slate-200 via-gray-100 to-zinc-300 p-2 sm:p-4">
+            {comercioFoto && (
+              <div
+                className="absolute inset-0 scale-105 bg-cover bg-center opacity-40 blur-sm"
+                style={{ backgroundImage: `url(${comercioFoto})` }}
+              />
+            )}
+            <div className="relative overflow-hidden rounded-[8px] border border-white/40 bg-white/35 backdrop-blur-sm">
               <button
                 type="button"
-                onClick={prevSlide}
-                aria-label="Imágenes anteriores"
-                className="absolute left-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-3xl leading-none text-white hover:bg-black/55"
-              >
-                ‹
-              </button>
-              <button
-                type="button"
-                onClick={nextSlide}
-                aria-label="Imágenes siguientes"
-                className="absolute right-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-3xl leading-none text-white hover:bg-black/55"
-              >
-                ›
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedImage(currentImage.image)}
+                onClick={() => comercioFoto && setSelectedImage(comercioFoto)}
                 className="group relative block h-[190px] w-full overflow-hidden sm:h-[300px]"
               >
-                <span
-                  className="absolute inset-0 bg-cover bg-center transition duration-500 group-hover:scale-[1.02]"
-                  style={{ backgroundImage: `url(${currentImage.image})` }}
-                />
-                <span className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10" />
+                {comercioFoto ? (
+                  <span
+                    className="absolute inset-0 bg-cover bg-center transition duration-500 group-hover:scale-[1.02]"
+                    style={{ backgroundImage: `url(${comercioFoto})` }}
+                  />
+                ) : (
+                  <span className="absolute inset-0 bg-gradient-to-br from-slate-100 via-gray-200 to-zinc-300" />
+                )}
+                <span className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/10" />
               </button>
             </div>
           </div>
 
           <div className="relative overflow-hidden bg-[#d9d9d9] px-4 pb-5 pt-3 sm:px-6">
-            <div
-              className="absolute inset-0 bg-cover bg-center opacity-35 blur-sm scale-110"
-              style={{ backgroundImage: `url(${nextImage.image})` }}
-            />
+            {comercioFoto && (
+              <div
+                className="absolute inset-0 scale-110 bg-cover bg-center opacity-20 blur-sm"
+                style={{ backgroundImage: `url(${comercioFoto})` }}
+              />
+            )}
             <div className="absolute inset-0 bg-[#d9d9d9]/85" />
             <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex min-w-0 items-end gap-4">

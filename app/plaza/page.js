@@ -898,8 +898,10 @@ function UserMenu({ session, onClose, onLogout }) {
     const targetPhone = canonPhone(tel)
     const updates = {}
 
-    updates[`rifas_usuarios/${key}`] = patch
-    if (uid) updates[`users/${uid}`] = patch
+    // Fuente de verdad: /users (key = uid oficial o teléfono). rifas_usuarios
+    // ya no guarda el perfil: es exclusivo del flujo de rifas.
+    const usersKey = uid || key
+    updates[`users/${usersKey}`] = patch
 
     try {
       const snap = await get(dbRef(rtdb, '/'))

@@ -30,7 +30,8 @@ async function verifyGoogle(idToken) {
 
 // Busca el WhatsApp ya vinculado a esta cuenta de Google.
 // 1) /users/{uid}: usuarios del app Android (la clave del nodo es el uid de Google).
-// 2) rifas_usuarios: nodo con google_uid/google_email igual (lo escribe el flujo magic).
+// 2) /users/*: nodo con google_uid/google_email igual (lo escribe el flujo magic).
+// 3) rifas_usuarios: fallback legacy de vinculaciones antiguas.
 // Devuelve { telefono, key } o null.
 async function findLinkedPhone({ uid, email }) {
   const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
@@ -46,7 +47,22 @@ async function findLinkedPhone({ uid, email }) {
     }
   }
 
-  // 2) Vinculación previa guardada en rifas_usuarios.
+  // 2) Vinculación previa en /users (fuente de verdad), por google_uid/email.
+  const usersSnap = await adminRtdb.ref('users').get()
+  if (usersSnap.exists()) {
+    const all = usersSnap.val() || {}
+    for (const [k, v] of Object.entries(all)) {
+      if (!v || typeof v !== 'object') continue
+      const matchUid = uid && v.google_uid === uid
+      const matchEmail = email && String(v.google_email || '').toLowerCase() === email
+      if (matchUid || matchEmail) {
+        const wa = v.whatsapp || k
+        return { telefono: wa, key: phoneKey(wa) }
+      }
+    }
+  }
+
+  // 3) Fallback legacy: vinculación antigua guardada en rifas_usuarios.
   const rifasSnap = await adminRtdb.ref('rifas_usuarios').get()
   if (rifasSnap.exists()) {
     const all = rifasSnap.val() || {}

@@ -51,10 +51,11 @@ async function resolveRegisteredProfile({ rtdb, telefono, key }) {
     }
   }
 
+  // /users (oficial) es primario; rifas_usuarios queda como fallback legacy.
   return {
-    uid: rifas?.uid || official?.uid || official?.id || officialUid || '',
-    cedula: cleanText(rifas?.cedula || official?.cedula, 30),
-    nombre: cleanText(rifas?.nombre || official?.nombre || official?.google_nombre, 120),
+    uid: official?.uid || official?.id || officialUid || rifas?.uid || '',
+    cedula: cleanText(official?.cedula || rifas?.cedula, 30),
+    nombre: cleanText(official?.nombre || official?.google_nombre || rifas?.nombre, 120),
   }
 }
 

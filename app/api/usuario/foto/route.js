@@ -101,12 +101,16 @@ export async function POST(request) {
     const official = await findRealtimeUserByPhone(rtdb, session.telefono)
     const patch = { foto_url: fotoUrl, foto: fotoUrl, foto_actualizada_en: Date.now() }
 
-    await Promise.all([
-      rtdb.ref(`rifas_usuarios/${session.key}`).update(patch),
-      official?.uid
-        ? rtdb.ref(`${official.path ? `${official.path}/` : ''}${official.uid}`).update(patch)
-        : Promise.resolve(),
-    ])
+    // Fuente de verdad: /users (nodo existente o /users/<telefono> con identidad).
+    // rifas_usuarios NO se escribe: es exclusivo del flujo de rifas.
+    const usersPath = official?.uid
+      ? `${official.path ? `${official.path}/` : ''}${official.uid}`
+      : `users/${session.telefono}`
+    const usersPatch = official?.uid
+      ? patch
+      : { whatsapp: session.telefono, telefono: session.telefono, id: session.telefono, ...patch }
+
+    await rtdb.ref(usersPath).update(usersPatch)
 
     return NextResponse.json({ ok: true, foto_url: fotoUrl })
   } catch (error) {

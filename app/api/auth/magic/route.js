@@ -4,7 +4,7 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { ref, get } from 'firebase/database'
 import { phoneKey } from '@/lib/whatsappAuth'
 import { signRifaToken } from '@/lib/rifaJwt'
-import { resolverPerfil } from '@/lib/perfilUsuario'
+import { resolverPerfil, canonPhone } from '@/lib/perfilUsuario'
 
 function cleanText(value, max = 180) {
   return String(value || '').trim().slice(0, max)
@@ -74,7 +74,18 @@ export async function POST(request) {
           google_foto: googleUser.foto_url,
           google_verificado_en: Date.now(),
         }
-        await adminRtdb.ref(`rifas_usuarios/${key}`).update(googlePatch)
+        // Fuente de verdad: /users. Si el teléfono ya está en /users (app Android
+        // o web previo) se actualiza ese nodo; si no, se crea /users/<telefono>.
+        const target = canonPhone(telefono)
+        let usersKey = key
+        const allUsers = await adminRtdb.ref('users').get()
+        if (allUsers.exists()) {
+          for (const [uid, u] of Object.entries(allUsers.val() || {})) {
+            if (u && typeof u === 'object' && canonPhone(u.whatsapp) === target) { usersKey = uid; break }
+          }
+        }
+        const seed = usersKey === key ? { whatsapp: telefono, telefono, id: key } : {}
+        await adminRtdb.ref(`users/${usersKey}`).update({ ...seed, ...googlePatch })
       } catch {
         // La sesión válida sigue siendo la de WhatsApp; Google solo enriquece/vincula.
       }

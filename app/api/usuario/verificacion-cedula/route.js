@@ -275,23 +275,27 @@ export async function POST(request) {
       },
       enviado_en: now,
       actualizado_en: now,
-      realtime_user_uid: official?.uid || '',
+      realtime_user_uid: official?.uid || session.telefono,
     }
+
+    // Unificado: la cédula también queda en /users. Si el teléfono ya estaba en
+    // /users (app Android) se actualiza ese nodo; si no, se crea /users/<telefono>
+    // sembrando identidad. Así el front siempre ve cedula_estado en /users.
+    const cedulaPatch = {
+      cedula: cedulaNumero,
+      cedula_estado: 'aprobado',
+      cedula_actualizada_en: realtimeNow,
+    }
+    const usersPath = official?.uid
+      ? `${official.path ? `${official.path}/` : ''}${official.uid}`
+      : `users/${session.telefono}`
+    const usersPatch = official?.uid
+      ? cedulaPatch
+      : { whatsapp: session.telefono, telefono: session.telefono, id: session.telefono, ...cedulaPatch }
 
     await Promise.all([
       db.collection('verificaciones_cedula').doc(session.telefono).set(verificationData, { merge: true }),
-      rtdb.ref(`rifas_usuarios/${session.key}`).update({
-        cedula: cedulaNumero,
-        cedula_estado: 'aprobado',
-        cedula_actualizada_en: realtimeNow,
-      }),
-      official?.uid
-        ? rtdb.ref(`${official.path ? `${official.path}/` : ''}${official.uid}`).update({
-            cedula: cedulaNumero,
-            cedula_estado: 'aprobado',
-            cedula_actualizada_en: realtimeNow,
-          })
-        : Promise.resolve(),
+      rtdb.ref(usersPath).update(usersPatch),
     ])
 
     return NextResponse.json({
@@ -299,7 +303,7 @@ export async function POST(request) {
       estado: 'aprobado',
       cedula: cedulaNumero,
       datos: gemini.cedula,
-      realtime_user_uid: official?.uid || null,
+      realtime_user_uid: official?.uid || session.telefono,
     })
   } catch (error) {
     return NextResponse.json({ error: error?.message || 'No se pudo verificar la cédula.' }, { status: 400 })

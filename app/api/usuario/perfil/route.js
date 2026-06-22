@@ -96,12 +96,19 @@ export async function POST(request) {
       perfil_actualizado_en: updatedAt,
     }
 
-    await Promise.all([
-      rtdb.ref(`rifas_usuarios/${session.key}`).update(patch),
-      official?.uid ? rtdb.ref(`${official.path ? `${official.path}/` : ''}${official.uid}`).update(patch) : Promise.resolve(),
-    ])
+    // Fuente de verdad: /users. Si el teléfono ya existía (app Android) se
+    // actualiza ese nodo; si no, se crea /users/<telefono> sembrando identidad.
+    // rifas_usuarios NO se escribe: es exclusivo del flujo de rifas.
+    const usersPath = official?.uid
+      ? `${official.path ? `${official.path}/` : ''}${official.uid}`
+      : `users/${session.telefono}`
+    const usersPatch = official?.uid
+      ? patch
+      : { whatsapp: session.telefono, telefono: session.telefono, id: session.telefono, ...patch }
 
-    return NextResponse.json({ ok: true, perfil: patch, realtime_user_uid: official?.uid || null })
+    await rtdb.ref(usersPath).update(usersPatch)
+
+    return NextResponse.json({ ok: true, perfil: patch, realtime_user_uid: official?.uid || session.telefono })
   } catch (error) {
     return NextResponse.json({ error: error?.message || 'No se pudo guardar el perfil.' }, { status: 400 })
   }

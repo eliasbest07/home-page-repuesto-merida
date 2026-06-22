@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { rtdb, storage } from '@/lib/firebase'
-import { ref as dbRef, set, serverTimestamp } from 'firebase/database'
+import { ref as dbRef, update, serverTimestamp } from 'firebase/database'
 import { ref as stRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { saveSession, phoneKey, clearSession, ensureSession } from '@/lib/rifaSession'
 
@@ -90,6 +90,9 @@ function RegistroInner() {
       }
 
       setStep('guardando')
+      // Key unificada en /users: el uid oficial si el login emparejó un usuario
+      // viejo de la app Android, o el teléfono para usuarios solo-web.
+      const usersKey = session.prefill?.uid || key
       const perfil = {
         telefono: session.telefono,
         whatsapp: session.telefono,
@@ -98,11 +101,25 @@ function RegistroInner() {
         lng: coords.lng,
         foto_url,
         // Enlaza con el registro oficial de /users si el login lo encontró.
-        ...(session.prefill?.uid ? { uid: session.prefill.uid } : {}),
+        ...(session.prefill?.uid ? { uid: session.prefill.uid } : { uid: usersKey }),
+        creado_en: serverTimestamp(),
+      }
+      // Nodo /users con las convenciones que lee el front (foto, ubicacion, id).
+      const userOficial = {
+        id: usersKey,
+        whatsapp: session.telefono,
+        telefono: session.telefono,
+        nombre: nombre.trim(),
+        foto: foto_url || null,
+        lat: coords.lat,
+        lng: coords.lng,
+        ubicacion: `${coords.lat},${coords.lng}`,
         creado_en: serverTimestamp(),
       }
       await Promise.race([
-        set(dbRef(rtdb, `rifas_usuarios/${key}`), perfil),
+        // Fuente de verdad: /users. update (no set) para no pisar datos previos
+        // del usuario Android. rifas_usuarios queda solo para el flujo de rifas.
+        update(dbRef(rtdb, `users/${usersKey}`), userOficial),
         new Promise((_, rej) => setTimeout(() => rej(new Error('Tiempo agotado guardando perfil.')), 15000)),
       ])
 
