@@ -146,6 +146,53 @@ function SoftButton({ children, active = false, className = '', ...props }) {
   )
 }
 
+// Fotos del repuesto: lista con scroll horizontal (2 a la vista) + agregar (máx 4).
+function RepuestoFotos({ fotos = [], uploading = false, onPick }) {
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3">
+      <div className="flex gap-2 overflow-x-auto">
+        {fotos.map((url) => (
+          <a
+            key={url}
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="relative aspect-square w-[calc(50%-4px)] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
+          >
+            <Image src={url} alt="Foto del repuesto" fill unoptimized className="object-cover" />
+          </a>
+        ))}
+        {fotos.length < 4 && (
+          <label
+            className={`flex aspect-square w-[calc(50%-4px)] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2 text-center text-xs font-bold text-slate-500 hover:border-amber-400 ${uploading ? 'pointer-events-none opacity-60' : ''}`}
+          >
+            {uploading ? (
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
+            ) : (
+              <>
+                <span className="text-lg leading-none">+</span>
+                <span>Agregar foto</span>
+              </>
+            )}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              disabled={uploading}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                onPick(file)
+              }}
+            />
+          </label>
+        )}
+      </div>
+      <p className="mt-1 text-[11px] text-slate-400">{fotos.length}/4 fotos</p>
+    </div>
+  )
+}
+
 export default function ComercioAutorizacionPage() {
   const router = useRouter()
   const [session, setSession] = useState(null)
@@ -933,6 +980,11 @@ export default function ComercioAutorizacionPage() {
                       </PrimaryButton>
                     </div>
                   </div>
+                  <RepuestoFotos
+                    fotos={item.fotos || []}
+                    uploading={uploadingPhotoId === item.id}
+                    onPick={(file) => uploadRepuestoPhoto(item, file)}
+                  />
                 </article>
               ))}
             </div>
@@ -1093,47 +1145,11 @@ export default function ComercioAutorizacionPage() {
                       </div>
                     </div>
 
-                    <div className="mt-3 border-t border-slate-100 pt-3">
-                      <div className="flex gap-2 overflow-x-auto">
-                        {(item.fotos || []).map((url) => (
-                          <a
-                            key={url}
-                            href={url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="relative aspect-square w-[calc(50%-4px)] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
-                          >
-                            <Image src={url} alt="Foto del repuesto" fill unoptimized className="object-cover" />
-                          </a>
-                        ))}
-                        {(item.fotos || []).length < 4 && (
-                          <label
-                            className={`flex aspect-square w-[calc(50%-4px)] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2 text-center text-xs font-bold text-slate-500 hover:border-amber-400 ${uploadingPhotoId === item.id ? 'pointer-events-none opacity-60' : ''}`}
-                          >
-                            {uploadingPhotoId === item.id ? (
-                              <span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
-                            ) : (
-                              <>
-                                <span className="text-lg leading-none">+</span>
-                                <span>Agregar foto</span>
-                              </>
-                            )}
-                            <input
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp"
-                              className="hidden"
-                              disabled={uploadingPhotoId === item.id}
-                              onChange={(event) => {
-                                const file = event.target.files?.[0]
-                                event.target.value = ''
-                                uploadRepuestoPhoto(item, file)
-                              }}
-                            />
-                          </label>
-                        )}
-                      </div>
-                      <p className="mt-1 text-[11px] text-slate-400">{(item.fotos || []).length}/4 fotos</p>
-                    </div>
+                    <RepuestoFotos
+                      fotos={item.fotos || []}
+                      uploading={uploadingPhotoId === item.id}
+                      onPick={(file) => uploadRepuestoPhoto(item, file)}
+                    />
                   </article>
                 ))}
               </div>
