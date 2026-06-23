@@ -6,7 +6,8 @@ import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { onValue, ref as dbRef } from 'firebase/database'
-import { rtdb } from '@/lib/firebase'
+import { signOut } from 'firebase/auth'
+import { auth, rtdb } from '@/lib/firebase'
 import { clearSession, ensureSession, phoneKey, saveSession } from '@/lib/rifaSession'
 import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
 import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
@@ -162,8 +163,12 @@ export default function UsuarioOpcionesPage() {
   )
   const locationLabel = vehicle.ubicacion_texto || [perfil?.zona, perfil?.ciudad].filter(Boolean).join(', ') || 'Ubicación pendiente'
 
-  function logout() {
+  async function logout() {
     clearSession()
+    // Cierra también la sesión de Firebase Auth (Google) para que el próximo
+    // inicio cargue los datos frescos desde Firebase y no reuse la sesión previa.
+    try { await signOut(auth) } catch {}
+    setSession(null)
     router.replace('/')
   }
 
@@ -369,11 +374,11 @@ export default function UsuarioOpcionesPage() {
           <div className="relative overflow-hidden bg-[#d9d9d9] px-4 pb-5 pt-3 sm:px-6">
             {comercioFoto && (
               <div
-                className="absolute inset-0 scale-110 bg-cover bg-center opacity-20 blur-sm"
+                className="absolute inset-0 -scale-y-100 bg-cover bg-bottom opacity-40"
                 style={{ backgroundImage: `url(${comercioFoto})` }}
               />
             )}
-            <div className="absolute inset-0 bg-[#d9d9d9]/85" />
+            <div className="absolute inset-0 bg-[#d9d9d9]/70" />
             <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex min-w-0 items-end gap-4">
                 <label

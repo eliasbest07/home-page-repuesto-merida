@@ -92,7 +92,18 @@ export async function POST(request) {
     })
     const url = `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(storagePath)}?alt=media&token=${downloadToken}`
     const nextFotos = [...fotos, url].slice(0, MAX_FOTOS)
-    await ref.update({ fotos: nextFotos, actualizado_en: adminFieldValue.serverTimestamp() })
+    const now = adminFieldValue.serverTimestamp()
+    const writes = [ref.update({ fotos: nextFotos, actualizado_en: now })]
+    // Si ya está publicado en el catálogo, sincroniza las imágenes del doc `merida`.
+    if (data.catalogo_id) {
+      writes.push(
+        db.collection('merida').doc(data.catalogo_id).set(
+          { img: nextFotos, actualizado_en: now },
+          { merge: true },
+        ),
+      )
+    }
+    await Promise.all(writes)
 
     return NextResponse.json({ ok: true, fotos: nextFotos })
   } catch (error) {

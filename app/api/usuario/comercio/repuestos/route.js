@@ -275,7 +275,10 @@ export async function PATCH(request) {
     const commerce = dayCommerce || profile.comercio_autorizado || profile
     const catalogRef = db.collection(CATALOGO_COLLECTION).doc()
     const now = adminFieldValue.serverTimestamp()
-    const image = commerce.comercio_foto_url || profile.comercio_foto_url || ''
+    // El catálogo usa las fotos propias del repuesto; si no tiene, cae a la del comercio.
+    const repuestoFotos = Array.isArray(item.fotos) ? item.fotos.filter(Boolean) : []
+    const fallbackImage = commerce.comercio_foto_url || profile.comercio_foto_url || ''
+    const img = repuestoFotos.length ? repuestoFotos : (fallbackImage ? [fallbackImage] : [])
 
     await Promise.all([
       catalogRef.set({
@@ -285,7 +288,7 @@ export async function PATCH(request) {
         descripcion: item.nota || '',
         vehiculo: item.tipo_vehiculo || 'carro',
         precio: priceLabel(item.precio),
-        img: image ? [image] : [],
+        img,
         relevancia: '0',
         publicado: 'publicado',
         estado: 'disponible',
