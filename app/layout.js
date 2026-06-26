@@ -5,15 +5,18 @@ import CookieConsent from '@/app/components/CookieConsent'
 import GlobalLegalLinks from '@/app/components/GlobalLegalLinks'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
+const ADSENSE_ENABLED = process.env.NEXT_PUBLIC_ADSENSE_ENABLED === 'true'
 const localKeywordText = LOCAL_SEO_SIGNALS.highValueKeywords.join(', ')
 
 export const metadata = {
   title: 'Repuestos Mérida App Ciudad | Catálogo de Repuestos Automotrices en Mérida, Venezuela',
   description: 'Repuestos automotrices en Mérida ciudad (Municipio Libertador), estado Mérida, Venezuela. Atención por WhatsApp, compatibilidad por modelo y disponibilidad rápida.',
   keywords: `repuestos Mérida ciudad, repuestos Municipio Libertador, repuestos estado Mérida, repuestos automotrices Venezuela, ${localKeywordText}`,
-  other: {
-    'google-adsense-account': 'ca-pub-7506182169131280',
-  },
+  other: ADSENSE_ENABLED
+    ? {
+        'google-adsense-account': 'ca-pub-7506182169131280',
+      }
+    : undefined,
   metadataBase: new URL(SITE_URL),
   alternates: {
     canonical: '/',
@@ -77,15 +80,13 @@ export default function RootLayout({ children }) {
             `,
           }}
         />
-        {/* Fragmento de código de AdSense — debe estar en el <head> del HTML del
-            servidor para que el verificador de Google lo encuentre. Carga el
-            loader una sola vez; AdSenseBlock luego hace adsbygoogle.push({}).
-            Consent Mode v2 (script de arriba) ya está configurado antes. */}
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7506182169131280"
-          crossOrigin="anonymous"
-        />
+        {ADSENSE_ENABLED ? (
+          <script
+            async
+            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7506182169131280"
+            crossOrigin="anonymous"
+          />
+        ) : null}
         <link rel="icon" href="/iconorm.png" type="image/png" />
         <meta name="theme-color" content="#111827" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

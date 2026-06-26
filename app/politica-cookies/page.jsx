@@ -2,7 +2,7 @@ import LegalPage from '@/app/components/LegalPage'
 
 export const metadata = {
   title: 'Política de Cookies | Repuestos Mérida',
-  description: 'Información sobre las cookies utilizadas por Repuestos Mérida y Google AdSense.',
+  description: 'Información sobre las cookies utilizadas por Repuestos Mérida.',
 }
 
 export default function PoliticaCookies() {
@@ -25,8 +25,8 @@ export default function PoliticaCookies() {
             y conservación de la preferencia de cookies.
           </li>
           <li>
-            <strong>Publicitarias:</strong> Google AdSense puede utilizarlas para mostrar, limitar y
-            medir anuncios. Solo cargamos AdSense después de que el usuario acepta.
+            <strong>Publicitarias:</strong> si se activan anuncios, el proveedor publicitario puede
+            utilizarlas para mostrar, limitar y medir anuncios conforme al consentimiento del usuario.
           </li>
           <li>
             <strong>De terceros:</strong> determinadas funciones de Google, Firebase, mapas o

@@ -12,7 +12,11 @@ export default function AvisoLegal() {
         <h2>1. Titular del sitio</h2>
         <p className="mt-2">
           Este sitio web, disponible en repuestosmerida.com, es operado por Gochos&apos; Group bajo
-          el nombre Repuestos Mérida, con domicilio de actividad en Mérida, Venezuela.
+          el nombre Repuestos Mérida, con domicilio de actividad en Mérida centro, Av. 3,
+          Mérida, Venezuela.
+        </p>
+        <p className="mt-2">
+          Horario de atención: todos los días de 8:00 a. m. a 8:00 p. m.
         </p>
         <p className="mt-2">
           Contacto: <a href="mailto:ahoraesbest@gmail.com">ahoraesbest@gmail.com</a>.

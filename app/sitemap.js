@@ -22,6 +22,18 @@ export default function sitemap() {
       priority: 0.9,
     },
     {
+      url: `${SITE_URL}/blog`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${SITE_URL}/piedra-papel-tijera`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.6,
+    },
+    {
       url: `${SITE_URL}/politica-privacidad`,
       lastModified: now,
       changeFrequency: 'monthly',

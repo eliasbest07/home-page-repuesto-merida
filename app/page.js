@@ -9,7 +9,6 @@ import { collection, getDocs, addDoc, query, where, limit, serverTimestamp } fro
 import { get, ref } from 'firebase/database'
 import { firestore, rtdb } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
-import AdSenseBlock from './components/AdSenseBlock'
 
 const PlazaChat = dynamic(() => import('./components/PlazaChat'), { ssr: false })
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
@@ -333,13 +332,13 @@ function featuredBrandIcon(producto) {
   return resolveProductBrand(producto)?.icon || '/mobile-catalog/categories/motor.png'
 }
 
-// Badge con el logo de la marca para la esquina de la imagen del card.
+// Logo de marca dentro del área de información del card.
 function ProductBrandBadge({ producto }) {
   const brand = resolveProductBrand(producto)
   if (!brand) return null
   return (
-    <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center justify-center">
-      <Image src={brand.icon} alt={brand.name} width={36} height={36} className="h-9 w-9 object-contain drop-shadow-md" />
+    <span className="pointer-events-none inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm">
+      <Image src={brand.icon} alt={brand.name} width={44} height={44} className="h-11 w-11 object-contain" />
     </span>
   )
 }
@@ -961,7 +960,7 @@ export default function Home() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'No se pudo publicar el repuesto.')
 
-      setCatalogMessage('Repuesto publicado como destacado correctamente.')
+      setCatalogMessage('Repuesto enviado a revisión. Un usuario autorizado debe aprobarlo para publicarlo en el catálogo.')
       setCatalogForm({
         titulo: '',
         categoria: 'Motor y Transmisión',
@@ -1167,6 +1166,13 @@ export default function Home() {
             >
               Repuestos solicitados
             </Link>
+            <Link
+              href="/blog"
+              onClick={() => setMenuOpen(false)}
+              className="block text-gray-300 hover:text-[#FFD700] text-sm font-medium py-2 transition-colors"
+            >
+              Blog
+            </Link>
             {['#categorias', '#catalogo', '#nosotros', '#contacto', '#servicios'].map((href, i) => (
               <a
                 key={href}
@@ -1185,13 +1191,13 @@ export default function Home() {
               >
                 🏪 Plaza
               </Link>
-              <a
-                href="#servicios"
+              <Link
+                href="/blog"
                 onClick={() => setMenuOpen(false)}
                 className="flex items-center justify-center gap-2 bg-gray-700 text-white font-bold text-sm px-3 py-2.5 rounded-lg border border-gray-600"
               >
-                🛵 Moto Taxi
-              </a>
+                Blog
+              </Link>
               <Link
                 href="/bingo"
                 onClick={() => setMenuOpen(false)}
@@ -1504,33 +1510,45 @@ export default function Home() {
         </div>
       </section>
 
-      <AdSenseBlock
-        slot="6459872221"
-        className="home-adsense-placement"
-      />
-
       {/* ──────────────────────────────────────────
-          TENDENCIAS LOCALES (MÉRIDA)
+          GUÍA DE COMPRA LOCAL
       ────────────────────────────────────────── */}
-      <section className="hidden py-10 px-4 bg-white border-b border-gray-100">
+      <section className="py-12 px-4 bg-white border-b border-gray-100">
         <div className="max-w-6xl mx-auto">
-          <div className="mb-4">
-            <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 block mb-2">Tendencias locales · Mérida, Venezuela</span>
-            <p className="text-gray-700 text-sm">
-              Patrones de búsqueda detectados para {LOCAL_SEO_SIGNALS.region.city} ({LOCAL_SEO_SIGNALS.region.municipality}) actualizados el {LOCAL_SEO_SIGNALS.detectedAt}.
+          <div className="mb-8 max-w-3xl">
+            <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 block mb-2">
+              Guía local de compra
+            </span>
+            <h2 className="font-brand text-2xl sm:text-3xl text-gray-900 mb-3">
+              Antes de consultar un repuesto en Mérida
+            </h2>
+            <p className="text-gray-600 text-sm leading-relaxed">
+              Para cotizar más rápido, ten a mano la marca, modelo, año y motor del vehículo.
+              En piezas de freno, suspensión, electricidad o refrigeración también ayuda enviar
+              una foto de la pieza instalada, el serial o la muestra física cuando esté disponible.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {topLocalTerms.map((term) => (
-              <span
-                key={term}
-                className="inline-flex items-center rounded-full border border-gray-300 bg-gray-50 px-3 py-1 text-xs text-gray-700"
-              >
-                {term}
-              </span>
+          <div className="grid gap-4 md:grid-cols-3">
+            {[
+              {
+                title: 'Compatibilidad',
+                text: 'Compara año, versión, cilindrada y tipo de transmisión antes de comprar. Dos vehículos del mismo modelo pueden usar piezas diferentes.',
+              },
+              {
+                title: 'Calidad y garantía',
+                text: 'Pregunta por marca, procedencia y condiciones de cambio. En repuestos eléctricos conviene verificar conectores y numeración.',
+              },
+              {
+                title: 'Entrega o retiro',
+                text: 'Confirma disponibilidad real, dirección de la tienda y horario de atención antes de trasladarte dentro de Mérida.',
+              },
+            ].map((item) => (
+              <article key={item.title} className="rounded-lg border border-gray-200 bg-gray-50 p-5">
+                <h3 className="font-brand text-lg text-gray-900 mb-2">{item.title}</h3>
+                <p className="text-sm leading-relaxed text-gray-600">{item.text}</p>
+              </article>
             ))}
           </div>
-
         </div>
       </section>
 
@@ -1709,7 +1727,6 @@ export default function Home() {
                     ) : (
                       <div className="flex h-full items-center justify-center text-5xl">📦</div>
                     )}
-                    <ProductBrandBadge producto={p} />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
                       <p className="line-clamp-2 text-sm font-semibold text-white">{p.nombre}</p>
                     </div>
@@ -1737,9 +1754,12 @@ export default function Home() {
                   {/* Card body */}
                   <div className="px-4 py-4 flex-1 flex flex-col gap-3">
                     {/* Precio */}
-                    <div>
-                      <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Rango de precio</p>
-                      <p className="font-brand text-xl text-gray-900 mt-0.5">{p.precio}</p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Rango de precio</p>
+                        <p className="font-brand text-xl text-gray-900 mt-0.5">{p.precio}</p>
+                      </div>
+                      <ProductBrandBadge producto={p} />
                     </div>
 
                     {/* Compatibilidad */}
@@ -1806,13 +1826,29 @@ export default function Home() {
         </div>
       </section>
 
-      <AdSenseBlock
-        slot="6323804141"
-        format="autorelaxed"
-        responsive={false}
-        className="multiplex-adsense-placement"
-        label="Contenido patrocinado"
-      />
+      <section className="py-12 px-4 bg-white border-t border-gray-100">
+        <div className="max-w-6xl mx-auto grid gap-5 md:grid-cols-3">
+          {[
+            {
+              title: 'Frenos y suspensión',
+              text: 'Revisa desgaste irregular, ruidos al frenar, vibración del pedal y estado de amortiguadores antes de pedir cotización.',
+            },
+            {
+              title: 'Motor y filtros',
+              text: 'Indica kilometraje, tipo de aceite usado y código del filtro para reducir errores en piezas de mantenimiento.',
+            },
+            {
+              title: 'Sistema eléctrico',
+              text: 'En sensores, bobinas, alternadores y arranques, el serial de la pieza ayuda a ubicar reemplazos compatibles.',
+            },
+          ].map((item) => (
+            <article key={item.title} className="rounded-lg border border-gray-200 bg-gray-50 p-5">
+              <h3 className="font-brand text-lg text-gray-900 mb-2">{item.title}</h3>
+              <p className="text-sm leading-relaxed text-gray-600">{item.text}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
       {/* ──────────────────────────────────────────
           WHATSAPP CTA BANNER
@@ -1836,9 +1872,56 @@ export default function Home() {
             Escribir por WhatsApp
           </a>
           <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center text-gray-500 text-sm">
-            <span className="flex items-center gap-1.5"><IconClock />  Lun–Sáb · 8am–6pm</span>
-            <span className="flex items-center gap-1.5"><IconMapPin /> Mérida, Venezuela</span>
+            <span className="flex items-center gap-1.5"><IconClock /> Todos los días · 8am–8pm</span>
+            <span className="flex items-center gap-1.5"><IconMapPin /> Mérida centro · Av. 3</span>
             <span className="flex items-center gap-1.5"><IconShield /> Garantía en cada repuesto</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="blog" className="py-16 px-4 bg-gray-50">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 mb-2 block">
+                Blog de repuestos
+              </span>
+              <h2 className="font-brand text-3xl sm:text-4xl text-gray-900">
+                Guías rápidas para comprar mejor
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-gray-600">
+                Ideas iniciales para orientar a compradores en Mérida: datos de compatibilidad,
+                señales de desgaste, garantía y preguntas útiles antes de cotizar.
+              </p>
+            </div>
+            <Link
+              href="/blog"
+              className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white hover:bg-gray-800"
+            >
+              Ver blog
+            </Link>
+          </div>
+
+          <div className="grid gap-5 md:grid-cols-3">
+            {[
+              {
+                title: 'Pastillas de freno',
+                text: 'Qué revisar antes de comprar: forma, sensor, compuesto, discos y síntomas de desgaste.',
+              },
+              {
+                title: 'Repuestos Toyota',
+                text: 'Datos mínimos para ubicar piezas compatibles según modelo, año, motor y transmisión.',
+              },
+              {
+                title: 'Sistema eléctrico',
+                text: 'Cómo describir fallas de alternador, arranque, batería, sensores y conectores.',
+              },
+            ].map((item) => (
+              <article key={item.title} className="rounded-lg border border-gray-200 bg-white p-5">
+                <h3 className="font-brand text-lg text-gray-900 mb-2">{item.title}</h3>
+                <p className="text-sm leading-relaxed text-gray-600">{item.text}</p>
+              </article>
+            ))}
           </div>
         </div>
       </section>
@@ -1860,7 +1943,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
 
             {/* ── Plaza ── */}
             <Link
@@ -1899,27 +1982,27 @@ export default function Home() {
               </div>
             </Link>
 
-            {/* ── Moto Taxi ── */}
-            <div
+            {/* ── Solicitados ── */}
+            <Link
+              href="/solicitados"
               className="group relative flex flex-col gap-4 bg-gray-900 rounded-2xl p-6 border border-gray-800 hover:border-[#38BDF8]/60 hover:shadow-xl hover:shadow-sky-500/10 transition-all duration-300 overflow-hidden"
-              aria-disabled="true"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-sky-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
               <div className="flex items-start gap-4 relative">
                 <div className="w-14 h-14 rounded-xl bg-[#38BDF8]/10 border border-[#38BDF8]/20 flex items-center justify-center text-3xl shrink-0 group-hover:scale-110 transition-transform">
-                  🛵
+                  🔎
                 </div>
                 <div className="min-w-0">
-                  <h3 className="font-brand text-xl font-bold text-white">Moto Taxi</h3>
+                  <h3 className="font-brand text-xl font-bold text-white">Solicitados</h3>
                   <p className="text-gray-400 text-sm mt-1 leading-relaxed">
-                    Servicio rápido de traslado en moto dentro de Mérida. Próximamente disponible en la app.
+                    Consulta solicitudes reales de repuestos y ayuda a conectar compradores con comercios locales.
                   </p>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-2 relative">
-                {['Traslado rápido', 'Mérida', 'WhatsApp directo'].map(t => (
+                {['Solicitudes reales', 'Mérida', 'Contacto directo'].map(t => (
                   <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
                     {t}
                   </span>
@@ -1927,9 +2010,49 @@ export default function Home() {
               </div>
 
               <div className="flex items-center gap-1.5 text-[#38BDF8] text-sm font-semibold relative">
-                Próximamente en la app
+                Ver solicitados
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
+                  className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeLinecap="round">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
               </div>
-            </div>
+            </Link>
+
+            {/* ── Piedra, papel o tijera ── */}
+            <Link
+              href="/piedra-papel-tijera"
+              className="group relative flex flex-col gap-4 bg-gray-900 rounded-2xl p-6 border border-gray-800 hover:border-[#F97316]/60 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300 overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+              <div className="flex items-start gap-4 relative">
+                <div className="w-14 h-14 rounded-xl bg-[#F97316]/10 border border-[#F97316]/20 flex items-center justify-center text-3xl shrink-0 group-hover:scale-110 transition-transform">
+                  ✊
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-brand text-xl font-bold text-white">Piedra papel tijera</h3>
+                  <p className="text-gray-400 text-sm mt-1 leading-relaxed">
+                    Juego rápido del club con rival aleatorio, animación de resultado y modo de créditos opcional.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 relative">
+                {['Rival aleatorio', 'Créditos opcionales', 'Partida rápida'].map(t => (
+                  <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
+                    {t}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1.5 text-orange-400 text-sm font-semibold relative">
+                Jugar
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
+                  className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeLinecap="round">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              </div>
+            </Link>
 
             {/* ── Bingo ── */}
             <Link
@@ -1945,13 +2068,13 @@ export default function Home() {
                 <div className="min-w-0">
                   <h3 className="font-brand text-xl font-bold text-white">Bingo</h3>
                   <p className="text-gray-400 text-sm mt-1 leading-relaxed">
-                    Juego de bingo multijugador en tiempo real. Crea o únete a una sala con un código.
+                    Actividad recreativa para miembros del club. Las salas privadas se crean o se comparten con código.
                   </p>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-2 relative">
-                {['Crear sala', 'Unirse con código', 'Tiempo real'].map(t => (
+                {['Solo miembros', 'Salas privadas', 'Código de acceso'].map(t => (
                   <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
                     {t}
                   </span>
@@ -1959,7 +2082,7 @@ export default function Home() {
               </div>
 
               <div className="flex items-center gap-1.5 text-[#22C55E] text-sm font-semibold relative">
-                Jugar ahora
+                Ver club
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
                   className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeLinecap="round">
                   <path d="M5 12h14M12 5l7 7-7 7" />
@@ -1997,7 +2120,7 @@ export default function Home() {
                   { icon: '🏆', t: 'Marcas líderes', d: 'Bosch, NGK, Gates y más' },
                   { icon: '🛡️', t: 'Repuestos originales', d: 'Calidad garantizada' },
                   { icon: '📱', t: 'Atención digital', d: 'WhatsApp y app móvil' },
-                  { icon: '🏔️', t: 'Local andino', d: 'Mérida, Venezuela' },
+                  { icon: '🏔️', t: 'Oficina local', d: 'Mérida centro · Av. 3' },
                 ].map((item) => (
                   <div key={item.t} className="flex items-start gap-3 bg-white rounded-lg p-3 border border-gray-100">
                     <span className="text-xl">{item.icon}</span>
@@ -2122,6 +2245,7 @@ export default function Home() {
                 <li><a href="#categorias" className="hover:text-[#FFD700] transition-colors">Categorías</a></li>
                 <li><a href="#catalogo" className="hover:text-[#FFD700] transition-colors">Catálogo</a></li>
                 <li><Link href="/solicitados" className="hover:text-[#FFD700] transition-colors">Repuestos solicitados</Link></li>
+                <li><Link href="/blog" className="hover:text-[#FFD700] transition-colors">Blog</Link></li>
                 <li><a href="#nosotros" className="hover:text-[#FFD700] transition-colors">Nosotros</a></li>
                 <li><a href="#contacto" className="hover:text-[#FFD700] transition-colors">Contacto</a></li>
                 <li><a href="#servicios" className="hover:text-[#FFD700] transition-colors">Servicios</a></li>
@@ -2134,9 +2258,9 @@ export default function Home() {
                   </Link>
                 </li>
                 <li>
-                  <a href="#servicios" className="hover:text-[#38BDF8] transition-colors flex items-center gap-1.5">
-                    🛵 Moto Taxi
-                  </a>
+                  <Link href="/solicitados" className="hover:text-[#38BDF8] transition-colors flex items-center gap-1.5">
+                    🔎 Solicitados
+                  </Link>
                 </li>
                 <li>
                   <Link href="/bingo" className="hover:text-[#22C55E] transition-colors flex items-center gap-1.5">
@@ -2176,7 +2300,7 @@ export default function Home() {
 
           {/* Bottom bar */}
           <div className="border-t border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
-            <p>© {new Date().getFullYear()} Repuestos Mérida · Gochos Group · Mérida, Venezuela</p>
+            <p>© {new Date().getFullYear()} Repuestos Mérida · Gochos Group · Mérida centro, Av. 3</p>
             <div className="flex items-center gap-4">
               <a href={waConsulta()} target="_blank" rel="noopener noreferrer"
                 className="text-green-500 hover:text-green-400 transition-colors font-medium">
@@ -2695,7 +2819,7 @@ export default function Home() {
             </div>
 
             {catalogMessage && (
-              <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-semibold ${catalogMessage.includes('correctamente') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-semibold ${catalogMessage.includes('revisión') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                 {catalogMessage}
               </p>
             )}

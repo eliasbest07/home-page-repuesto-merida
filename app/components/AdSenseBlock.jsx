@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 
 const ADSENSE_READY_EVENT = 'repuestos-merida:adsense-ready'
 const ADSENSE_CLIENT = 'ca-pub-7506182169131280'
+const ADSENSE_ENABLED = process.env.NEXT_PUBLIC_ADSENSE_ENABLED === 'true'
 
 export default function AdSenseBlock({
   slot,
@@ -18,6 +19,8 @@ export default function AdSenseBlock({
   // anuncio es personalizado o no según el consentimiento. El bloque se
   // renderiza y solicita relleno siempre.
   useEffect(() => {
+    if (!ADSENSE_ENABLED) return undefined
+
     const initializeAd = () => {
       if (initialized.current || !window.adsbygoogle) return false
 
@@ -45,6 +48,8 @@ export default function AdSenseBlock({
       window.removeEventListener(ADSENSE_READY_EVENT, initializeAd)
     }
   }, [])
+
+  if (!ADSENSE_ENABLED) return null
 
   return (
     <aside className={`adsense-placement ${className}`} aria-label={label}>

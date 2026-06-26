@@ -18,6 +18,11 @@ function canonPhone(raw) {
   return d.replace(/^0+/, '')
 }
 
+function internationalPhone(raw) {
+  const canon = canonPhone(raw)
+  return canon ? `+58${canon}` : ''
+}
+
 function phoneVariants(raw) {
   const clean = cleanPhone(raw)
   const canon = canonPhone(raw)
@@ -60,6 +65,10 @@ function priceLabel(value) {
   const s = String(value).trim()
   if (!s) return 'Consultar'
   return /^\d+(\.\d+)?$/.test(s) ? `$${s}` : s
+}
+
+function isAuthorized(value) {
+  return value === true || value === 'true' || value === 1 || value === '1'
 }
 
 // Slug ASCII para deduplicar modelos: "Toyota" -> "toyota".
@@ -114,6 +123,36 @@ async function commerceProfile(rtdb, session) {
   return rifas.exists() ? rifas.val() || {} : {}
 }
 
+async function findRealtimeUserByPhone(rtdb, telefono) {
+  const target = canonPhone(telefono)
+  const snap = await rtdb.ref('users').get()
+  if (!snap.exists()) return null
+
+  for (const [uid, user] of Object.entries(snap.val() || {})) {
+    if (user && typeof user === 'object' && canonPhone(user.whatsapp || user.telefono || uid) === target) {
+      return { uid, user }
+    }
+  }
+
+  return null
+}
+
+async function currentAuthorization(rtdb, session) {
+  const [rifasSnap, official] = await Promise.all([
+    rtdb.ref(`rifas_usuarios/${cleanPhone(session.tel || session.telefono)}/autorizado`).get(),
+    findRealtimeUserByPhone(rtdb, session.telefono),
+  ])
+  return isAuthorized(rifasSnap.val()) || isAuthorized(official?.user?.autorizado)
+}
+
+function commerceFromProfile(profile = {}, commerceId = '', dia = '') {
+  const dayValue = dia ? profile.comercios_por_dia?.[dia] : null
+  const dayCommerce = dayValue?.comercios && commerceId
+    ? dayValue.comercios[commerceId]
+    : null
+  return dayCommerce || profile.comercio_autorizado || profile
+}
+
 export async function GET(request) {
   try {
     const session = authPayload(request)
@@ -121,7 +160,27 @@ export async function GET(request) {
 
     const { getAdminDb } = await import('@/lib/firebaseAdmin')
     const db = getAdminDb()
-    const requestedTelefono = cleanPhone(new URL(request.url).searchParams.get('telefono'))
+    const url = new URL(request.url)
+    const requestedTelefono = cleanPhone(url.searchParams.get('telefono'))
+    const scope = cleanText(url.searchParams.get('scope'), 20)
+
+    if (scope === 'all') {
+      const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
+      const authorized = await currentAuthorization(getAdminRealtimeDb(), session)
+      if (!authorized) return NextResponse.json({ error: 'No puedes ver repuestos de otros comercios.' }, { status: 403 })
+
+      let snap
+      try {
+        snap = await db.collection(REPUESTOS_COLLECTION).orderBy('creado_en', 'desc').limit(500).get()
+      } catch {
+        snap = await db.collection(REPUESTOS_COLLECTION).limit(500).get()
+      }
+      const items = snap.docs
+        .map(serializeRepuesto)
+        .sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
+      return NextResponse.json({ ok: true, items })
+    }
+
     const variants = Array.from(new Set([
       ...phoneVariants(session.telefono),
       ...phoneVariants(session.tel),
@@ -154,6 +213,9 @@ export async function POST(request) {
     if (!session) return NextResponse.json({ error: 'Sesión inválida.' }, { status: 401 })
 
     const body = await request.json().catch(() => ({}))
+    const { getAdminDb, getAdminRealtimeDb, adminFieldValue } = await import('@/lib/firebaseAdmin')
+    const rtdb = getAdminRealtimeDb()
+    const authorized = await currentAuthorization(rtdb, session)
     const comercioId = cleanText(body.comercio_id, 80)
     const dia = cleanText(body.dia, 20).toLowerCase()
     const venta = cleanText(body.venta, 80)
@@ -169,12 +231,17 @@ export async function POST(request) {
     if (!modelo) return NextResponse.json({ error: 'Escribe el modelo.' }, { status: 400 })
     if (!nombre) return NextResponse.json({ error: 'Escribe el nombre del repuesto.' }, { status: 400 })
 
-    const { getAdminDb, adminFieldValue } = await import('@/lib/firebaseAdmin')
+    const requestedTelefono = cleanPhone(body.telefono || body.whatsapp)
+    const ownerPhone = authorized && requestedTelefono ? requestedTelefono : session.telefono
+    const owner = await findRealtimeUserByPhone(rtdb, ownerPhone)
+    const ownerProfile = owner?.user || await commerceProfile(rtdb, { ...session, telefono: ownerPhone, tel: ownerPhone })
+    const ownerCommerce = commerceFromProfile(ownerProfile, comercioId, dia)
     const db = getAdminDb()
 
     const repuestoRef = db.collection(REPUESTOS_COLLECTION).doc()
     const repuestoData = {
-      telefono: session.telefono,
+      telefono: ownerPhone,
+      telefono_normalizado: internationalPhone(ownerPhone),
       comercio_id: comercioId,
       dia,
       venta,
@@ -188,6 +255,9 @@ export async function POST(request) {
       fotos: [],
       aprobado: false,
       catalogo_id: '',
+      creado_por: session.telefono,
+      comercio_nombre: ownerCommerce?.nombre_comercio || ownerProfile?.nombre || '',
+      comercio_whatsapp: ownerCommerce?.whatsapp || ownerProfile?.whatsapp || ownerPhone,
       creado_en: adminFieldValue.serverTimestamp(),
     }
 
@@ -215,6 +285,8 @@ export async function POST(request) {
       ok: true,
       item: {
         id: repuestoRef.id,
+        telefono: ownerPhone,
+        telefono_normalizado: internationalPhone(ownerPhone),
         comercio_id: comercioId,
         dia,
         venta,
@@ -250,13 +322,15 @@ export async function PATCH(request) {
 
     const { getAdminDb, getAdminRealtimeDb, adminFieldValue } = await import('@/lib/firebaseAdmin')
     const db = getAdminDb()
+    const rtdb = getAdminRealtimeDb()
     const ref = db.collection(REPUESTOS_COLLECTION).doc(id)
     const snap = await ref.get()
     if (!snap.exists) return NextResponse.json({ error: 'No existe el repuesto.' }, { status: 404 })
 
     const item = snap.data() || {}
+    const authorized = await currentAuthorization(rtdb, session)
     const allowedPhones = new Set([canonPhone(session.telefono), canonPhone(session.tel)].filter(Boolean))
-    if (item.telefono && !allowedPhones.has(canonPhone(item.telefono))) {
+    if (!authorized && item.telefono && !allowedPhones.has(canonPhone(item.telefono))) {
       return NextResponse.json({ error: 'No puedes aprobar este repuesto.' }, { status: 403 })
     }
     if (item.catalogo_id) {
@@ -264,15 +338,13 @@ export async function PATCH(request) {
       return NextResponse.json({ ok: true, catalogo_id: item.catalogo_id })
     }
 
-    const profile = await commerceProfile(getAdminRealtimeDb(), session)
     const effectiveDia = item.dia || dia
     const effectiveCommerceId = item.comercio_id || commerceId
     const effectiveVenta = item.venta || venta
-    const dayValue = effectiveDia ? profile.comercios_por_dia?.[effectiveDia] : null
-    const dayCommerce = dayValue?.comercios && effectiveCommerceId
-      ? dayValue.comercios[effectiveCommerceId]
-      : dayValue
-    const commerce = dayCommerce || profile.comercio_autorizado || profile
+    const ownerPhone = item.telefono || session.telefono
+    const owner = await findRealtimeUserByPhone(rtdb, ownerPhone)
+    const profile = owner?.user || await commerceProfile(rtdb, { ...session, telefono: ownerPhone, tel: ownerPhone })
+    const commerce = commerceFromProfile(profile, effectiveCommerceId, effectiveDia)
     const catalogRef = db.collection(CATALOGO_COLLECTION).doc()
     const now = adminFieldValue.serverTimestamp()
     // El catálogo usa las fotos propias del repuesto; si no tiene, cae a la del comercio.

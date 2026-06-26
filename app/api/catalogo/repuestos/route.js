@@ -22,6 +22,11 @@ function canonPhone(raw) {
   return d.replace(/^0+/, '')
 }
 
+function internationalPhone(raw) {
+  const canon = canonPhone(raw)
+  return canon ? `+58${canon}` : ''
+}
+
 function dataUrlParts(dataUrl) {
   const match = String(dataUrl || '').match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/)
   if (!match) return null
@@ -56,6 +61,13 @@ async function resolveRegisteredProfile({ rtdb, telefono, key }) {
     uid: official?.uid || official?.id || officialUid || rifas?.uid || '',
     cedula: cleanText(official?.cedula || rifas?.cedula, 30),
     nombre: cleanText(official?.nombre || official?.google_nombre || rifas?.nombre, 120),
+    whatsapp: cleanPhone(official?.whatsapp || rifas?.whatsapp || telefono || key),
+    comercio_id: cleanText(official?.comercio_autorizado?.comercio_id || official?.comercio_id || '', 80),
+    comercio_nombre: cleanText(official?.comercio_autorizado?.nombre_comercio || official?.nombre_comercio || official?.nombre || rifas?.nombre, 120),
+    comercio_whatsapp: cleanPhone(official?.comercio_autorizado?.whatsapp || official?.whatsapp || telefono || key),
+    comercio_direccion: cleanText(official?.comercio_autorizado?.comercio_direccion || official?.comercio_direccion, 220),
+    comercio_lat: official?.comercio_autorizado?.comercio_lat ?? official?.comercio_lat ?? null,
+    comercio_lng: official?.comercio_autorizado?.comercio_lng ?? official?.comercio_lng ?? null,
   }
 }
 
@@ -112,8 +124,8 @@ export async function POST(request) {
     }
 
     const db = getAdminDb()
-    const docRef = db.collection('merida').doc()
-    const storagePath = `catalogo_repuestos/${docRef.id}.${image.ext}`
+    const docRef = db.collection('comercio_repuestos').doc()
+    const storagePath = `comercio_repuestos/${docRef.id}/principal.${image.ext}`
     const downloadToken = crypto.randomUUID()
     const file = getAdminBucket().file(storagePath)
 
@@ -129,25 +141,35 @@ export async function POST(request) {
     const now = adminFieldValue.serverTimestamp()
 
     await docRef.set({
-      marca: titulo,
-      categoria,
-      modelos,
-      descripcion,
-      vehiculo,
+      telefono: whatsapp,
+      telefono_normalizado: internationalPhone(whatsapp),
+      comercio_id: perfil.comercio_id || '',
+      dia: '',
+      venta: categoria,
+      tipo_vehiculo: vehiculo && /\bmoto\b/i.test(vehiculo) ? 'moto' : 'carro',
+      marca: vehiculo || categoria,
+      modelo: modelos,
+      anio: '',
+      nombre: titulo,
+      nota: descripcion,
       precio,
-      img: [publicUrl],
-      relevancia: '0',
-      publicado: 'publicado',
-      estado: 'disponible',
-      whatsapp,
-      userID: perfil.uid || payload.tel,
+      fotos: [publicUrl],
+      aprobado: false,
+      catalogo_id: '',
+      destacado: true,
+      fuente: 'catalogo_destacado',
       cedula: perfil.cedula,
-      propietario_id: payload.tel,
+      creado_por: payload.tel,
+      comercio_nombre: perfil.comercio_nombre,
+      comercio_whatsapp: perfil.comercio_whatsapp || whatsapp,
+      comercio_direccion: perfil.comercio_direccion,
+      comercio_lat: perfil.comercio_lat,
+      comercio_lng: perfil.comercio_lng,
       creado_en: now,
       actualizado_en: now,
     })
 
-    return NextResponse.json({ ok: true, id: docRef.id, image: publicUrl })
+    return NextResponse.json({ ok: true, id: docRef.id, image: publicUrl, estado: 'pendiente' })
   } catch (err) {
     return NextResponse.json({ error: err?.message || 'No se pudo publicar el repuesto.' }, { status: 500 })
   }

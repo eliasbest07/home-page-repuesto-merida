@@ -27,6 +27,11 @@ function canonPhone(raw) {
   return d.replace(/^0+/, '')
 }
 
+function internationalPhone(raw) {
+  const canon = canonPhone(raw)
+  return canon ? `+58${canon}` : ''
+}
+
 function bearerToken(request) {
   const header = request.headers.get('authorization') || ''
   const match = header.match(/^Bearer\s+(.+)$/i)
@@ -81,7 +86,7 @@ async function findRealtimeUserByPhone(rtdb, telefono) {
 
     const users = snap.val() || {}
     for (const [uid, user] of Object.entries(users)) {
-      if (user && typeof user === 'object' && canonPhone(user.whatsapp) === target) {
+      if (user && typeof user === 'object' && canonPhone(user.whatsapp || user.telefono || uid) === target) {
         return { path, uid, user }
       }
     }
@@ -93,6 +98,92 @@ async function findRealtimeUserByPhone(rtdb, telefono) {
 async function currentAuthorization(rtdb, session, official) {
   const rifasSnap = await rtdb.ref(`rifas_usuarios/${session.key}/autorizado`).get()
   return isAuthorized(rifasSnap.val()) || isAuthorized(official?.user?.autorizado)
+}
+
+function collectCommerceByDay(user = {}, uid = '') {
+  const byDay = {}
+  const source = user.comercios_por_dia || {}
+
+  for (const day of DAYS) {
+    const value = source?.[day]
+    const list = []
+    if (value?.comercios && typeof value.comercios === 'object') {
+      for (const [id, commerce] of Object.entries(value.comercios)) {
+        if (commerce && typeof commerce === 'object') list.push({ ...commerce, comercio_id: commerce.comercio_id || id })
+      }
+    } else if (value && typeof value === 'object' && (value.nombre_comercio || value.whatsapp)) {
+      list.push({ ...value, comercio_id: value.comercio_id || 'principal' })
+    }
+
+    for (const commerce of list) {
+      const commercePhone = commerce.whatsapp || user.whatsapp || user.telefono || uid
+      const item = {
+        ...commerce,
+        dia: commerce.dia || day,
+        whatsapp: commerce.whatsapp || commercePhone,
+        whatsapp_normalizado: internationalPhone(commercePhone),
+        realtime_user_uid: uid,
+      }
+      byDay[day] = byDay[day] || { dia: day, comercios: {} }
+      byDay[day].comercios[item.comercio_id] = item
+    }
+  }
+
+  if (Object.keys(byDay).length === 0 && (user.comercio_autorizado || user.comercio_foto_url || user.comercio_direccion || user.whatsapp)) {
+    const base = user.comercio_autorizado && typeof user.comercio_autorizado === 'object'
+      ? user.comercio_autorizado
+      : user
+    const day = base.dia && DAYS.has(base.dia) ? base.dia : 'lunes'
+    const commercePhone = base.whatsapp || user.whatsapp || user.telefono || uid
+    const commerceId = base.comercio_id || uid || canonPhone(commercePhone) || 'principal'
+    byDay[day] = {
+      dia: day,
+      comercios: {
+        [commerceId]: {
+          ...base,
+          comercio_id: commerceId,
+          dia: day,
+          whatsapp: base.whatsapp || commercePhone,
+          whatsapp_normalizado: internationalPhone(commercePhone),
+          realtime_user_uid: uid,
+        },
+      },
+    }
+  }
+
+  return byDay
+}
+
+export async function GET(request) {
+  try {
+    const session = authPayload(request)
+    if (!session) return NextResponse.json({ error: 'Sesión inválida.' }, { status: 401 })
+
+    const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
+    const rtdb = getAdminRealtimeDb()
+    const official = await findRealtimeUserByPhone(rtdb, session.telefono)
+    const authorized = await currentAuthorization(rtdb, session, official)
+    if (!authorized) {
+      return NextResponse.json({ error: 'Tu solicitud aún está en espera de autorización.' }, { status: 403 })
+    }
+
+    const snap = await rtdb.ref('users').get()
+    const users = snap.exists() ? snap.val() || {} : {}
+    const comerciosPorDia = {}
+
+    for (const [uid, user] of Object.entries(users)) {
+      if (!user || typeof user !== 'object') continue
+      const byDay = collectCommerceByDay(user, uid)
+      for (const [day, value] of Object.entries(byDay)) {
+        comerciosPorDia[day] = comerciosPorDia[day] || { dia: day, comercios: {} }
+        Object.assign(comerciosPorDia[day].comercios, value.comercios)
+      }
+    }
+
+    return NextResponse.json({ ok: true, comercios_por_dia: comerciosPorDia })
+  } catch (error) {
+    return NextResponse.json({ error: error?.message || 'No se pudieron cargar los comercios.' }, { status: 400 })
+  }
 }
 
 export async function POST(request) {
@@ -114,6 +205,11 @@ export async function POST(request) {
     if (!authorized) {
       return NextResponse.json({ error: 'Tu solicitud aún está en espera de autorización.' }, { status: 403 })
     }
+    const commercePhone = cleanPhone(form.get('whatsapp')).slice(0, 15)
+    if (canonPhone(commercePhone).length < 10) {
+      return NextResponse.json({ error: 'Escribe un WhatsApp válido para el comercio.' }, { status: 400 })
+    }
+    const owner = await findRealtimeUserByPhone(rtdb, commercePhone)
 
     const latRaw = form.get('lat')
     const lngRaw = form.get('lng')
@@ -156,7 +252,8 @@ export async function POST(request) {
       dia: day,
       autorizado: true,
       nombre_comercio: cleanText(form.get('nombre_comercio'), 120),
-      whatsapp: cleanPhone(form.get('whatsapp')).slice(0, 15),
+      whatsapp: commercePhone,
+      whatsapp_normalizado: internationalPhone(commercePhone),
       comercio_foto_url: fotoUrl,
       comercio_direccion: cleanText(form.get('direccion'), 220),
       ...(hasCoords ? { comercio_lat: lat, comercio_lng: lng, comercio_ubicacion: `${lat}, ${lng}` } : {}),
@@ -169,6 +266,13 @@ export async function POST(request) {
 
     const patch = {
       autorizado: true,
+      whatsapp: commercePhone,
+      telefono: owner?.user?.telefono || commercePhone,
+      vender: true,
+      nombre_comercio: commerce.nombre_comercio,
+      comercio_foto_url: commerce.comercio_foto_url,
+      comercio_direccion: commerce.comercio_direccion,
+      ...(hasCoords ? { comercio_lat: lat, comercio_lng: lng, comercio_ubicacion: `${lat}, ${lng}` } : {}),
       comercio_autorizado_actualizado_en: updatedAt,
       comercio_dia_actual: day,
       comercio_autorizado: commerce,
@@ -179,28 +283,29 @@ export async function POST(request) {
 
     // Fuente de verdad: /users (nodo existente o /users/<telefono> con identidad).
     // rifas_usuarios NO se escribe: es exclusivo del flujo de rifas.
-    const usersPath = official?.uid
-      ? `${official.path ? `${official.path}/` : ''}${official.uid}`
-      : `users/${session.telefono}`
-    const usersPatch = official?.uid
+    const usersPath = owner?.uid
+      ? `${owner.path ? `${owner.path}/` : ''}${owner.uid}`
+      : `users/${commercePhone}`
+    const usersPatch = owner?.uid
       ? patch
-      : { whatsapp: session.telefono, telefono: session.telefono, id: session.telefono, ...patch }
+      : { id: commercePhone, ...patch }
 
     await Promise.all([
       rtdb.ref(usersPath).update(usersPatch),
-      firestore.collection(FIRESTORE_COLLECTION).doc(`${session.key}_${day}_${commerceId}`).set({
+      firestore.collection(FIRESTORE_COLLECTION).doc(`${cleanPhone(owner?.user?.telefono || commercePhone)}_${day}_${commerceId}`).set({
         ...commerce,
-        telefono_usuario: session.telefono,
-        telefono_key: session.key,
+        telefono_usuario: commercePhone,
+        telefono_key: cleanPhone(owner?.user?.telefono || commercePhone),
+        editado_por: session.telefono,
         dia: day,
-        realtime_user_uid: official?.uid || session.telefono,
+        realtime_user_uid: owner?.uid || commercePhone,
         realtime_user_path: usersPath,
         actualizado_en_ms: updatedAt,
         actualizado_en: adminFieldValue.serverTimestamp(),
       }, { merge: true }),
     ])
 
-    return NextResponse.json({ ok: true, dia: day, comercio_id: commerceId, comercio: commerce, realtime_user_uid: official?.uid || session.telefono })
+    return NextResponse.json({ ok: true, dia: day, comercio_id: commerceId, comercio: commerce, realtime_user_uid: owner?.uid || commercePhone })
   } catch (error) {
     return NextResponse.json({ error: error?.message || 'No se pudo guardar el comercio.' }, { status: 400 })
   }

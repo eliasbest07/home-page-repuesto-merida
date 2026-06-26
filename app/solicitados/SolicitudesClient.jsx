@@ -1691,10 +1691,13 @@ export default function SolicitudesClient() {
           </p>
         </div>
 
-        <AdSenseBlock
-          slot="9388951189"
-          className="requests-adsense-placement"
-        />
+        {filteredRequests.length > 0 ? (
+          <AdSenseBlock
+            slot="9388951189"
+            className="requests-adsense-placement"
+            label="Anuncio"
+          />
+        ) : null}
 
         {filteredRequests.length > 0 ? (
           <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">

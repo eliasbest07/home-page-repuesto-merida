@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { onValue, ref as dbRef } from 'firebase/database'
 import { rtdb } from '@/lib/firebase'
-import { ensureSession, phoneKey, saveSession } from '@/lib/rifaSession'
+import { ensureSession, phoneKey } from '@/lib/rifaSession'
 import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
 
@@ -66,10 +66,6 @@ function formatPrecio(value) {
 function fieldReady(value) {
   if (Array.isArray(value)) return value.length > 0
   return String(value || '').trim().length > 0
-}
-
-function commerceId() {
-  return `com_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
 }
 
 function mergeDayData(value) {
@@ -157,14 +153,14 @@ function RepuestoFotos({ fotos = [], uploading = false, onPick }) {
             href={url}
             target="_blank"
             rel="noreferrer"
-            className="relative aspect-square w-[calc(50%-4px)] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
+            className="relative aspect-[4/3] w-[calc(50%-4px)] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white"
           >
-            <Image src={url} alt="Foto del repuesto" fill unoptimized className="object-cover" />
+            <Image src={url} alt="Foto del repuesto" fill unoptimized className="object-contain p-1" />
           </a>
         ))}
         {fotos.length < 4 && (
           <label
-            className={`flex aspect-square w-[calc(50%-4px)] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2 text-center text-xs font-bold text-slate-500 hover:border-amber-400 ${uploading ? 'pointer-events-none opacity-60' : ''}`}
+            className={`flex aspect-[4/3] w-[calc(50%-4px)] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2 text-center text-xs font-bold text-slate-500 hover:border-amber-400 ${uploading ? 'pointer-events-none opacity-60' : ''}`}
           >
             {uploading ? (
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-400" />
@@ -193,13 +189,106 @@ function RepuestoFotos({ fotos = [], uploading = false, onPick }) {
   )
 }
 
+function RepuestoFotosNuevo({ photos = [], onPick, onRemove }) {
+  return (
+    <div className="border-t border-slate-100 pt-3">
+      <p className="mb-2 text-xs font-extrabold uppercase tracking-wide text-slate-500">
+        Fotos del repuesto a publicar
+      </p>
+      <div className="flex gap-2 overflow-x-auto">
+        {photos.map((photo, index) => (
+          <div
+            key={photo.url}
+            className="relative aspect-[4/3] w-[calc(50%-4px)] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white"
+          >
+            <Image src={photo.url} alt="Foto del repuesto" fill unoptimized className="object-contain p-1" />
+            <button
+              type="button"
+              onClick={() => onRemove(index)}
+              className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-sm font-extrabold leading-none text-white shadow"
+              aria-label="Quitar foto"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        {photos.length < 4 && (
+          <label className="flex aspect-[4/3] w-[calc(50%-4px)] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-white px-2 text-center text-xs font-bold text-slate-500 hover:border-amber-400">
+            <span className="text-lg leading-none">+</span>
+            <span>Agregar foto</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                onPick(file)
+              }}
+            />
+          </label>
+        )}
+      </div>
+      <p className="mt-1 text-[11px] text-slate-400">{photos.length}/4 fotos</p>
+    </div>
+  )
+}
+
+function MiniLocationMap({ lat, lng }) {
+  if (lat == null || lng == null) return null
+
+  const latNumber = Number(lat)
+  const lngNumber = Number(lng)
+  if (!Number.isFinite(latNumber) || !Number.isFinite(lngNumber)) return null
+
+  const query = `${latNumber},${lngNumber}`
+  const embedSrc = `https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=17&output=embed`
+  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="relative aspect-[16/9] w-full bg-slate-100">
+        <iframe
+          title="Ubicacion del comercio"
+          src={embedSrc}
+          className="absolute inset-0 h-full w-full"
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+        />
+      </div>
+      <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2">
+        <span className="text-xs font-bold text-slate-600">Punto guardado</span>
+        <a
+          href={mapUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs font-extrabold text-amber-700 hover:text-amber-800"
+        >
+          Abrir mapa
+        </a>
+      </div>
+    </div>
+  )
+}
+
 export default function ComercioAutorizacionPage() {
   const router = useRouter()
+  const repuestoFormRef = useRef(null)
+  const commerceInfoRef = useRef(null)
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [realtimeProfile, setRealtimeProfile] = useState(null)
+  const [identityByPhone, setIdentityByPhone] = useState({})
+  const [legacyIdentityByPhone, setLegacyIdentityByPhone] = useState({})
+  const [globalComerciosPorDia, setGlobalComerciosPorDia] = useState({})
   const [selectedDay, setSelectedDay] = useState('lunes')
   const [selectedCommerceId, setSelectedCommerceId] = useState('')
+  const [showNamedList, setShowNamedList] = useState(true)
+  const [showBadWhatsappList, setShowBadWhatsappList] = useState(true)
+  const [showNamelessList, setShowNamelessList] = useState(true)
+  const [showSidebarLists, setShowSidebarLists] = useState(true)
+  const [showAllRepuestos, setShowAllRepuestos] = useState(false)
+  const [allRepuestosFilter, setAllRepuestosFilter] = useState('todos')
   const [activePanel, setActivePanel] = useState('comercios')
   const [selectedVenta, setSelectedVenta] = useState('')
   const [form, setForm] = useState(EMPTY_DAY)
@@ -216,6 +305,7 @@ export default function ComercioAutorizacionPage() {
   const [repuestoSaving, setRepuestoSaving] = useState(false)
   const [repuestoForm, setRepuestoForm] = useState(EMPTY_REPUESTO)
   const [uploadingPhotoId, setUploadingPhotoId] = useState('')
+  const [pendingRepuestoPhotos, setPendingRepuestoPhotos] = useState([])
 
   useEffect(() => {
     let cancelled = false
@@ -252,14 +342,60 @@ export default function ComercioAutorizacionPage() {
     if (uid) watch(`users/${uid}`)
     const usersOff = onValue(dbRef(rtdb, 'users'), (snap) => {
       const data = snap.val() || {}
+      const nextIdentity = {}
       for (const value of Object.values(data)) {
-        if (value && typeof value === 'object' && canonPhone(value.whatsapp) === targetPhone) {
+        if (!value || typeof value !== 'object') continue
+
+        const phones = [
+          value.whatsapp,
+          value.telefono,
+          value.phone,
+          value.id,
+        ].map(canonPhone).filter(Boolean)
+
+        for (const phone of phones) {
+          nextIdentity[phone] = {
+            cedula: String(value.cedula || '').trim(),
+            cedula_estado: String(value.cedula_estado || '').trim(),
+            cedula_actualizada_en: value.cedula_actualizada_en || null,
+          }
+        }
+
+        if (phones.includes(targetPhone)) {
           mergeProfile(value)
-          break
         }
       }
+      setIdentityByPhone(nextIdentity)
     })
     offs.push(usersOff)
+
+    const legacyUsersOff = onValue(dbRef(rtdb, 'rifas_usuarios'), (snap) => {
+      const data = snap.val() || {}
+      const nextIdentity = {}
+      for (const [key, value] of Object.entries(data)) {
+        if (!value || typeof value !== 'object') continue
+
+        const phones = [
+          key,
+          value.whatsapp,
+          value.telefono,
+          value.phone,
+          value.id,
+        ].map(canonPhone).filter(Boolean)
+
+        for (const phone of phones) {
+          nextIdentity[phone] = {
+            cedula: String(value.cedula || '').trim(),
+            cedula_estado: String(value.cedula_estado || '').trim(),
+            cedula_actualizada_en: value.cedula_actualizada_en || null,
+          }
+        }
+      }
+      setLegacyIdentityByPhone(nextIdentity)
+    }, () => {
+      setLegacyIdentityByPhone({})
+    })
+    offs.push(legacyUsersOff)
 
     return () => offs.forEach((off) => { try { off() } catch { } })
   }, [session?.telefono, session?.perfil?.uid, session?.prefill?.uid])
@@ -269,11 +405,43 @@ export default function ComercioAutorizacionPage() {
     [session?.perfil, session?.prefill, realtimeProfile],
   )
   const authorized = isAuthorized(profile.autorizado)
-  const selectedSavedDay = profile.comercios_por_dia?.[selectedDay] || null
+  const selectedSavedDay = globalComerciosPorDia?.[selectedDay] || profile.comercios_por_dia?.[selectedDay] || null
   const dayCommerces = useMemo(
     () => dayCommerceList(selectedSavedDay, selectedDay),
     [selectedSavedDay, selectedDay],
   )
+  const allGlobalCommerces = useMemo(() => (
+    Object.entries(globalComerciosPorDia || {}).flatMap(([day, value]) => dayCommerceList(value, day))
+  ), [globalComerciosPorDia])
+  const visibleCommerces = useMemo(() => {
+    const byId = new Map(dayCommerces.map((commerce) => [commerce.comercio_id, commerce]))
+    const knownPhones = new Set(dayCommerces.map((commerce) => canonPhone(commerce.whatsapp)).filter(Boolean))
+
+    for (const item of repuestos) {
+      if (item.aprobado) continue
+      const phone = canonPhone(item.telefono)
+      if (!phone || knownPhones.has(phone)) continue
+      const id = `phone_${phone}`
+      if (!byId.has(id)) {
+        byId.set(id, mergeDayData({
+          comercio_id: id,
+          dia: selectedDay,
+          nombre_comercio: item.comercio_nombre || 'Comercio pendiente',
+          whatsapp: item.telefono,
+          lista_ventas_repuestos: item.venta ? [item.venta] : ['Repuestos destacados'],
+          tipo_vehiculo: item.tipo_vehiculo || 'carro',
+        }))
+      }
+    }
+
+    return Array.from(byId.values())
+  }, [dayCommerces, repuestos, selectedDay])
+  const isNamelessCommerce = (commerce) =>
+    !fieldReady(commerce.nombre_comercio) || /sin\s*nombre/i.test(commerce.nombre_comercio)
+  const hasValidWhatsapp = (commerce) => canonPhone(commerce.whatsapp).length >= 10
+  const namedCommerces = visibleCommerces.filter((c) => !isNamelessCommerce(c) && hasValidWhatsapp(c))
+  const badWhatsappCommerces = visibleCommerces.filter((c) => !isNamelessCommerce(c) && !hasValidWhatsapp(c))
+  const namelessCommerces = visibleCommerces.filter((c) => isNamelessCommerce(c))
   const brands = form.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const selectedBrands = form.tipo_vehiculo === 'moto' ? form.marcas_moto : form.marcas_carro
   const allSelectedBrands = [
@@ -283,11 +451,17 @@ export default function ComercioAutorizacionPage() {
   const dayLabel = DAYS.find((day) => day.key === selectedDay)?.label || 'Lunes'
   const photoSrc = photoPreview || form.comercio_foto_url
   const locationReady = form.comercio_lat != null && form.comercio_lng != null
+  const commercePhoneKey = canonPhone(form.whatsapp)
+  const commerceIdentity = identityByPhone[commercePhoneKey] || legacyIdentityByPhone[commercePhoneKey] || {}
+  const commerceCedulaVerified = Boolean(commerceIdentity.cedula) || commerceIdentity.cedula_estado === 'aprobado'
+  const commerceCedulaPending = commerceIdentity.cedula_estado === 'pendiente'
   const currentVenta = selectedVenta || form.lista_ventas_repuestos[0] || ''
+  const selectedFormPhone = canonPhone(form.whatsapp)
   const commerceRepuestos = repuestos.filter((item) => {
     if (item.comercio_id) return selectedCommerceId && item.comercio_id === selectedCommerceId
+    if (selectedFormPhone && item.telefono) return canonPhone(item.telefono) === selectedFormPhone
     if (item.dia) return item.dia === selectedDay
-    return Boolean(selectedCommerceId)
+    return false
   })
   const pendingApprovalCount = commerceRepuestos.filter((item) => !item.aprobado).length
   const repuestosForCommerce = (commerce) => {
@@ -309,9 +483,26 @@ export default function ComercioAutorizacionPage() {
     return true
   })
   const repuestosPendientes = commerceRepuestos.filter((item) => !item.aprobado)
-  const marcaOptions = selectedBrands.length > 0
-    ? brands.filter((brand) => selectedBrands.includes(brand.name))
-    : brands
+  const commerceNameByPhone = useMemo(() => {
+    const map = {}
+    for (const commerce of allGlobalCommerces) {
+      const phone = canonPhone(commerce.whatsapp)
+      if (phone && !map[phone] && fieldReady(commerce.nombre_comercio)) map[phone] = commerce.nombre_comercio
+    }
+    return map
+  }, [allGlobalCommerces])
+  const commerceNameForItem = (item) =>
+    commerceNameByPhone[canonPhone(item.telefono)] || 'Comercio sin nombre'
+  const allRepuestosSorted = [...repuestos].sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
+  const allRepuestosFiltered = allRepuestosSorted.filter((item) => {
+    if (allRepuestosFilter === 'pendiente') return !item.aprobado
+    if (allRepuestosFilter === 'aprobado') return item.aprobado
+    return true
+  })
+  const marcaSource = allSelectedBrands.length > 0
+    ? allSelectedBrands.map((brand) => brand.name)
+    : [...CAR_BRANDS, ...MOTO_BRANDS].map((brand) => brand.name)
+  const marcaOptions = [...new Set(marcaSource)].map((name) => ({ name }))
 
   useEffect(() => {
     const commerceList = dayCommerceList(selectedSavedDay, selectedDay)
@@ -342,6 +533,24 @@ export default function ComercioAutorizacionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token, selectedCommerceId, form.whatsapp])
 
+  useEffect(() => {
+    if (!session?.token || !authorized) return
+    let cancelled = false
+    fetch('/api/usuario/comercio/autorizacion', {
+      headers: { Authorization: `Bearer ${session.token}` },
+      cache: 'no-store',
+    })
+      .then((res) => res.json())
+      .then((body) => {
+        if (cancelled) return
+        if (body.ok) setGlobalComerciosPorDia(body.comercios_por_dia || {})
+      })
+      .catch(() => {
+        if (!cancelled) setGlobalComerciosPorDia({})
+      })
+    return () => { cancelled = true }
+  }, [session?.token, authorized])
+
   function setField(name, value) {
     setForm((current) => ({ ...current, [name]: value }))
   }
@@ -369,6 +578,35 @@ export default function ComercioAutorizacionPage() {
     setActivePanel('comercio')
   }
 
+  function renderCommerceButton(commerce) {
+    const active = selectedCommerceId === commerce.comercio_id
+    const pendingCount = pendingCountForCommerce(commerce)
+    return (
+      <button
+        key={commerce.comercio_id}
+        type="button"
+        onClick={() => selectCommerce(commerce)}
+        className={`rounded-lg border px-3 py-2 text-left transition ${
+          active ? 'border-[#20263a] bg-slate-50 ring-2 ring-amber-200' : 'border-slate-200 bg-white hover:border-amber-300'
+        }`}
+      >
+        <span className="block truncate text-sm font-extrabold text-slate-950">
+          {commerce.nombre_comercio || 'Comercio sin nombre'}
+        </span>
+        <span className="mt-1 flex items-center justify-between gap-2">
+          <span className="truncate text-xs font-semibold text-slate-500">
+            {commerce.whatsapp || 'Sin WhatsApp'}
+          </span>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+            pendingCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'
+          }`}>
+            {pendingCount}
+          </span>
+        </span>
+      </button>
+    )
+  }
+
   function resetCurrentDay() {
     setForm({ ...EMPTY_DAY, tipo_vehiculo: form.tipo_vehiculo })
     setSelectedCommerceId('')
@@ -379,6 +617,50 @@ export default function ComercioAutorizacionPage() {
     setMessage('Formulario limpio para crear un comercio nuevo en este dia.')
     setError('')
     setActivePanel('comercio')
+    window.setTimeout(() => {
+      commerceInfoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
+  }
+
+  function openPendingRepuestoForm() {
+    if (!selectedCommerceId) {
+      setError('Guarda este comercio antes de agregar repuestos.')
+      setActivePanel('comercio')
+      return
+    }
+
+    let venta = currentVenta
+    if (!venta) {
+      venta = 'Repuestos destacados'
+      setForm((current) => ({
+        ...current,
+        lista_ventas_repuestos: Array.from(new Set([...current.lista_ventas_repuestos, venta])),
+      }))
+      setSelectedVenta(venta)
+    }
+
+    setRepuestoForm((current) => ({
+      ...EMPTY_REPUESTO,
+      marca: current.marca || selectedBrands[0] || '',
+    }))
+    clearPendingRepuestoPhotos()
+    setError('')
+    setMessage('Completa los datos para crear un repuesto pendiente.')
+    setActivePanel('repuestos')
+    window.setTimeout(() => {
+      repuestoFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
+  }
+
+  function loadCommerceForWhatsapp(rawPhone = form.whatsapp) {
+    const target = canonPhone(rawPhone)
+    if (target.length < 10) return false
+    const existing = visibleCommerces.find((commerce) => canonPhone(commerce.whatsapp) === target)
+      || allGlobalCommerces.find((commerce) => canonPhone(commerce.whatsapp) === target)
+    if (!existing || existing.comercio_id === selectedCommerceId) return false
+    selectCommerce({ ...existing, dia: selectedDay })
+    setMessage('Comercio cargado por WhatsApp para editar su informacion publica.')
+    return true
   }
 
   async function selectPhoto(event) {
@@ -426,7 +708,7 @@ export default function ComercioAutorizacionPage() {
     setRepuestosLoading(true)
     try {
       const params = new URLSearchParams()
-      if (form.whatsapp) params.set('telefono', form.whatsapp)
+      params.set('scope', 'all')
       const res = await fetch(`/api/usuario/comercio/repuestos${params.toString() ? `?${params}` : ''}`, {
         headers: { Authorization: `Bearer ${session.token}` },
       })
@@ -491,32 +773,18 @@ export default function ComercioAutorizacionPage() {
 
       const savedCommerce = mergeDayData(body.comercio)
       const savedId = body.comercio_id || savedCommerce.comercio_id
-      const currentProfile = session.perfil || session.prefill || {}
-      const currentDay = currentProfile.comercios_por_dia?.[selectedDay] || {}
-      const currentDayCommerces = dayCommerceList(currentDay, selectedDay).reduce((acc, commerce) => {
-        const id = commerce.comercio_id || commerceId()
-        acc[id] = commerce
-        return acc
-      }, {})
-      currentDayCommerces[savedId] = savedCommerce
-
-      const nextPerfil = {
-        ...currentProfile,
-        autorizado: true,
-        comercio_dia_actual: selectedDay,
-        comercio_autorizado: savedCommerce,
-        comercios_por_dia: {
-          ...(currentProfile.comercios_por_dia || {}),
-          [selectedDay]: {
-            dia: selectedDay,
-            comercio_actual_id: savedId,
-            comercios: currentDayCommerces,
+      setGlobalComerciosPorDia((current) => ({
+        ...(current || {}),
+        [selectedDay]: {
+          ...(current?.[selectedDay] || {}),
+          dia: selectedDay,
+          comercio_actual_id: savedId,
+          comercios: {
+            ...(current?.[selectedDay]?.comercios || {}),
+            [savedId]: savedCommerce,
           },
         },
-      }
-      const nextSession = { ...session, perfil: nextPerfil, prefill: null }
-      saveSession(nextSession)
-      setSession(nextSession)
+      }))
       setSelectedCommerceId(savedId)
       setForm(savedCommerce)
       setPhotoFile(null)
@@ -557,6 +825,7 @@ export default function ComercioAutorizacionPage() {
         body: JSON.stringify({
           ...repuestoForm,
           comercio_id: selectedCommerceId || form.comercio_id || '',
+          telefono: form.whatsapp,
           dia: selectedDay,
           venta: currentVenta,
           tipo_vehiculo: form.tipo_vehiculo,
@@ -564,7 +833,32 @@ export default function ComercioAutorizacionPage() {
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo guardar el repuesto.')
-      setRepuestos((items) => [{ ...body.item, fotos: body.item.fotos || [] }, ...items])
+
+      let fotos = body.item.fotos || []
+      if (pendingRepuestoPhotos.length > 0) {
+        const newId = body.item.id
+        for (const photo of pendingRepuestoPhotos) {
+          try {
+            const prepared = await prepareImageForUpload(photo.file)
+            if (prepared.size > MAX_UPLOADED_IMAGE_SIZE) continue
+            const data = new FormData()
+            data.append('id', newId)
+            data.append('foto', prepared, 'repuesto.jpg')
+            const fotoRes = await fetch('/api/usuario/comercio/repuestos/foto', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${session.token}` },
+              body: data,
+            })
+            const fotoBody = await fotoRes.json().catch(() => ({}))
+            if (fotoRes.ok && fotoBody.ok) fotos = fotoBody.fotos
+          } catch {
+            // Si una foto falla, continuamos con las demas.
+          }
+        }
+      }
+
+      setRepuestos((items) => [{ ...body.item, fotos }, ...items])
+      clearPendingRepuestoPhotos()
       setRepuestoForm({ ...EMPTY_REPUESTO, marca: repuestoForm.marca })
       setMessage('Repuesto creado. Puedes aprobarlo para publicarlo en el catalogo.')
     } catch (err) {
@@ -572,6 +866,35 @@ export default function ComercioAutorizacionPage() {
     } finally {
       setRepuestoSaving(false)
     }
+  }
+
+  function addPendingRepuestoPhoto(file) {
+    setError('')
+    if (!file) return
+    if (!file.type.startsWith('image/') || file.size > MAX_SOURCE_IMAGE_SIZE) {
+      setError('Selecciona una imagen valida de hasta 20 MB.')
+      return
+    }
+    if (pendingRepuestoPhotos.length >= 4) {
+      setError('Maximo 4 fotos por repuesto.')
+      return
+    }
+    setPendingRepuestoPhotos((current) => [...current, { file, url: URL.createObjectURL(file) }])
+  }
+
+  function removePendingRepuestoPhoto(index) {
+    setPendingRepuestoPhotos((current) => {
+      const removed = current[index]
+      if (removed) URL.revokeObjectURL(removed.url)
+      return current.filter((_, i) => i !== index)
+    })
+  }
+
+  function clearPendingRepuestoPhotos() {
+    setPendingRepuestoPhotos((current) => {
+      current.forEach((photo) => URL.revokeObjectURL(photo.url))
+      return []
+    })
   }
 
   async function uploadRepuestoPhoto(item, file) {
@@ -610,7 +933,10 @@ export default function ComercioAutorizacionPage() {
     }
   }
 
-  async function approveRepuesto(id) {
+  async function approveRepuesto(itemArg) {
+    const target = typeof itemArg === 'object' && itemArg ? itemArg : repuestos.find((r) => r.id === itemArg)
+    if (!target) return
+    const id = target.id
     setError('')
     setMessage('')
     try {
@@ -622,9 +948,9 @@ export default function ComercioAutorizacionPage() {
         },
         body: JSON.stringify({
           id,
-          comercio_id: selectedCommerceId || form.comercio_id || '',
-          dia: selectedDay,
-          venta: currentVenta,
+          comercio_id: target.comercio_id || selectedCommerceId || form.comercio_id || '',
+          dia: target.dia || selectedDay,
+          venta: target.venta || currentVenta,
         }),
       })
       const body = await res.json().catch(() => ({}))
@@ -717,60 +1043,151 @@ export default function ComercioAutorizacionPage() {
             </div>
             <div className="mt-4 grid gap-2">
               <PrimaryButton onClick={resetCurrentDay}>+ Nuevo comercio</PrimaryButton>
-              <SoftButton active={activePanel === 'ventas'} onClick={() => setActivePanel('ventas')}>
-                Lista ventas de Repuestos
+              <SoftButton active={showSidebarLists} onClick={() => setShowSidebarLists((prev) => !prev)}>
+                {showSidebarLists ? 'Ocultar listas de comercios' : 'Mostrar listas de comercios'}
               </SoftButton>
-              <SoftButton active={activePanel === 'repuestos'} onClick={() => setActivePanel('repuestos')}>
-                Repuestos
+              <SoftButton active={showAllRepuestos} onClick={() => setShowAllRepuestos((prev) => !prev)}>
+                {showAllRepuestos ? 'Ocultar repuestos' : 'Repuestos (todos)'}
               </SoftButton>
             </div>
+            {showSidebarLists && (
             <div className="mt-4 border-t border-slate-200 pt-4">
-              <p className="mb-2 text-xs font-extrabold uppercase tracking-wide text-slate-500">
-                Seleccionar comercio
-              </p>
-              {dayCommerces.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500">
-                  No hay comercios para este dia.
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                  Seleccionar comercio ({namedCommerces.length})
                 </p>
-              ) : (
-                <div className="grid gap-2">
-                  {dayCommerces.map((commerce) => {
-                    const active = selectedCommerceId === commerce.comercio_id
-                    const pendingCount = pendingCountForCommerce(commerce)
-                    return (
-                      <button
-                        key={commerce.comercio_id}
-                        type="button"
-                        onClick={() => selectCommerce(commerce)}
-                        className={`rounded-lg border px-3 py-2 text-left transition ${
-                          active ? 'border-[#20263a] bg-slate-50 ring-2 ring-amber-200' : 'border-slate-200 bg-white hover:border-amber-300'
-                        }`}
-                      >
-                        <span className="block truncate text-sm font-extrabold text-slate-950">
-                          {commerce.nombre_comercio || 'Comercio sin nombre'}
-                        </span>
-                        <span className="mt-1 flex items-center justify-between gap-2">
-                          <span className="truncate text-xs font-semibold text-slate-500">
-                            {commerce.whatsapp || 'Sin WhatsApp'}
-                          </span>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
-                            pendingCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'
-                          }`}>
-                            {pendingCount}
-                          </span>
-                        </span>
-                      </button>
-                    )
-                  })}
+                <button
+                  type="button"
+                  onClick={() => setShowNamedList((prev) => !prev)}
+                  className="rounded-md border border-slate-200 px-2.5 py-1 text-[11px] font-extrabold text-slate-600 transition hover:border-amber-300 hover:text-slate-900"
+                >
+                  {showNamedList ? 'Ocultar' : 'Mostrar'}
+                </button>
+              </div>
+              {showNamedList && (
+                visibleCommerces.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500">
+                    No hay comercios para este dia.
+                  </p>
+                ) : (
+                  <div className="grid gap-2">
+                    {namedCommerces.map((commerce) => renderCommerceButton(commerce))}
+                  </div>
+                )
+              )}
+
+              {badWhatsappCommerces.length > 0 && (
+                <div className="mt-5 border-t border-dashed border-slate-300 pt-4">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-extrabold uppercase tracking-wide text-amber-600">
+                      Sin WhatsApp correcto ({badWhatsappCommerces.length})
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowBadWhatsappList((prev) => !prev)}
+                      className="rounded-md border border-slate-200 px-2.5 py-1 text-[11px] font-extrabold text-slate-600 transition hover:border-amber-300 hover:text-slate-900"
+                    >
+                      {showBadWhatsappList ? 'Ocultar' : 'Mostrar'}
+                    </button>
+                  </div>
+                  {showBadWhatsappList && (
+                    <div className="grid gap-2">
+                      {badWhatsappCommerces.map((commerce) => renderCommerceButton(commerce))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {namelessCommerces.length > 0 && (
+                <div className="mt-5 border-t border-dashed border-slate-300 pt-4">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                      Comercios sin nombre ({namelessCommerces.length})
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowNamelessList((prev) => !prev)}
+                      className="rounded-md border border-slate-200 px-2.5 py-1 text-[11px] font-extrabold text-slate-600 transition hover:border-amber-300 hover:text-slate-900"
+                    >
+                      {showNamelessList ? 'Ocultar' : 'Mostrar'}
+                    </button>
+                  </div>
+                  {showNamelessList && (
+                    <div className="grid gap-2">
+                      {namelessCommerces.map((commerce) => renderCommerceButton(commerce))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
+            )}
           </section>
         </aside>
 
         <div className="min-w-0 space-y-5">
           {error && <p className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
           {message && <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{message}</p>}
+
+          {showAllRepuestos && (
+            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-extrabold uppercase text-amber-600">Todos los comercios</p>
+                  <h2 className="text-xl font-extrabold">Repuestos por estado</h2>
+                </div>
+                <SoftButton onClick={loadRepuestos} disabled={repuestosLoading}>
+                  {repuestosLoading ? 'Cargando...' : 'Actualizar'}
+                </SoftButton>
+              </div>
+
+              <div className="mt-3 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                {[['todos', 'Todos'], ['pendiente', 'Pendientes'], ['aprobado', 'Aprobados']].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setAllRepuestosFilter(key)}
+                    className={`h-9 rounded-md px-4 text-sm font-extrabold ${allRepuestosFilter === key ? 'bg-[#20263a] text-white' : 'text-slate-600'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {allRepuestosFiltered.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+                    No hay repuestos para mostrar.
+                  </p>
+                ) : allRepuestosFiltered.map((item) => (
+                  <article key={item.id} className="rounded-lg border border-slate-200 p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
+                          <StatusPill tone={item.aprobado ? 'good' : 'warn'}>{item.aprobado ? 'Publicado' : 'Pendiente'}</StatusPill>
+                        </div>
+                        <p className="mt-1 text-xs font-bold text-amber-700">
+                          {commerceNameForItem(item)} · {item.telefono || 'Sin WhatsApp'}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {[item.marca, item.modelo, item.anio].filter(Boolean).join(' · ') || 'Sin compatibilidad'}
+                        </p>
+                        {item.nota && <p className="mt-1 text-sm text-slate-500">{item.nota}</p>}
+                      </div>
+                      <div className="flex items-center gap-2 sm:shrink-0">
+                        <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
+                          {formatPrecio(item.precio)}
+                        </span>
+                        <PrimaryButton onClick={() => approveRepuesto(item)} disabled={item.aprobado} className="flex-1 sm:flex-none">
+                          {item.aprobado ? 'Aprobado' : 'Aprobar publicacion'}
+                        </PrimaryButton>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
 
           {activePanel === 'comercios' && (
             <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -787,7 +1204,7 @@ export default function ComercioAutorizacionPage() {
             </section>
           )}
 
-          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <section ref={commerceInfoRef} className="scroll-mt-24 rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -799,6 +1216,9 @@ export default function ComercioAutorizacionPage() {
                     {fieldReady(form.nombre_comercio) && fieldReady(form.whatsapp) ? 'Completo' : 'Pendiente'}
                   </StatusPill>
                   <StatusPill tone={locationReady ? 'good' : 'neutral'}>{locationReady ? 'Ubicado' : 'Sin mapa'}</StatusPill>
+                  <StatusPill tone={commerceCedulaVerified ? 'good' : commerceCedulaPending ? 'warn' : 'neutral'}>
+                    {commerceCedulaVerified ? 'Cédula verificada' : commerceCedulaPending ? 'Cédula en revisión' : 'Cédula no verificada'}
+                  </StatusPill>
                 </div>
               </div>
             </div>
@@ -807,7 +1227,7 @@ export default function ComercioAutorizacionPage() {
               <label className="block cursor-pointer rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 hover:border-amber-400">
                 <span className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-lg bg-white">
                   {photoSrc ? (
-                    <Image src={photoSrc} alt="Foto del comercio" fill unoptimized className="object-cover" />
+                    <Image src={photoSrc} alt="Foto del comercio" fill unoptimized className="object-contain p-1" />
                   ) : (
                     <span className="text-sm font-bold text-slate-500">Agregar foto</span>
                   )}
@@ -834,6 +1254,7 @@ export default function ComercioAutorizacionPage() {
                     <input
                       value={form.whatsapp}
                       onChange={(event) => setField('whatsapp', event.target.value.replace(/\D/g, '').slice(0, 15))}
+                      onBlur={(event) => loadCommerceForWhatsapp(event.target.value)}
                       inputMode="tel"
                       placeholder="58412..."
                       className="h-11 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-amber-400"
@@ -852,27 +1273,15 @@ export default function ComercioAutorizacionPage() {
                   />
                 </label>
 
-                <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-                  <div>
-                    <span className="text-sm font-bold text-slate-700">Tipo de vehiculo</span>
-                    <div className="mt-1.5 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-                      {['carro', 'moto'].map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => setField('tipo_vehiculo', type)}
-                          className={`h-9 rounded-md px-4 text-sm font-extrabold capitalize ${form.tipo_vehiculo === type ? 'bg-[#20263a] text-white' : 'text-slate-600'
-                            }`}
-                        >
-                          {type === 'carro' ? 'Carro' : 'Moto'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                <div className="flex justify-end">
                   <SoftButton onClick={() => setMapOpen(true)} className="w-full sm:w-auto">
                     {locationReady ? 'Cambiar ubicacion' : 'Agregar ubicacion'}
                   </SoftButton>
                 </div>
+
+                {locationReady && (
+                  <MiniLocationMap lat={form.comercio_lat} lng={form.comercio_lng} />
+                )}
               </div>
             </div>
 
@@ -951,9 +1360,33 @@ export default function ComercioAutorizacionPage() {
                 <p className="text-xs font-extrabold uppercase text-amber-600">Pendientes del comercio</p>
                 <h2 className="text-xl font-extrabold">Repuestos por aprobar</h2>
               </div>
-              <StatusPill tone={repuestosPendientes.length ? 'warn' : 'good'}>
-                {repuestosPendientes.length}
-              </StatusPill>
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                  {['carro', 'moto'].map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setField('tipo_vehiculo', type)}
+                      className={`h-9 rounded-md px-4 text-sm font-extrabold capitalize ${form.tipo_vehiculo === type ? 'bg-[#20263a] text-white' : 'text-slate-600'
+                        }`}
+                    >
+                      {type === 'carro' ? 'Carro' : 'Moto'}
+                    </button>
+                  ))}
+                </div>
+                <StatusPill tone={repuestosPendientes.length ? 'warn' : 'good'}>
+                  {repuestosPendientes.length}
+                </StatusPill>
+                <button
+                  type="button"
+                  onClick={openPendingRepuestoForm}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#20263a] text-2xl font-extrabold leading-none text-white shadow-sm transition hover:bg-[#111827]"
+                  title="Agregar repuesto pendiente"
+                  aria-label="Agregar repuesto pendiente"
+                >
+                  +
+                </button>
+              </div>
             </div>
 
             <div className="mt-4 grid gap-3">
@@ -1063,7 +1496,7 @@ export default function ComercioAutorizacionPage() {
                 </SoftButton>
               </div>
 
-              <form onSubmit={createRepuesto} className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <form ref={repuestoFormRef} onSubmit={createRepuesto} className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 scroll-mt-24">
                 <div className="grid gap-3 sm:grid-cols-3">
                   <select
                     value={repuestoForm.marca}
@@ -1112,8 +1545,13 @@ export default function ComercioAutorizacionPage() {
                   rows={2}
                   className="resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400"
                 />
+                <RepuestoFotosNuevo
+                  photos={pendingRepuestoPhotos}
+                  onPick={addPendingRepuestoPhoto}
+                  onRemove={removePendingRepuestoPhoto}
+                />
                 <PrimaryButton disabled={repuestoSaving || !currentVenta} className="w-full sm:w-auto">
-                  {repuestoSaving ? 'Guardando...' : 'Crear repuesto'}
+                  {repuestoSaving ? 'Guardando...' : 'Crear repuesto pendiente'}
                 </PrimaryButton>
               </form>
 

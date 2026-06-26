@@ -591,10 +591,10 @@ export default function BingoLobby() {
         <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-600 to-violet-600 p-5">
           <div className="relative z-10 max-w-[65%]">
             <h1 className="font-brand text-xl font-extrabold leading-tight text-white sm:text-2xl">
-              ¡Juega y gana increíbles premios!
+              Bingo del club Repuestos Mérida
             </h1>
             <p className="mt-1.5 text-sm text-blue-100">
-              Únete a las salas de Bingo y gana premios increíbles.
+              Actividad recreativa privada para miembros del club. Entra con tu sesión o con el código de una sala autorizada.
             </p>
           </div>
           <div className="pointer-events-none absolute -right-2 top-1/2 -translate-y-1/2 select-none text-right">

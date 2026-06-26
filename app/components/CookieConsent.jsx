@@ -7,7 +7,7 @@ const STORAGE_KEY = 'repuestos-merida-cookie-consent'
 const CONSENT_EVENT = 'repuestos-merida:cookie-consent'
 
 // Consent Mode v2 — actualiza las señales de Google según la decisión del usuario.
-// El estado por defecto (denied) se fija en app/layout.js antes de cargar AdSense.
+// El estado por defecto (denied) se fija en app/layout.js para servicios de medicion/anuncios.
 function updateConsent(granted) {
   if (typeof window === 'undefined' || typeof window.gtag !== 'function') return
   const value = granted ? 'granted' : 'denied'
@@ -53,8 +53,8 @@ export default function CookieConsent() {
 
   return (
     <>
-      {/* El loader de AdSense se carga desde el <head> en app/layout.js (necesario
-          para la verificación de propiedad). Aquí solo gestionamos el consentimiento. */}
+      {/* Aqui solo gestionamos el consentimiento. Los servicios de anuncios se
+          activan desde configuracion cuando el sitio este aprobado. */}
       {showDialog && (
         <section
           className="fixed inset-x-4 bottom-4 z-[100] mx-auto max-w-3xl rounded-2xl border border-gray-700 bg-gray-950 p-5 text-white shadow-2xl"
@@ -66,8 +66,8 @@ export default function CookieConsent() {
             Uso de cookies
           </h2>
           <p className="mt-2 text-sm leading-6 text-gray-300">
-            Usamos cookies necesarias para el funcionamiento del sitio. Con tu permiso, Google
-            AdSense también puede usar cookies para mostrar y medir anuncios. Consulta nuestra{' '}
+            Usamos cookies necesarias para el funcionamiento del sitio. Con tu permiso, los
+            servicios opcionales de medicion o anuncios tambien pueden usar cookies. Consulta nuestra{' '}
             <Link className="text-yellow-300 underline" href="/politica-cookies">
               Política de Cookies
             </Link>

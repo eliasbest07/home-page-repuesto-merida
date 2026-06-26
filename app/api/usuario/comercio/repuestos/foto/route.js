@@ -25,6 +25,10 @@ function canonPhone(raw) {
   return d.replace(/^0+/, '')
 }
 
+function isAuthorized(value) {
+  return value === true || value === 'true' || value === 1 || value === '1'
+}
+
 function bearerToken(request) {
   const header = request.headers.get('authorization') || ''
   const match = header.match(/^Bearer\s+(.+)$/i)
@@ -36,6 +40,26 @@ function authPayload(request) {
   const telefono = cleanPhone(payload?.telefono || payload?.tel)
   if (!payload || telefono.length < 10) return null
   return { ...payload, telefono }
+}
+
+async function findRealtimeUserByPhone(rtdb, telefono) {
+  const target = canonPhone(telefono)
+  const snap = await rtdb.ref('users').get()
+  if (!snap.exists()) return null
+
+  for (const user of Object.values(snap.val() || {})) {
+    if (user && typeof user === 'object' && canonPhone(user.whatsapp || user.telefono) === target) return user
+  }
+
+  return null
+}
+
+async function currentAuthorization(rtdb, session) {
+  const [rifasSnap, official] = await Promise.all([
+    rtdb.ref(`rifas_usuarios/${cleanPhone(session.tel || session.telefono)}/autorizado`).get(),
+    findRealtimeUserByPhone(rtdb, session.telefono),
+  ])
+  return isAuthorized(rifasSnap.val()) || isAuthorized(official?.autorizado)
 }
 
 // Sube una foto al repuesto. La imagen llega ya comprimida desde el cliente
@@ -60,15 +84,16 @@ export async function POST(request) {
       return NextResponse.json({ error: 'La foto debe pesar máximo 5 MB.' }, { status: 400 })
     }
 
-    const { getAdminDb, getAdminBucket, STORAGE_BUCKET, adminFieldValue } = await import('@/lib/firebaseAdmin')
+    const { getAdminDb, getAdminBucket, getAdminRealtimeDb, STORAGE_BUCKET, adminFieldValue } = await import('@/lib/firebaseAdmin')
     const db = getAdminDb()
     const ref = db.collection(REPUESTOS_COLLECTION).doc(id)
     const snap = await ref.get()
     if (!snap.exists) return NextResponse.json({ error: 'Repuesto no encontrado.' }, { status: 404 })
 
     const data = snap.data() || {}
+    const authorized = await currentAuthorization(getAdminRealtimeDb(), session)
     const allowed = new Set([canonPhone(session.telefono), canonPhone(session.tel)].filter(Boolean))
-    if (data.telefono && !allowed.has(canonPhone(data.telefono))) {
+    if (!authorized && data.telefono && !allowed.has(canonPhone(data.telefono))) {
       return NextResponse.json({ error: 'No puedes editar este repuesto.' }, { status: 403 })
     }
 

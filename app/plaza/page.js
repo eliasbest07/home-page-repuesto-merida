@@ -9,6 +9,7 @@ import { get, onValue, ref as dbRef, serverTimestamp, update } from 'firebase/da
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
 import { firestore, rtdb, storage } from '../../lib/firebase'
 import { phoneKey, saveSession } from '@/lib/rifaSession'
+import AdSenseBlock from '@/app/components/AdSenseBlock'
 
 const PlazaChat = dynamic(() => import('../components/PlazaChat'), { ssr: false })
 
@@ -1394,6 +1395,14 @@ export default function PlazaPage() {
 
         {/* Galería 2×2 con scroll horizontal */}
         {!loading && filtrados.length > 0 && <MobileImageGallery items={filtrados} />}
+
+        {!loading && !error && filtrados.length > 0 && (
+          <AdSenseBlock
+            slot="9388951189"
+            className="requests-adsense-placement"
+            label="Anuncio"
+          />
+        )}
 
         {/* Contador + limpiar */}
         {!loading && (busqueda || catActiva !== 'Todos') && (
