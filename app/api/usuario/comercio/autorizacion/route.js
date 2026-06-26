@@ -116,12 +116,13 @@ function collectCommerceByDay(user = {}, uid = '') {
     }
 
     for (const commerce of list) {
-      const commercePhone = commerce.whatsapp || user.whatsapp || user.telefono || uid
+      // No usar el uid como WhatsApp: un comercio sin teléfono debe quedar vacío.
+      const realPhone = commerce.whatsapp || user.whatsapp || user.telefono || ''
       const item = {
         ...commerce,
         dia: commerce.dia || day,
-        whatsapp: commerce.whatsapp || commercePhone,
-        whatsapp_normalizado: internationalPhone(commercePhone),
+        whatsapp: realPhone,
+        whatsapp_normalizado: internationalPhone(realPhone),
         realtime_user_uid: uid,
       }
       byDay[day] = byDay[day] || { dia: day, comercios: {} }
@@ -206,10 +207,9 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Tu solicitud aún está en espera de autorización.' }, { status: 403 })
     }
     const commercePhone = cleanPhone(form.get('whatsapp')).slice(0, 15)
-    if (canonPhone(commercePhone).length < 10) {
-      return NextResponse.json({ error: 'Escribe un WhatsApp válido para el comercio.' }, { status: 400 })
-    }
-    const owner = await findRealtimeUserByPhone(rtdb, commercePhone)
+    const hasValidPhone = canonPhone(commercePhone).length >= 10
+    // WhatsApp es opcional: si no es válido, el comercio se guarda bajo un id propio.
+    const owner = hasValidPhone ? await findRealtimeUserByPhone(rtdb, commercePhone) : null
 
     const latRaw = form.get('lat')
     const lngRaw = form.get('lng')
@@ -264,7 +264,12 @@ export async function POST(request) {
       actualizado_en: updatedAt,
     }
 
-    const patch = {
+    const dayPatch = {
+      [`comercios_por_dia/${day}/dia`]: day,
+      [`comercios_por_dia/${day}/comercio_actual_id`]: commerceId,
+      [`comercios_por_dia/${day}/comercios/${commerceId}`]: commerce,
+    }
+    const profilePatch = {
       autorizado: true,
       whatsapp: commercePhone,
       telefono: owner?.user?.telefono || commercePhone,
@@ -276,36 +281,46 @@ export async function POST(request) {
       comercio_autorizado_actualizado_en: updatedAt,
       comercio_dia_actual: day,
       comercio_autorizado: commerce,
-      [`comercios_por_dia/${day}/dia`]: day,
-      [`comercios_por_dia/${day}/comercio_actual_id`]: commerceId,
-      [`comercios_por_dia/${day}/comercios/${commerceId}`]: commerce,
     }
 
-    // Fuente de verdad: /users (nodo existente o /users/<telefono> con identidad).
-    // rifas_usuarios NO se escribe: es exclusivo del flujo de rifas.
-    const usersPath = owner?.uid
-      ? `${owner.path ? `${owner.path}/` : ''}${owner.uid}`
-      : `users/${commercePhone}`
-    const usersPatch = owner?.uid
-      ? patch
-      : { id: commercePhone, ...patch }
+    // Fuente de verdad: /users. rifas_usuarios NO se escribe (exclusivo de rifas).
+    // - Con WhatsApp válido: nodo del dueño existente o users/<telefono>.
+    // - Sin WhatsApp válido: nodo sintético users/<commerceId>, con SOLO la
+    //   estructura del comercio. Nunca se adjunta a la cuenta del admin ni de otro
+    //   usuario, ni se escribe un perfil/vender en él.
+    let usersPath
+    let usersPatch
+    if (hasValidPhone) {
+      usersPath = owner?.uid
+        ? `${owner.path ? `${owner.path}/` : ''}${owner.uid}`
+        : `users/${commercePhone}`
+      usersPatch = owner?.uid
+        ? { ...profilePatch, ...dayPatch }
+        : { id: commercePhone, ...profilePatch, ...dayPatch }
+    } else {
+      usersPath = `users/${commerceId}`
+      usersPatch = { id: commerceId, sin_telefono: true, ...dayPatch }
+    }
+
+    const phoneKey = cleanPhone(owner?.user?.telefono || commercePhone) || commerceId
+    const realtimeUid = owner?.uid || (hasValidPhone ? commercePhone : commerceId)
 
     await Promise.all([
       rtdb.ref(usersPath).update(usersPatch),
-      firestore.collection(FIRESTORE_COLLECTION).doc(`${cleanPhone(owner?.user?.telefono || commercePhone)}_${day}_${commerceId}`).set({
+      firestore.collection(FIRESTORE_COLLECTION).doc(`${phoneKey}_${day}_${commerceId}`).set({
         ...commerce,
         telefono_usuario: commercePhone,
-        telefono_key: cleanPhone(owner?.user?.telefono || commercePhone),
+        telefono_key: phoneKey,
         editado_por: session.telefono,
         dia: day,
-        realtime_user_uid: owner?.uid || commercePhone,
+        realtime_user_uid: realtimeUid,
         realtime_user_path: usersPath,
         actualizado_en_ms: updatedAt,
         actualizado_en: adminFieldValue.serverTimestamp(),
       }, { merge: true }),
     ])
 
-    return NextResponse.json({ ok: true, dia: day, comercio_id: commerceId, comercio: commerce, realtime_user_uid: owner?.uid || commercePhone })
+    return NextResponse.json({ ok: true, dia: day, comercio_id: commerceId, comercio: commerce, realtime_user_uid: realtimeUid })
   } catch (error) {
     return NextResponse.json({ error: error?.message || 'No se pudo guardar el comercio.' }, { status: 400 })
   }

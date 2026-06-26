@@ -738,11 +738,6 @@ export default function ComercioAutorizacionPage() {
       setActivePanel('comercio')
       return
     }
-    if (!fieldReady(form.whatsapp)) {
-      setError('Escribe el numero de WhatsApp.')
-      setActivePanel('comercio')
-      return
-    }
 
     setSaving(true)
     try {
@@ -1183,6 +1178,12 @@ export default function ComercioAutorizacionPage() {
                         </PrimaryButton>
                       </div>
                     </div>
+
+                    <RepuestoFotos
+                      fotos={item.fotos || []}
+                      uploading={uploadingPhotoId === item.id}
+                      onPick={(file) => uploadRepuestoPhoto(item, file)}
+                    />
                   </article>
                 ))}
               </div>
@@ -1212,8 +1213,8 @@ export default function ComercioAutorizacionPage() {
                   <h2 className="text-2xl font-extrabold">Informacion del comercio</h2>
                 </div>
                 <div className="flex gap-2">
-                  <StatusPill tone={fieldReady(form.nombre_comercio) && fieldReady(form.whatsapp) ? 'good' : 'warn'}>
-                    {fieldReady(form.nombre_comercio) && fieldReady(form.whatsapp) ? 'Completo' : 'Pendiente'}
+                  <StatusPill tone={fieldReady(form.nombre_comercio) ? 'good' : 'warn'}>
+                    {fieldReady(form.nombre_comercio) ? 'Completo' : 'Pendiente'}
                   </StatusPill>
                   <StatusPill tone={locationReady ? 'good' : 'neutral'}>{locationReady ? 'Ubicado' : 'Sin mapa'}</StatusPill>
                   <StatusPill tone={commerceCedulaVerified ? 'good' : commerceCedulaPending ? 'warn' : 'neutral'}>
@@ -1250,13 +1251,13 @@ export default function ComercioAutorizacionPage() {
                     />
                   </label>
                   <label className="grid gap-1.5">
-                    <span className="text-sm font-bold text-slate-700">WhatsApp</span>
+                    <span className="text-sm font-bold text-slate-700">WhatsApp <span className="font-semibold text-slate-400">(opcional)</span></span>
                     <input
                       value={form.whatsapp}
                       onChange={(event) => setField('whatsapp', event.target.value.replace(/\D/g, '').slice(0, 15))}
                       onBlur={(event) => loadCommerceForWhatsapp(event.target.value)}
                       inputMode="tel"
-                      placeholder="58412..."
+                      placeholder="58412... (opcional)"
                       className="h-11 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-amber-400"
                     />
                   </label>
