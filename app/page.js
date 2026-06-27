@@ -11,6 +11,7 @@ import { firestore, rtdb } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
 
 const PlazaChat = dynamic(() => import('./components/PlazaChat'), { ssr: false })
+const ComerciosMap = dynamic(() => import('./components/ComerciosMap'), { ssr: false })
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
 const REQUEST_DRAFT_KEY = 'repuestos-merida-solicitud-borrador'
 const CITAS_TECNICAS = [
@@ -1847,6 +1848,27 @@ export default function Home() {
               <p className="text-sm leading-relaxed text-gray-600">{item.text}</p>
             </article>
           ))}
+        </div>
+      </section>
+
+      {/* ──────────────────────────────────────────
+          MAPA DE COMERCIOS
+      ────────────────────────────────────────── */}
+      <section id="mapa" className="bg-[#f9f5ee] py-16 px-4">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-8 text-center">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#efe7da] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#8A5A39]">
+              📍 Comercios afiliados
+            </span>
+            <h2 className="mt-3 font-brand text-3xl text-[#3f352b] sm:text-4xl">
+              Encuentra repuestos cerca de ti
+            </h2>
+            <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-[#6b5b4d]">
+              Explora el mapa, toca un comercio y descubre su ubicación, su tienda y los
+              repuestos que tiene disponibles. Contacta directo por WhatsApp.
+            </p>
+          </div>
+          <ComerciosMap />
         </div>
       </section>
 

@@ -5,7 +5,9 @@ import Link from 'next/link'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { ensureSession, saveSession } from '@/lib/rifaSession'
+import { onValue, ref as dbRef } from 'firebase/database'
+import { rtdb } from '@/lib/firebase'
+import { ensureSession, phoneKey, saveSession } from '@/lib/rifaSession'
 import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
 import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 
@@ -13,6 +15,12 @@ const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: fal
 
 function normalize(value) {
   return String(value || '').trim().toLowerCase()
+}
+
+function canonPhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '')
+  if (d.startsWith('58') && d.length >= 12) d = d.slice(2)
+  return d.replace(/^0+/, '')
 }
 
 const EMPTY_REPUESTO = {
@@ -51,6 +59,13 @@ export default function UsuarioComercioPage() {
   const [itemsLoading, setItemsLoading] = useState(true)
   const [itemsError, setItemsError] = useState('')
 
+  // ── Cédula EN VIVO (el bot la escribe en Realtime DB tras verificarla) ────
+  const [realtimeProfile, setRealtimeProfile] = useState(null)
+  const [cedulaLive, setCedulaLive] = useState('')
+
+  const perfilVivo = { ...(session?.perfil || session?.prefill || {}), ...(realtimeProfile || {}) }
+  const cedulaActual = cedulaLive || perfilVivo?.cedula || ''
+  const cedulaVerificada = Boolean(cedulaActual || perfilVivo?.cedula_estado === 'aprobado')
   const brandOptions = repuesto.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const selectedBrand = useMemo(
     () => brandOptions.find((brand) => normalize(brand.name) === normalize(repuesto.marca))?.name || '',
@@ -112,6 +127,40 @@ export default function UsuarioComercioPage() {
     return () => { cancelled = true }
   }, [session?.token])
 
+  // EN VIVO: escucha el nodo del usuario en Realtime DB para saber si la cédula
+  // ya fue verificada (rifas_usuarios/{key} primario, users/{uid} respaldo).
+  useEffect(() => {
+    const tel = session?.telefono
+    if (!tel) return undefined
+    const key = phoneKey(tel)
+    const targetPhone = canonPhone(tel)
+    const uid = session?.perfil?.uid || session?.prefill?.uid
+    const offs = []
+    const watch = (path) => {
+      const off = onValue(dbRef(rtdb, path), (snap) => {
+        const v = snap.val()
+        if (!v || typeof v !== 'object') return
+        setRealtimeProfile((current) => ({ ...(current || {}), ...v }))
+        if (v.cedula) setCedulaLive(String(v.cedula).trim())
+      })
+      offs.push(off)
+    }
+    if (key) watch(`rifas_usuarios/${key}`)
+    if (uid) watch(`users/${uid}`)
+    const usersOff = onValue(dbRef(rtdb, 'users'), (snap) => {
+      const data = snap.val() || {}
+      for (const value of Object.values(data)) {
+        if (value && typeof value === 'object' && canonPhone(value.whatsapp) === targetPhone) {
+          setRealtimeProfile((current) => ({ ...(current || {}), ...value }))
+          if (value.cedula) setCedulaLive(String(value.cedula).trim())
+          break
+        }
+      }
+    })
+    offs.push(usersOff)
+    return () => offs.forEach((off) => { try { off() } catch { } })
+  }, [session?.telefono, session?.perfil?.uid, session?.prefill?.uid])
+
   // Autocompletado: al elegir marca, traer modelos guardados.
   useEffect(() => {
     if (!session?.token || !selectedBrand) { setModelSuggestions([]); return undefined }
@@ -159,7 +208,8 @@ export default function UsuarioComercioPage() {
       if (comercioFoto) form.append('foto', comercioFoto, 'comercio.jpg')
       form.append('foto_url', comercio.foto_url || '')
       form.append('direccion', comercio.direccion || '')
-      form.append('vender', comercio.vender ? 'true' : 'false')
+      // El permiso para vender ya no es un checkbox: depende de la cédula verificada.
+      form.append('vender', cedulaVerificada ? 'true' : 'false')
       if (comercio.lat != null && comercio.lng != null) {
         form.append('lat', String(comercio.lat))
         form.append('lng', String(comercio.lng))
@@ -302,16 +352,6 @@ export default function UsuarioComercioPage() {
               </p>
             )}
 
-            <label className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <span className="text-sm font-bold text-gray-800">Permitir publicar repuestos</span>
-              <input
-                type="checkbox"
-                checked={comercio.vender}
-                onChange={(e) => setComercio((c) => ({ ...c, vender: e.target.checked }))}
-                className="h-5 w-5 accent-yellow-400"
-              />
-            </label>
-
             {comercioErr && <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{comercioErr}</p>}
             {comercioMsg && <p className="rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">{comercioMsg}</p>}
 
@@ -326,7 +366,7 @@ export default function UsuarioComercioPage() {
         </section>
 
         {/* ── Crear repuesto ─────────────────────────────────────────── */}
-        {comercio.vender ? (
+        {cedulaVerificada ? (
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-yellow-600">Inventario</p>
             <h2 className="mt-2 text-2xl font-extrabold">Crear repuesto</h2>
@@ -450,8 +490,14 @@ export default function UsuarioComercioPage() {
         ) : (
           <section className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-center shadow-sm">
             <p className="text-sm font-semibold text-gray-600">
-              Activa <span className="font-bold">“Permitir publicar repuestos”</span> arriba y guarda para empezar a cargar tu inventario.
+              Verifica tu <span className="font-bold">cédula</span> para empezar a cargar tu inventario.
             </p>
+            <Link
+              href="/usuario/opciones"
+              className="mt-3 inline-flex h-11 items-center justify-center rounded-xl bg-yellow-400 px-4 text-sm font-extrabold text-gray-950 transition hover:bg-yellow-300"
+            >
+              Verificar cédula
+            </Link>
           </section>
         )}
 

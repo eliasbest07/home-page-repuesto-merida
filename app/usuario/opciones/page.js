@@ -85,6 +85,9 @@ export default function UsuarioOpcionesPage() {
   // mientras esta página está abierta; con onValue se refleja sin recargar.
   const [cedulaLive, setCedulaLive] = useState('')
   const [realtimeProfile, setRealtimeProfile] = useState(null)
+  // El acceso a la tienda solo aparece si el WhatsApp ya está dentro de
+  // comercios_autorizados (Firestore).
+  const [esComercioAutorizado, setEsComercioAutorizado] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -148,13 +151,25 @@ export default function UsuarioOpcionesPage() {
     return () => offs.forEach((off) => { try { off() } catch { } })
   }, [session?.telefono, session?.perfil?.uid, session?.prefill?.uid])
 
+  // ¿El WhatsApp de la sesión ya es un comercio autorizado? Define si se muestra
+  // el acceso a "Mi tienda".
+  useEffect(() => {
+    const token = session?.token
+    if (!token) { setEsComercioAutorizado(false); return undefined }
+    let cancelled = false
+    fetch('/api/usuario/comercio/membresia', { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json())
+      .then((data) => { if (!cancelled) setEsComercioAutorizado(Boolean(data?.autorizado)) })
+      .catch(() => { if (!cancelled) setEsComercioAutorizado(false) })
+    return () => { cancelled = true }
+  }, [session?.token])
+
   const perfil = { ...(session?.perfil || session?.prefill || {}), ...(realtimeProfile || {}) }
   const nombre = perfil?.nombre || 'Usuario'
   const foto = perfil?.foto_url || perfil?.foto || ''
   const comercioFoto = perfil?.comercio_foto_url || perfil?.comercio_autorizado?.comercio_foto_url || firstCommercePhoto(perfil?.comercios_por_dia)
   const cedulaActual = cedulaLive || perfil?.cedula || ''
   const edadVerificada = Boolean(cedulaActual || perfil?.cedula_estado === 'aprobado')
-  const vendedorActivo = realtimeProfile?.vender === true || realtimeProfile?.vender === 'true' || perfil?.vender === true || perfil?.vender === 'true'
   const notificationCount = Number(perfil?.notificaciones_nuevas || perfil?.notificacionesNuevas || 0)
   const brandOptions = vehicle.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const selectedBrand = useMemo(
@@ -419,7 +434,7 @@ export default function UsuarioOpcionesPage() {
                       <span>{vehicle.tipo_vehiculo === 'moto' ? 'Mi moto' : 'Mi carro'}</span>
                       <ChevronDownIcon className="h-3.5 w-3.5 transition group-hover:translate-y-0.5" />
                     </button>
-                    {edadVerificada && (
+                    {esComercioAutorizado && (
                       <Link
                         href="/usuario/comercio"
                         className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-yellow-400 px-3 text-xs font-extrabold text-gray-950 shadow-sm transition hover:bg-yellow-300"
@@ -447,15 +462,6 @@ export default function UsuarioOpcionesPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 self-start sm:self-end">
-                {vendedorActivo && !edadVerificada && (
-                  <Link
-                    href="/usuario/comercio"
-                    className="inline-flex h-11 items-center gap-2 rounded-xl bg-yellow-400 px-4 text-sm font-extrabold text-gray-950 shadow-sm transition hover:bg-yellow-300"
-                  >
-                    <StoreIcon className="h-5 w-5" />
-                    <span>Mi comercio</span>
-                  </Link>
-                )}
                 <button
                   type="button"
                   title="Notificaciones"

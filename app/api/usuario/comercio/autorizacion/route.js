@@ -269,6 +269,9 @@ export async function POST(request) {
       [`comercios_por_dia/${day}/comercio_actual_id`]: commerceId,
       [`comercios_por_dia/${day}/comercios/${commerceId}`]: commerce,
     }
+    // La foto/direccion/coords se escriben en el perfil top-level a proposito:
+    // el comercio (en /usuario/comercio) y el usuario autorizado comparten la
+    // MISMA foto del comercio, viendola y asignandola desde ambos lugares.
     const profilePatch = {
       autorizado: true,
       whatsapp: commercePhone,
