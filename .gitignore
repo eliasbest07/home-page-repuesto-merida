@@ -40,3 +40,6 @@ anuncios.json
 
 # Imágenes descargadas de usuarios (datos sensibles)
 /downloads/
+
+# Documento interno de diseño (no publicar)
+docs/bestpoint-sistema.md

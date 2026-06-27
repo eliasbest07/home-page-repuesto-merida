@@ -19,6 +19,7 @@ export function generateMetadata({ params }) {
     description: post.excerpt,
     keywords: post.keywords?.join(', '),
     alternates: { canonical: `/blog/${post.slug}` },
+    robots: post.noindex ? { index: false, follow: false } : undefined,
     openGraph: {
       title: post.title,
       description: post.excerpt,
@@ -49,7 +50,8 @@ export default function ArticlePage({ params }) {
   const post = getPost(params.slug)
   if (!post) notFound()
 
-  const related = POSTS.filter((p) => p.slug !== post.slug).slice(0, 2)
+  // Relacionados: nunca enlazar a artículos noindex (p. ej. los del club/bingo).
+  const related = POSTS.filter((p) => p.slug !== post.slug && !p.noindex).slice(0, 2)
   const url = `${SITE_URL}/blog/${post.slug}`
 
   // JSON-LD: Article + FAQ + Breadcrumb para resultados enriquecidos.
@@ -159,8 +161,8 @@ export default function ArticlePage({ params }) {
               </figure>
             )}
 
-            {/* Un anuncio a mitad del artículo (ruta con contenido) */}
-            {i === 1 && (
+            {/* Un anuncio a mitad del artículo (salvo artículos marcados sin anuncios) */}
+            {i === 1 && post.ads !== false && (
               <div className="mt-8">
                 <AdSenseBlock slot="9388951189" label="Anuncio" />
               </div>

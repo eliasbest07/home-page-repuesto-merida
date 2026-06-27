@@ -4,7 +4,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.co
 
 export default function sitemap() {
   const now = new Date()
-  const articulos = POSTS.map((p) => ({
+  const articulos = POSTS.filter((p) => !p.noindex).map((p) => ({
     url: `${SITE_URL}/blog/${p.slug}`,
     lastModified: new Date(p.date),
     changeFrequency: 'monthly',

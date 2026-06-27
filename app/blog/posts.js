@@ -352,6 +352,150 @@ export const POSTS = [
       },
     ],
   },
+
+  {
+    slug: 'bingo-confianza-club-andino',
+    title: 'El bingo: la forma más beneficiosa de hacer crecer la confianza en la comunidad',
+    category: 'Comunidad',
+    date: '2026-06-26',
+    readingMinutes: 6,
+    noindex: true,
+    ads: false,
+    excerpt:
+      'El bingo reúne a la comunidad, premia la participación y construye confianza entre quienes compran y venden. Por eso forma parte del Club Andino de Repuestos Mérida.',
+    hero: {
+      src: '/blog/bingo-confianza-club-andino/hero.webp',
+      alt: 'Mesa de juego comunitario con bolas y cartones de bingo en ambiente cálido',
+    },
+    keywords: ['bingo', 'comunidad', 'confianza', 'Club Andino', 'Repuestos Mérida'],
+    intro:
+      'En una comunidad de compraventa, la confianza lo es todo: define con quién haces negocios y qué tan tranquilo te quedas después de cerrar un trato. En Repuestos Mérida vemos el bingo no solo como un juego, sino como la forma más beneficiosa de hacer crecer esa confianza entre las personas. Reunir a la gente alrededor de una actividad transparente y divertida crea vínculos que después se traducen en transacciones más seguras. Por eso el bingo forma parte del Club Andino.',
+    sections: [
+      {
+        heading: 'La confianza se construye participando',
+        paragraphs: [
+          'La confianza no aparece de la nada: se gana con el tiempo, demostrando seriedad y estando presente. El bingo es una excusa perfecta para que los miembros de la comunidad coincidan, participen y se reconozcan entre sí. Cada partida es un punto de encuentro donde las personas dejan de ser un número de teléfono y pasan a ser parte de un grupo.',
+          'Cuando ya conoces a alguien de la comunidad, comprarle o venderle un repuesto deja de ser un salto al vacío. Esa familiaridad es justamente lo que hace que el comercio fluya mejor.',
+        ],
+      },
+      {
+        heading: 'Un juego transparente premia la seriedad',
+        paragraphs: [
+          'El bingo es, por diseño, un juego claro: los números salen a la vista de todos y el resultado no depende de favoritismos. Esa transparencia es la misma que queremos en cada trato de la comunidad. Participar de forma limpia, cumplir las reglas y respetar a los demás son hábitos que el bingo refuerza y que luego se notan en la forma de hacer negocios.',
+          'Premiar la participación constante también envía un mensaje: aquí gana quien está comprometido con la comunidad.',
+        ],
+        image: {
+          src: '/blog/bingo-confianza-club-andino/bolas.webp',
+          alt: 'Bolas numeradas de colores dentro de un bombo transparente',
+          caption: 'Un juego a la vista de todos refuerza la cultura de transparencia de la comunidad.',
+        },
+      },
+      {
+        heading: 'Por eso el bingo es parte del Club Andino',
+        paragraphs: [
+          'El Club Andino reúne a los miembros que han demostrado compromiso y seriedad dentro de Repuestos Mérida. El bingo encaja de forma natural en ese club porque comparte su mismo objetivo: crear un espacio seguro, confiable y participativo. Acceder al bingo es uno de los beneficios de pertenecer al Club Andino, y a la vez es una de las actividades que mantiene viva y unida a la comunidad.',
+          'Dicho de otra forma: el bingo no es un añadido suelto, es una pieza de la estrategia para que la confianza entre vecinos, talleres y comercios siga creciendo.',
+        ],
+        image: {
+          src: '/blog/bingo-confianza-club-andino/comunidad.webp',
+          alt: 'Varias manos unidas sobre una mesa representando trabajo en equipo y confianza',
+          caption: 'El bingo une a la comunidad; el Club Andino le da un espacio para crecer.',
+        },
+      },
+      {
+        heading: 'Confianza que se traduce en mejores negocios',
+        paragraphs: [
+          'Una comunidad que se conoce y se divierte junta es una comunidad que negocia con más tranquilidad. Cada partida de bingo suma participación, y cada participación suma reputación. Al final, todo eso se devuelve en transacciones más seguras y relaciones comerciales más duraderas dentro de Repuestos Mérida.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        q: '¿Quién puede jugar bingo en Repuestos Mérida?',
+        a: 'El bingo está disponible para los miembros del Club Andino, la comunidad de usuarios con trayectoria y compromiso dentro de la plataforma.',
+      },
+      {
+        q: '¿Qué tiene que ver el bingo con comprar repuestos?',
+        a: 'El bingo fortalece la confianza y el sentido de comunidad. Cuando las personas se conocen y participan, las transacciones de compraventa se vuelven más seguras y fluidas.',
+      },
+    ],
+  },
+
+  {
+    slug: 'beneficios-club-andino',
+    title: 'Beneficios de ser parte del Club Andino',
+    category: 'Club Andino',
+    date: '2026-06-26',
+    readingMinutes: 6,
+    noindex: true,
+    ads: false,
+    excerpt:
+      'El Club Andino reúne a los miembros más comprometidos de Repuestos Mérida: acceso al bingo, sorteos exclusivos, una insignia de confianza y los BestPoints, una moneda única respaldada en USDT.',
+    hero: {
+      src: '/blog/beneficios-club-andino/hero.webp',
+      alt: 'Sala acogedora con vista a las montañas de los Andes de Mérida al atardecer',
+    },
+    keywords: ['Club Andino', 'BestPoints', 'beneficios', 'membresía', 'Repuestos Mérida'],
+    intro:
+      'El Club Andino es la comunidad de los miembros más comprometidos de Repuestos Mérida: personas que han demostrado seriedad y que disfrutan de un estatus especial dentro de la plataforma. Ser parte del club abre la puerta a beneficios pensados para premiar esa confianza. Aquí te explicamos qué ganas al pertenecer y cómo funcionan los BestPoints.',
+    sections: [
+      {
+        heading: 'Una comunidad de confianza',
+        paragraphs: [
+          'El Club Andino nació para crear un espacio seguro y confiable donde compradores y vendedores se encuentran. Sus miembros comparten una cultura de respeto, responsabilidad y compromiso, lo que eleva la calidad de cada interacción. Pertenecer al club es, en sí mismo, una señal de que tomas en serio tu participación en la comunidad.',
+        ],
+      },
+      {
+        heading: 'Acceso al bingo y a sorteos exclusivos',
+        paragraphs: [
+          'Uno de los beneficios más visibles es el acceso al bingo, una actividad reservada para miembros que reúne a la comunidad y refuerza la confianza entre todos. A esto se suman sorteos y dinámicas exclusivas para el club, pensadas para premiar la participación constante de quienes hacen vida en Repuestos Mérida.',
+        ],
+        image: {
+          src: '/blog/beneficios-club-andino/confianza.webp',
+          alt: 'Dos personas dándose la mano en señal de acuerdo y confianza',
+          caption: 'El Club Andino premia y refuerza la confianza entre sus miembros.',
+        },
+      },
+      {
+        heading: 'Una insignia de confianza',
+        paragraphs: [
+          'Ser parte del Club Andino te distingue dentro de la comunidad. Esa pertenencia funciona como una insignia de confianza: les indica a los demás que eres un miembro comprometido y serio, lo que facilita cerrar tratos y construir relaciones comerciales más sólidas. En un mercado donde la reputación lo es todo, ese distintivo tiene un valor real.',
+        ],
+      },
+      {
+        heading: 'BestPoints: la moneda del club',
+        paragraphs: [
+          'Los BestPoints son la moneda única del Club Andino. Cada BestPoint es seguro y rastreable, de modo que siempre pertenece a una sola persona, y está respaldado en USDT: representa un valor real disponible para canjear. Es, en pocas palabras, una moneda confiable dentro de la comunidad.',
+          'El valor de un BestPoint varía según el método de pago con el que lo adquieres: cuesta 25 USDT pagando en USDT, o el equivalente a 27 por pago móvil (la diferencia se debe al costo de la conversión). Esa transparencia te permite saber siempre cuánto vale lo que tienes.',
+        ],
+        image: {
+          src: '/blog/beneficios-club-andino/moneda.webp',
+          alt: 'Una moneda dorada brillante sobre una superficie oscura y elegante',
+          caption: 'El BestPoint es una moneda única, segura y respaldada en USDT.',
+        },
+      },
+      {
+        heading: 'Para qué sirven los BestPoints',
+        paragraphs: [
+          'Dentro del club, los BestPoints se canjean en las salas de bingo y por cartones de bingo, así que te permiten participar en la actividad estrella de la comunidad. Al estar respaldados en USDT, conservan un valor claro y pueden liquidarse cuando corresponda. A medida que el club crezca, los BestPoints irán sumando más usos y beneficios.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        q: '¿Cómo me hago miembro del Club Andino?',
+        a: 'El club reúne a los usuarios con trayectoria y compromiso en Repuestos Mérida. La pertenencia se gana participando activamente y manteniendo seriedad en tus interacciones dentro de la comunidad.',
+      },
+      {
+        q: '¿Qué es exactamente un BestPoint?',
+        a: 'Es la moneda única del Club Andino: segura, rastreable y respaldada en USDT. Siempre pertenece a una sola persona y representa un valor real que puede canjearse, por ejemplo, en las salas de bingo.',
+      },
+      {
+        q: '¿Cuánto cuesta un BestPoint?',
+        a: 'Su valor depende del método de pago: 25 USDT pagando en USDT, o el equivalente a 27 por pago móvil. La diferencia corresponde al costo de la conversión.',
+      },
+    ],
+  },
 ]
 
 export function getPost(slug) {

@@ -18,7 +18,9 @@ function formatDate(iso) {
 }
 
 export default function BlogPage() {
-  const [featured, ...rest] = POSTS
+  // No listar artículos noindex (p. ej. los del Club Andino / bingo).
+  const visibles = POSTS.filter((p) => !p.noindex)
+  const [featured, ...rest] = visibles
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
