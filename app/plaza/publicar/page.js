@@ -56,17 +56,25 @@ export default function PublicarPage() {
         return
       }
 
-      try {
-        const res = await fetch('/api/verificacion/edad', {
-          headers: { Authorization: `Bearer ${s.token}` },
-          cache: 'no-store',
-        })
-        const data = await res.json()
-        if (!res.ok || data.estado !== 'aprobado') {
-          router.replace('/verificacion?redirect=' + encodeURIComponent('/plaza/publicar') + '&required=1')
-          return
+      // Fuente de verdad: la verificación por cédula queda en el perfil (/users).
+      // Igual que en /solicitados y /usuario/comercio. El chequeo de "edad"
+      // (verificaciones_edad, revisión manual) se mantiene solo como respaldo.
+      let verificado = Boolean(s.perfil?.cedula) || s.perfil?.cedula_estado === 'aprobado'
+
+      if (!verificado) {
+        try {
+          const res = await fetch('/api/verificacion/edad', {
+            headers: { Authorization: `Bearer ${s.token}` },
+            cache: 'no-store',
+          })
+          const data = await res.json()
+          verificado = res.ok && data.estado === 'aprobado'
+        } catch {
+          verificado = false
         }
-      } catch {
+      }
+
+      if (!verificado) {
         router.replace('/verificacion?redirect=' + encodeURIComponent('/plaza/publicar') + '&required=1')
         return
       }

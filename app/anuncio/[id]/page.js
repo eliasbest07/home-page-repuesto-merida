@@ -183,6 +183,38 @@ export default function AnuncioDetallePage() {
             </a>
           </div>
         </article>
+
+        {/* Consejos de compra segura (útil para cualquier anuncio de Plaza) */}
+        <section className="mt-5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div className="px-5 py-4">
+            <h2 className="text-xs font-extrabold uppercase tracking-wide text-gray-500">
+              Compra con confianza en Plaza
+            </h2>
+            <ul className="mt-3 space-y-2">
+              {[
+                'Confirma por WhatsApp que el artículo o servicio sigue disponible antes de trasladarte.',
+                'Pide fotos o detalles adicionales y, si es un repuesto, verifica la compatibilidad con tu vehículo.',
+                'Acuerda un punto de encuentro seguro y revisa el producto antes de pagar.',
+                'Recuerda que el trato es directo entre las partes: Repuestos Mérida no interviene en la negociación.',
+              ].map((tip) => (
+                <li key={tip} className="flex gap-2 text-sm leading-6 text-gray-600">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-500" />
+                  <span>{tip}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <Link
+            href="/blog/como-usar-plaza-repuestos-merida"
+            className="flex items-center justify-between gap-3 border-t border-gray-100 px-5 py-4 text-sm font-bold text-gray-800 hover:bg-gray-50"
+          >
+            <span>
+              <span className="text-gray-400">Guía: </span>
+              Cómo usar Plaza paso a paso
+            </span>
+            <span aria-hidden className="shrink-0 text-yellow-600">→</span>
+          </Link>
+        </section>
       </main>
     </div>
   )

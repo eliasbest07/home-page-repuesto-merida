@@ -2,6 +2,9 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ref, get, set } from 'firebase/database'
+import { rtdb } from '@/lib/firebase'
+import { ensureSession, phoneKey } from '@/lib/rifaSession'
 
 const OPTIONS = [
   { key: 'piedra', label: 'Piedra', icon: '✊', beats: 'tijera', color: 'border-slate-300 bg-slate-50 text-slate-900' },
@@ -40,6 +43,10 @@ export default function PiedraPapelTijeraPage() {
   const [history, setHistory] = useState([])
   const timersRef = useRef([])
 
+  // Crédito sincronizado en RTDB solo si el usuario inició sesión con WhatsApp.
+  const [userKey, setUserKey] = useState(null)
+  const [persistReady, setPersistReady] = useState(false)
+
   const resultState = result ? resultCopy(result) : null
   const canPlayWithCredits = !creditsEnabled || credits >= stake
 
@@ -61,6 +68,33 @@ export default function PiedraPapelTijeraPage() {
   useEffect(() => {
     return () => clearTimers()
   }, [])
+
+  // Al entrar: si hay sesión con WhatsApp, carga el crédito guardado del usuario.
+  useEffect(() => {
+    let cancelled = false
+    ensureSession().then(async (s) => {
+      if (cancelled || !s?.telefono) return
+      const key = phoneKey(s.telefono)
+      try {
+        const snap = await get(ref(rtdb, `users/${key}/credito_juego`))
+        const saved = snap.val()
+        if (!cancelled && typeof saved === 'number' && Number.isFinite(saved)) {
+          setCredits(saved)
+        }
+      } catch {}
+      if (!cancelled) {
+        setUserKey(key)
+        setPersistReady(true)
+      }
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  // Guarda en RTDB cada vez que cambia el crédito (solo si inició con WhatsApp).
+  useEffect(() => {
+    if (!persistReady || !userKey) return
+    set(ref(rtdb, `users/${userKey}/credito_juego`), credits).catch(() => {})
+  }, [credits, userKey, persistReady])
 
   function settleCredits(roundResult, currentStake) {
     if (!creditsEnabled) return ''
@@ -236,6 +270,13 @@ export default function PiedraPapelTijeraPage() {
             <div className="rounded-xl bg-gray-950 p-3">
               <p className="text-xs font-semibold uppercase text-gray-500">Créditos</p>
               <p className="mt-1 font-brand text-3xl text-yellow-300">{credits}</p>
+              <p className="mt-1 text-[10px] font-bold">
+                {userKey ? (
+                  <span className="text-emerald-400">✓ Guardado en tu cuenta</span>
+                ) : (
+                  <span className="text-gray-600">Inicia con WhatsApp para guardar</span>
+                )}
+              </p>
             </div>
             <div className="rounded-xl bg-gray-950 p-3">
               <p className="text-xs font-semibold uppercase text-gray-500">Apuesta</p>

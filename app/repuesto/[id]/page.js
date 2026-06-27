@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { doc, getDoc } from 'firebase/firestore'
 import { get, ref } from 'firebase/database'
 import { firestore, rtdb } from '@/lib/firebase'
+import { getRepuestoGuia } from '@/lib/repuestoGuia'
 
 const OFFICIAL_WHATSAPP = '584123375417'
 const DIRECTORY_KEY = 'repuestos-merida-directorio'
@@ -38,6 +39,11 @@ function normalizeProduct(data, id) {
     whatsapp: data.whatsapp || '',
     sellerId: data.userID || '',
     available: data.publicado !== 'agotado' && data.estado !== 'agotado',
+    // Campos crudos para construir la guía del repuesto.
+    categoriaRaw: data.categoria || '',
+    marcaRaw: data.marca || '',
+    modelosRaw: data.modelos || '',
+    vehiculoRaw: data.vehiculo || '',
   }
 }
 
@@ -155,6 +161,19 @@ export default function RepuestoDetailPage({ params }) {
 
   const location = useMemo(() => sellerDisplayLocation(seller || {}), [seller])
   const mapEmbedUrl = useMemo(() => sellerMapEmbedUrl(seller || {}), [seller])
+  const guia = useMemo(
+    () =>
+      product
+        ? getRepuestoGuia({
+            categoria: product.categoriaRaw,
+            descripcion: product.description,
+            marca: product.marcaRaw,
+            modelos: product.modelosRaw,
+            vehiculo: product.vehiculoRaw,
+          })
+        : null,
+    [product],
+  )
 
   useEffect(() => {
     if (!product) return
@@ -339,6 +358,72 @@ export default function RepuestoDetailPage({ params }) {
             </section>
           </div>
         </article>
+
+        {/* Guía útil del repuesto: contenido orientado al comprador */}
+        {guia && (
+          <section className="mt-6 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-100 px-5 py-5 sm:px-8">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">
+                Guía rápida
+              </p>
+              <h2 className="mt-1 font-brand text-2xl text-gray-950">
+                Qué debes saber sobre este repuesto
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-gray-600">
+                {guia.queEs}
+                {guia.vehiculo && (
+                  <>
+                    {' '}En el caso de <strong className="text-gray-800">{guia.vehiculo}</strong>,
+                    confirma siempre los datos antes de comprar para asegurar que la pieza calce.
+                  </>
+                )}
+              </p>
+            </div>
+
+            <div className="grid gap-px bg-gray-100 sm:grid-cols-2">
+              <div className="bg-white p-5 sm:p-8">
+                <h3 className="flex items-center gap-2 text-sm font-extrabold text-gray-900">
+                  <span className="text-green-600">✓</span> Confirma la compatibilidad
+                </h3>
+                <ul className="mt-3 space-y-2">
+                  {guia.confirmar.map((item) => (
+                    <li key={item} className="flex gap-2 text-sm leading-6 text-gray-600">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-500" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="bg-white p-5 sm:p-8">
+                <h3 className="flex items-center gap-2 text-sm font-extrabold text-gray-900">
+                  <span className="text-green-600">💬</span> Preguntas útiles para el vendedor
+                </h3>
+                <ul className="mt-3 space-y-2">
+                  {guia.preguntas.map((item) => (
+                    <li key={item} className="flex gap-2 text-sm leading-6 text-gray-600">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {guia.articulo && (
+              <Link
+                href={`/blog/${guia.articulo.slug}`}
+                className="flex items-center justify-between gap-3 border-t border-gray-100 px-5 py-4 text-sm font-bold text-gray-800 hover:bg-gray-50 sm:px-8"
+              >
+                <span>
+                  <span className="text-gray-400">Sigue leyendo: </span>
+                  {guia.articulo.titulo}
+                </span>
+                <span aria-hidden className="shrink-0 text-yellow-600">→</span>
+              </Link>
+            )}
+          </section>
+        )}
 
         <section className="mt-6 grid gap-5 md:grid-cols-2">
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
