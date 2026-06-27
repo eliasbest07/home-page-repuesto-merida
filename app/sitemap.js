@@ -1,7 +1,16 @@
+import { POSTS } from './blog/posts'
+
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
 
 export default function sitemap() {
   const now = new Date()
+  const articulos = POSTS.map((p) => ({
+    url: `${SITE_URL}/blog/${p.slug}`,
+    lastModified: new Date(p.date),
+    changeFrequency: 'monthly',
+    priority: 0.7,
+  }))
+
   return [
     {
       url: `${SITE_URL}/`,
@@ -27,12 +36,7 @@ export default function sitemap() {
       changeFrequency: 'weekly',
       priority: 0.8,
     },
-    {
-      url: `${SITE_URL}/piedra-papel-tijera`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.6,
-    },
+    ...articulos,
     {
       url: `${SITE_URL}/politica-privacidad`,
       lastModified: now,

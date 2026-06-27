@@ -3,6 +3,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
 import CookieConsent from '@/app/components/CookieConsent'
 import GlobalLegalLinks from '@/app/components/GlobalLegalLinks'
+import AdSenseLoader from '@/app/components/AdSenseLoader'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
 const ADSENSE_ENABLED = process.env.NEXT_PUBLIC_ADSENSE_ENABLED === 'true'
@@ -80,13 +81,8 @@ export default function RootLayout({ children }) {
             `,
           }}
         />
-        {ADSENSE_ENABLED ? (
-          <script
-            async
-            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7506182169131280"
-            crossOrigin="anonymous"
-          />
-        ) : null}
+        {/* El script de AdSense se carga vía <AdSenseLoader/> solo en rutas con
+            contenido del editor (ver lib/adsenseRoutes.js), no globalmente. */}
         <link rel="icon" href="/iconorm.png" type="image/png" />
         <meta name="theme-color" content="#111827" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -95,6 +91,7 @@ export default function RootLayout({ children }) {
         {children}
         <GlobalLegalLinks />
         <CookieConsent />
+        <AdSenseLoader />
         <Analytics />
       </body>
     </html>
