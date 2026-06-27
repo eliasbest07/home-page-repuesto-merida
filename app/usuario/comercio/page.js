@@ -17,6 +17,9 @@ function normalize(value) {
   return String(value || '').trim().toLowerCase()
 }
 
+// Valor especial: el repuesto sirve para cualquier marca.
+const ALL_BRANDS = 'Todas las marcas'
+
 function canonPhone(raw) {
   let d = String(raw || '').replace(/\D/g, '')
   if (d.startsWith('58') && d.length >= 12) d = d.slice(2)
@@ -67,6 +70,7 @@ export default function UsuarioComercioPage() {
   const cedulaActual = cedulaLive || perfilVivo?.cedula || ''
   const cedulaVerificada = Boolean(cedulaActual || perfilVivo?.cedula_estado === 'aprobado')
   const brandOptions = repuesto.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
+  const isAllBrands = normalize(repuesto.marca) === normalize(ALL_BRANDS)
   const selectedBrand = useMemo(
     () => brandOptions.find((brand) => normalize(brand.name) === normalize(repuesto.marca))?.name || '',
     [brandOptions, repuesto.marca],
@@ -388,6 +392,19 @@ export default function UsuarioComercioPage() {
               <div className="min-w-0">
                 <span className="mb-1.5 block text-sm font-bold text-gray-700">Marca</span>
                 <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 catalog-scrollbar">
+                  <button
+                    type="button"
+                    onClick={() => setRepuesto((r) => ({ ...r, marca: ALL_BRANDS, modelo: '', anio: '' }))}
+                    className={`flex h-[82px] w-[82px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl border px-2 text-[10px] font-bold transition ${isAllBrands ? 'border-yellow-400 bg-yellow-50 ring-2 ring-yellow-300' : 'border-gray-200 bg-white hover:border-yellow-300'}`}
+                  >
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white">
+                      <svg className="h-6 w-6 text-gray-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="9" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h18M12 3c2.5 2.4 2.5 15.6 0 18M12 3c-2.5 2.4-2.5 15.6 0 18" />
+                      </svg>
+                    </span>
+                    <span className="w-full text-center leading-tight text-gray-700">Todas</span>
+                  </button>
                   {brandOptions.map((brand) => {
                     const active = normalize(repuesto.marca) === normalize(brand.name)
                     return (
@@ -405,7 +422,11 @@ export default function UsuarioComercioPage() {
                     )
                   })}
                 </div>
-                {selectedBrand && <span className="mt-1.5 block text-xs font-bold text-green-700">Marca seleccionada: {selectedBrand}</span>}
+                {(selectedBrand || isAllBrands) && (
+                  <span className="mt-1.5 block text-xs font-bold text-green-700">
+                    Marca seleccionada: {isAllBrands ? ALL_BRANDS : selectedBrand}
+                  </span>
+                )}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_120px]">

@@ -10,11 +10,38 @@ const CLAY = '#A9714B'
 const CLAY_DARK = '#8A5A39'
 const SAGE = '#7C8F6B'
 const SAND = '#EFE7DA'
+// Verde de marca para los acentos dentro del mapa (ubicación, distancias).
+const BLUE = '#22C55E'
+const BLUE_DARK = '#16A34A'
+
+// Un número válido tiene entre 10 y 15 dígitos (local 0XXXXXXXXXX o internacional 58…).
+function waValido(whatsapp) {
+  const phone = String(whatsapp || '').replace(/[^\d]/g, '')
+  return phone.length >= 10 && phone.length <= 15
+}
 
 function waLink(whatsapp, mensaje) {
   const phone = String(whatsapp || '').replace(/[^\d]/g, '')
-  if (!phone) return ''
+  if (!waValido(phone)) return ''
   return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`
+}
+
+// Distancia en km entre dos coordenadas (haversine).
+function distanciaKm(lat1, lng1, lat2, lng2) {
+  const R = 6371
+  const rad = (d) => (d * Math.PI) / 180
+  const dLat = rad(lat2 - lat1)
+  const dLng = rad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(a))
+}
+
+function distanciaLabel(km) {
+  if (km == null) return ''
+  if (km < 1) return `${Math.round(km * 1000)} m`
+  return `${km.toFixed(1)} km`
 }
 
 function precioLabel(value) {
@@ -42,12 +69,27 @@ export default function ComerciosMap() {
   const LRef = useRef(null)
   const markersRef = useRef(new Map())
   const comerciosRef = useRef([])
+  const userMarkerRef = useRef(null)
+  const userPosRef = useRef(null)
 
   const [comercios, setComercios] = useState([])
   const [status, setStatus] = useState('loading') // loading | ready | empty | error
   const [selectedId, setSelectedId] = useState(null)
+  const [userPos, setUserPos] = useState(null) // [lat, lng] del usuario
+  const [geoStatus, setGeoStatus] = useState('idle') // idle | locating | ok | denied | unsupported
 
   const selected = comercios.find((c) => c.id === selectedId) || null
+  const distSelected =
+    selected && userPos
+      ? distanciaKm(userPos[0], userPos[1], selected.lat, selected.lng)
+      : null
+
+  // Lista de comercios: ordenada por cercanía si ya hay ubicación del usuario.
+  const comerciosListados = userPos
+    ? comercios
+        .map((c) => ({ ...c, _dist: distanciaKm(userPos[0], userPos[1], c.lat, c.lng) }))
+        .sort((a, b) => a._dist - b._dist)
+    : comercios.map((c) => ({ ...c, _dist: null }))
 
   // Carga de datos
   useEffect(() => {
@@ -78,6 +120,56 @@ export default function ComerciosMap() {
       map.flyTo([comercio.lat, comercio.lng], Math.max(map.getZoom(), 15), { duration: 0.6 })
     }
   }, [])
+
+  // "Estoy aquí": obtiene la ubicación del usuario y muestra los comercios cercanos.
+  const locateMe = useCallback(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGeoStatus('unsupported')
+      return
+    }
+    setGeoStatus('locating')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords
+        const ll = [latitude, longitude]
+        userPosRef.current = ll
+        setUserPos(ll)
+        setGeoStatus('ok')
+
+        const L = LRef.current
+        const map = mapRef.current
+        if (!L || !map) return
+
+        // Marcador azul del usuario (punto con halo pulsante).
+        const icon = L.divIcon({
+          className: 'cm-me-wrap',
+          html: '<div class="cm-me"><span class="cm-me-halo"></span><span class="cm-me-dot"></span></div>',
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        })
+        if (userMarkerRef.current) {
+          userMarkerRef.current.setLatLng(ll)
+        } else {
+          userMarkerRef.current = L.marker(ll, { icon, zIndexOffset: 2000, title: 'Tu ubicación' }).addTo(map)
+        }
+
+        // Ajusta el mapa al usuario + comercio más cercano y lo selecciona.
+        const ordenados = comerciosRef.current
+          .map((c) => ({ c, d: distanciaKm(latitude, longitude, c.lat, c.lng) }))
+          .sort((a, b) => a.d - b.d)
+
+        if (ordenados.length) {
+          const cercano = ordenados[0].c
+          map.fitBounds([ll, [cercano.lat, cercano.lng]], { padding: [60, 60], maxZoom: 15 })
+          selectComercio(cercano.id)
+        } else {
+          map.flyTo(ll, 15, { duration: 0.6 })
+        }
+      },
+      () => setGeoStatus('denied'),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    )
+  }, [selectComercio])
 
   // Inicializa Leaflet cuando hay datos
   useEffect(() => {
@@ -138,6 +230,7 @@ export default function ComerciosMap() {
         mapRef.current.remove()
         mapRef.current = null
         markersRef.current = new Map()
+        userMarkerRef.current = null
       }
     }
   }, [status, selectComercio])
@@ -205,6 +298,36 @@ export default function ComerciosMap() {
           color: ${CLAY_DARK};
           border-color: #e3d8c7;
         }
+        .cm-me-wrap { background: transparent; border: none; }
+        .cm-me {
+          position: relative;
+          width: 26px;
+          height: 26px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .cm-me-dot {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: ${BLUE};
+          border: 3px solid #fff;
+          box-shadow: 0 2px 8px rgba(22, 163, 74, 0.5);
+          z-index: 2;
+        }
+        .cm-me-halo {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          background: ${BLUE};
+          opacity: 0.35;
+          animation: cm-pulse 1.8s ease-out infinite;
+        }
+        @keyframes cm-pulse {
+          0% { transform: scale(0.5); opacity: 0.5; }
+          100% { transform: scale(1.6); opacity: 0; }
+        }
         .cm-scroll::-webkit-scrollbar { height: 6px; }
         .cm-scroll::-webkit-scrollbar-thumb { background: #d8c7af; border-radius: 999px; }
       `}</style>
@@ -212,6 +335,38 @@ export default function ComerciosMap() {
       <div className="relative overflow-hidden rounded-3xl border border-[#e3d8c7] bg-[#f6f1e8] shadow-[0_10px_40px_rgba(120,90,60,0.12)]">
         {/* Mapa */}
         <div ref={mapElRef} className="h-[420px] w-full sm:h-[520px] z-0" />
+
+        {/* Botón "Estoy aquí" — ubica al usuario y muestra lo más cercano */}
+        {status === 'ready' && (
+          <button
+            type="button"
+            onClick={locateMe}
+            disabled={geoStatus === 'locating'}
+            className="absolute right-3 top-3 z-[1100] inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-bold text-white shadow-lg transition active:scale-95 disabled:opacity-70"
+            style={{ background: BLUE }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = BLUE_DARK)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = BLUE)}
+          >
+            {geoStatus === 'locating' ? (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+            ) : (
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 2v3m0 14v3m10-10h-3M5 12H2" />
+              </svg>
+            )}
+            {geoStatus === 'locating' ? 'Buscando…' : 'Estoy aquí'}
+          </button>
+        )}
+
+        {/* Aviso de permiso denegado / no soportado */}
+        {(geoStatus === 'denied' || geoStatus === 'unsupported') && (
+          <div className="absolute left-3 right-3 top-14 z-[1100] mx-auto max-w-xs rounded-xl bg-white/95 px-3 py-2 text-center text-[11px] font-medium text-[#16A34A] shadow-lg backdrop-blur sm:left-auto sm:right-3">
+            {geoStatus === 'denied'
+              ? 'Activa el permiso de ubicación para ver comercios cerca de ti.'
+              : 'Tu navegador no permite obtener la ubicación.'}
+          </div>
+        )}
 
         {status === 'loading' && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#f6f1e8] text-[#8A5A39]">
@@ -233,47 +388,203 @@ export default function ComerciosMap() {
 
         {/* Panel de detalle del comercio seleccionado */}
         {selected && (
-          <ComercioPanel comercio={selected} onClose={() => setSelectedId(null)} />
+          <ComercioPanel
+            comercio={selected}
+            distanciaKm={distSelected}
+            onClose={() => setSelectedId(null)}
+          />
         )}
       </div>
 
       {/* Pie con conteo */}
       {status === 'ready' && (
         <p className="mt-3 text-center text-xs text-[#8a7a66]">
-          Toca un pin para ver el comercio y sus repuestos · {comercios.length}{' '}
+          {geoStatus === 'ok' ? (
+            <span className="font-semibold" style={{ color: BLUE_DARK }}>
+              Mostrando comercios cerca de ti
+            </span>
+          ) : (
+            <>Toca un pin para ver el comercio y sus repuestos</>
+          )}{' '}
+          · {comercios.length}{' '}
           {comercios.length === 1 ? 'comercio' : 'comercios'} en el mapa
         </p>
+      )}
+
+      {/* Lista de comercios (ordenada por cercanía cuando hay ubicación) */}
+      {status === 'ready' && (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between px-1">
+            <h4 className="font-brand text-sm font-bold text-[#3f352b]">
+              {userPos ? 'Comercios más cercanos' : 'Comercios en el mapa'}
+            </h4>
+            {!userPos && (
+              <button
+                type="button"
+                onClick={locateMe}
+                className="text-[11px] font-bold"
+                style={{ color: BLUE_DARK }}
+              >
+                Ordenar por cercanía
+              </button>
+            )}
+          </div>
+          <ul className="cm-scroll flex gap-3 overflow-x-auto pb-2 [scroll-snap-type:x_mandatory]">
+            {comerciosListados.map((c) => {
+              const isSel = c.id === selectedId
+              return (
+                <li key={c.id} className="shrink-0 [scroll-snap-align:start]">
+                  <button
+                    type="button"
+                    onClick={() => selectComercio(c.id)}
+                    className={`flex w-44 flex-col overflow-hidden rounded-2xl border bg-white text-left transition hover:bg-[#faf6ef] ${
+                      isSel ? 'border-[#A9714B] ring-1 ring-[#A9714B]' : 'border-[#ece3d4]'
+                    }`}
+                  >
+                    <div className="relative h-24 w-full bg-[#efe7da]">
+                      {c.foto_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.foto_url} alt={c.nombre} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-3xl">🏪</div>
+                      )}
+                      {c._dist != null && (
+                        <span
+                          className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold text-white shadow"
+                          style={{ background: BLUE }}
+                        >
+                          <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 2v3m0 14v3m10-10h-3M5 12H2" />
+                          </svg>
+                          {distanciaLabel(c._dist)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-1 flex-col p-2.5">
+                      <p className="line-clamp-2 text-sm font-bold leading-snug text-[#3f352b]">{c.nombre}</p>
+                      {c.direccion && (
+                        <p className="mt-0.5 line-clamp-1 text-[11px] text-[#9a8a76]">{c.direccion}</p>
+                      )}
+                      <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-[#8A5A39]">
+                        Ver repuestos
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </span>
+                    </div>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
       )}
     </div>
   )
 }
 
-function ComercioPanel({ comercio, onClose }) {
+function ComercioPanel({ comercio, distanciaKm, onClose }) {
   const repuestos = Array.isArray(comercio.repuestos) ? comercio.repuestos : []
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${comercio.lat},${comercio.lng}`
+  const [minimized, setMinimized] = useState(false)
+  const [lightbox, setLightbox] = useState(false)
 
-  return (
-    <div className="absolute inset-x-0 bottom-0 z-20 p-3 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[380px] sm:p-4">
-      <div className="flex max-h-[62%] flex-col overflow-hidden rounded-2xl border border-[#e3d8c7] bg-white/95 shadow-[0_12px_40px_rgba(86,62,40,0.22)] backdrop-blur sm:max-h-full">
-        {/* Cabecera del comercio */}
-        <div className="relative">
-          <div className="h-28 w-full overflow-hidden bg-[#efe7da]">
+  // Barra compacta cuando el usuario oculta la ficha (sigue resaltado el pin).
+  if (minimized) {
+    return (
+      <div className="absolute inset-x-0 bottom-0 z-20 p-3 sm:inset-y-auto sm:bottom-3 sm:right-3 sm:left-auto sm:w-[420px] sm:p-0">
+        <button
+          type="button"
+          onClick={() => setMinimized(false)}
+          className="flex w-full items-center gap-2.5 rounded-2xl border border-[#e3d8c7] bg-white/95 p-2 text-left shadow-[0_12px_40px_rgba(86,62,40,0.22)] backdrop-blur hover:bg-white"
+        >
+          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-[#efe7da]">
             {comercio.foto_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={comercio.foto_url} alt={comercio.nombre} className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full items-center justify-center text-4xl">🏪</div>
+              <div className="flex h-full items-center justify-center text-lg">🏪</div>
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/55 to-transparent" />
           </div>
-          <button
-            type="button"
-            onClick={onClose}
+          <span className="min-w-0 flex-1 truncate text-sm font-bold text-[#3f352b]">{comercio.nombre}</span>
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#8A5A39]">
+            Ver
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+            </svg>
+          </span>
+          <span
+            role="button"
+            tabIndex={0}
             aria-label="Cerrar"
-            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur hover:bg-black/60"
+            onClick={(e) => { e.stopPropagation(); onClose() }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onClose() } }}
+            className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#efe7da] text-[#8A5A39] hover:bg-[#e3d8c7]"
           >
             ✕
-          </button>
+          </span>
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="absolute inset-x-0 bottom-0 z-20 p-3 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] sm:p-4">
+      <div className="flex max-h-[82%] flex-col overflow-hidden rounded-2xl border border-[#e3d8c7] bg-white/95 shadow-[0_12px_40px_rgba(86,62,40,0.22)] backdrop-blur sm:max-h-full">
+        {/* Cabecera del comercio */}
+        <div className="relative">
+          {comercio.foto_url ? (
+            <button
+              type="button"
+              onClick={() => setLightbox(true)}
+              aria-label="Ver foto más grande"
+              className="group block h-32 w-full overflow-hidden bg-[#efe7da] sm:h-40"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={comercio.foto_url} alt={comercio.nombre} className="h-full w-full object-cover transition group-hover:scale-105" />
+              <span className="pointer-events-none absolute left-2 bottom-[60px] flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur transition group-hover:opacity-100 sm:bottom-[72px]">
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 8v6M8 11h6M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0z" />
+                </svg>
+              </span>
+            </button>
+          ) : (
+            <div className="flex h-32 w-full items-center justify-center bg-[#efe7da] text-4xl sm:h-40">🏪</div>
+          )}
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-t from-black/55 to-transparent sm:h-40" />
+          <div className="absolute right-2 top-2 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setMinimized(true)}
+              aria-label="Ocultar"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur hover:bg-black/60"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur hover:bg-black/60"
+            >
+              ✕
+            </button>
+          </div>
+          {distanciaKm != null && (
+            <span
+              className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold text-white shadow"
+              style={{ background: BLUE }}
+            >
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 2v3m0 14v3m10-10h-3M5 12H2" />
+              </svg>
+              {distanciaLabel(distanciaKm)}
+            </span>
+          )}
           <div className="absolute bottom-2 left-3 right-3 text-white">
             <h3 className="truncate font-brand text-lg font-bold leading-tight drop-shadow">{comercio.nombre}</h3>
             {comercio.direccion && (
@@ -291,10 +602,14 @@ function ComercioPanel({ comercio, onClose }) {
         {/* Cuerpo: carrusel de repuestos */}
         <div className="flex-1 overflow-y-auto p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wide text-[#8A5A39]">
-              {repuestos.length ? `Repuestos (${repuestos.length})` : 'Repuestos'}
-            </span>
-            {comercio.whatsapp && (
+            {repuestos.length > 0 ? (
+              <span className="text-xs font-bold uppercase tracking-wide text-[#8A5A39]">
+                Repuestos ({repuestos.length})
+              </span>
+            ) : (
+              <span />
+            )}
+            {waValido(comercio.whatsapp) && (
               <a
                 href={waLink(comercio.whatsapp, `Hola ${comercio.nombre}, vi su comercio en el mapa de Repuestos Mérida.`)}
                 target="_blank"
@@ -309,11 +624,7 @@ function ComercioPanel({ comercio, onClose }) {
             )}
           </div>
 
-          {repuestos.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[#e3d8c7] bg-[#faf6ef] px-4 py-6 text-center text-xs text-[#8a7a66]">
-              Este comercio aún no cargó repuestos. Escríbele para consultar disponibilidad.
-            </div>
-          ) : (
+          {repuestos.length > 0 && (
             <div className="cm-scroll flex gap-3 overflow-x-auto pb-1 [scroll-snap-type:x_mandatory]">
               {repuestos.map((r) => (
                 <RepuestoCard key={r.id} repuesto={r} comercio={comercio} />
@@ -334,6 +645,35 @@ function ComercioPanel({ comercio, onClose }) {
           </a>
         </div>
       </div>
+
+      {/* Lightbox: foto del comercio en grande */}
+      {lightbox && comercio.foto_url && (
+        <div
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setLightbox(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(false)}
+            aria-label="Cerrar"
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-xl text-white backdrop-blur hover:bg-white/25"
+          >
+            ✕
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={comercio.foto_url}
+            alt={comercio.nombre}
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[88vh] max-w-[92vw] rounded-2xl object-contain shadow-2xl"
+          />
+          <p className="absolute bottom-5 left-0 right-0 text-center text-sm font-bold text-white drop-shadow">
+            {comercio.nombre}
+          </p>
+        </div>
+      )}
     </div>
   )
 }
@@ -344,7 +684,7 @@ function RepuestoCard({ repuesto, comercio }) {
   const wa = waLink(comercio.whatsapp, mensaje)
 
   return (
-    <article className="flex w-40 shrink-0 flex-col overflow-hidden rounded-xl border border-[#ece3d4] bg-white shadow-sm [scroll-snap-align:start]">
+    <article className="flex w-44 shrink-0 flex-col overflow-hidden rounded-xl border border-[#ece3d4] bg-white shadow-sm [scroll-snap-align:start] sm:w-48">
       <div className="relative aspect-square w-full bg-[#efe7da]">
         {repuesto.foto_url ? (
           // eslint-disable-next-line @next/next/no-img-element
