@@ -308,6 +308,7 @@ export default function ComercioAutorizacionPage() {
   const [showNamelessList, setShowNamelessList] = useState(true)
   const [showSidebarLists, setShowSidebarLists] = useState(true)
   const [showAllRepuestos, setShowAllRepuestos] = useState(false)
+  const [showSalesInventory, setShowSalesInventory] = useState(true)
   const [allRepuestosFilter, setAllRepuestosFilter] = useState('todos')
   const [activePanel, setActivePanel] = useState('comercios')
   const [selectedVenta, setSelectedVenta] = useState('')
@@ -654,15 +655,15 @@ export default function ComercioAutorizacionPage() {
         key={showDay ? `${commerce.dia}_${commerce.comercio_id}` : commerce.comercio_id}
         type="button"
         onClick={() => (showDay ? selectSearchedCommerce(commerce) : selectCommerce(commerce))}
-        className={`rounded-lg border px-3 py-2 text-left transition ${
+        className={`min-w-0 w-full overflow-hidden rounded-lg border px-3 py-2 text-left transition ${
           active ? 'border-[#20263a] bg-slate-50 ring-2 ring-amber-200' : 'border-slate-200 bg-white hover:border-amber-300'
         }`}
       >
-        <span className="block truncate text-sm font-extrabold text-slate-950">
+        <span className="block whitespace-normal break-words text-sm font-extrabold text-slate-950">
           {commerce.nombre_comercio || 'Comercio sin nombre'}
         </span>
-        <span className="mt-1 flex items-center justify-between gap-2">
-          <span className="truncate text-xs font-semibold text-slate-500">
+        <span className="mt-1 flex min-w-0 items-start justify-between gap-2">
+          <span className="min-w-0 whitespace-normal break-words text-xs font-semibold text-slate-500">
             {showDay && commerceDayLabel ? `${commerceDayLabel} · ` : ''}{commerce.whatsapp || 'Sin WhatsApp'}
           </span>
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
@@ -714,6 +715,7 @@ export default function ComercioAutorizacionPage() {
     clearPendingRepuestoPhotos()
     setError('')
     setMessage('Completa los datos para crear un repuesto pendiente.')
+    setShowSalesInventory(true)
     setActivePanel('repuestos')
     window.setTimeout(() => {
       repuestoFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1019,7 +1021,6 @@ export default function ComercioAutorizacionPage() {
     })
     setError('')
     setActivePanel('repuestos')
-    window.setTimeout(() => repuestoFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
 
   async function saveRepuestoEdition() {
@@ -1176,7 +1177,7 @@ export default function ComercioAutorizacionPage() {
                 className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
               />
               {commerceSearchTerm && (
-                <div className="mt-3 grid gap-2" aria-live="polite">
+                <div className="mt-3 grid min-w-0 gap-2" aria-live="polite">
                   {searchedCommerces.length > 0 ? (
                     searchedCommerces.map((commerce) => renderCommerceButton(commerce, true))
                   ) : (
@@ -1586,26 +1587,50 @@ export default function ComercioAutorizacionPage() {
                 </p>
               ) : repuestosPendientes.map((item) => (
                 <article key={item.id} className="relative rounded-lg border border-slate-200 p-3">
-                  <button type="button" onClick={() => startEditingRepuesto(item)} className="absolute right-2 top-2 z-10 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm hover:border-amber-300">
-                    Editar
-                  </button>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {[item.marca, item.modelo, item.anio].filter(Boolean).join(' · ') || 'Sin compatibilidad'}
-                      </p>
-                      {item.nota && <p className="mt-1 text-sm text-slate-500">{item.nota}</p>}
+                  {editingRepuestoId !== item.id && (
+                    <button type="button" onClick={() => startEditingRepuesto(item)} className="absolute right-2 top-2 z-10 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm hover:border-amber-300">
+                      Editar
+                    </button>
+                  )}
+                  {editingRepuestoId === item.id ? (
+                    <div className="grid gap-2">
+                      <p className="text-xs font-extrabold uppercase tracking-wide text-amber-600">Editar repuesto</p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <input value={editingRepuestoForm.marca} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, marca: event.target.value.slice(0, 60) }))} placeholder="Marca" className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                        <input value={editingRepuestoForm.modelo} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, modelo: event.target.value.slice(0, 80) }))} placeholder="Modelo" className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <input value={editingRepuestoForm.anio} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, anio: event.target.value.replace(/\D/g, '').slice(0, 4) }))} placeholder="Año" inputMode="numeric" className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                        <input value={editingRepuestoForm.precio} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, precio: event.target.value.slice(0, 40) }))} placeholder="Precio" className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                      </div>
+                      <input value={editingRepuestoForm.nombre} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, nombre: event.target.value.slice(0, 120) }))} placeholder="Nombre del repuesto" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                      <textarea value={editingRepuestoForm.nota} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, nota: event.target.value.slice(0, 500) }))} placeholder="Referencia, estado, compatibilidad o garantía" rows={2} className="resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <SoftButton onClick={() => setEditingRepuestoId('')} disabled={editingRepuestoSaving} className="flex-1">Cancelar</SoftButton>
+                        <PrimaryButton onClick={saveRepuestoEdition} disabled={editingRepuestoSaving} className="flex-1">
+                          {editingRepuestoSaving ? 'Guardando...' : 'Guardar editado'}
+                        </PrimaryButton>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 sm:shrink-0">
-                      <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
-                        {formatPrecio(item.precio)}
-                      </span>
-                      <PrimaryButton onClick={() => approveRepuesto(item.id)} className="flex-1 sm:flex-none">
-                        Aprobar publicacion
-                      </PrimaryButton>
+                  ) : (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {[item.marca, item.modelo, item.anio].filter(Boolean).join(' · ') || 'Sin compatibilidad'}
+                        </p>
+                        {item.nota && <p className="mt-1 text-sm text-slate-500">{item.nota}</p>}
+                      </div>
+                      <div className="flex items-center gap-2 sm:shrink-0">
+                        <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
+                          {formatPrecio(item.precio)}
+                        </span>
+                        <PrimaryButton onClick={() => approveRepuesto(item.id)} className="flex-1 sm:flex-none">
+                          Aprobar publicacion
+                        </PrimaryButton>
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <RepuestoFotos
                     fotos={item.fotos || []}
                     uploading={uploadingPhotoId === item.id}
@@ -1688,11 +1713,23 @@ export default function ComercioAutorizacionPage() {
                     Crear Repuesto Pendiente · {form.nombre_comercio || 'Comercio seleccionado'} · {dayLabel}
                   </h2>
                 </div>
-                <SoftButton onClick={loadRepuestos} disabled={repuestosLoading}>
-                  {repuestosLoading ? 'Cargando...' : 'Actualizar'}
-                </SoftButton>
+                <div className="flex gap-2">
+                  <SoftButton onClick={loadRepuestos} disabled={repuestosLoading} className="flex-1 sm:flex-none">
+                    {repuestosLoading ? 'Cargando...' : 'Actualizar'}
+                  </SoftButton>
+                  <SoftButton
+                    active={showSalesInventory}
+                    onClick={() => setShowSalesInventory((current) => !current)}
+                    className="flex-1 sm:flex-none"
+                    aria-expanded={showSalesInventory}
+                  >
+                    {showSalesInventory ? 'Ocultar' : 'Mostrar'}
+                  </SoftButton>
+                </div>
               </div>
 
+              {showSalesInventory && (
+              <>
               <form ref={repuestoFormRef} onSubmit={createRepuesto} className="mt-4 grid min-w-0 max-w-full gap-3 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 scroll-mt-24">
                 <div className="min-w-0 max-w-full">
                   <div className="mb-2 flex items-center justify-between gap-3">
@@ -1828,6 +1865,8 @@ export default function ComercioAutorizacionPage() {
                   </article>
                 ))}
               </div>
+              </>
+              )}
             </section>
           )}
         </div>
