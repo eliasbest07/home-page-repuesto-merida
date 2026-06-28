@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
 import { collection, getDocs, addDoc, query, where, limit, serverTimestamp } from 'firebase/firestore'
@@ -527,6 +527,8 @@ const IconStore = () => (
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════
 export default function Home() {
+  const analyticsSessionRef = useRef('')
+  const [analyticsConsent, setAnalyticsConsent] = useState(false)
   const [catActiva, setCatActiva] = useState('todos')
   const [busqueda, setBusqueda] = useState('')
   const [brandType, setBrandType] = useState('carro')
@@ -567,6 +569,71 @@ export default function Home() {
     descripcion: '',
   })
   const [catalogImage, setCatalogImage] = useState(null)
+
+  useEffect(() => {
+    const updateAnalyticsConsent = () => {
+      setAnalyticsConsent(window.localStorage.getItem('repuestos-merida-cookie-consent') === 'accepted')
+    }
+    updateAnalyticsConsent()
+    window.addEventListener('repuestos-merida:cookie-consent', updateAnalyticsConsent)
+    return () => window.removeEventListener('repuestos-merida:cookie-consent', updateAnalyticsConsent)
+  }, [])
+
+  useEffect(() => {
+    if (!analyticsConsent) return undefined
+
+    if (!analyticsSessionRef.current) {
+      analyticsSessionRef.current = typeof window.crypto?.randomUUID === 'function'
+        ? window.crypto.randomUUID().replace(/-/g, '')
+        : `${Date.now()}_${Math.random().toString(36).slice(2)}`
+    }
+
+    const sessionId = analyticsSessionRef.current
+    let accumulatedMs = 0
+    let activeSince = document.visibilityState === 'visible' ? performance.now() : null
+
+    const durationSeconds = () => Math.floor((
+      accumulatedMs + (activeSince == null ? 0 : performance.now() - activeSince)
+    ) / 1000)
+
+    const send = (action, keepalive = false) => {
+      fetch('/api/analytics/pagina-principal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          session_id: sessionId,
+          duration_seconds: durationSeconds(),
+        }),
+        keepalive,
+      }).catch(() => {})
+    }
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        if (activeSince != null) accumulatedMs += performance.now() - activeSince
+        activeSince = null
+        send('heartbeat', true)
+      } else if (activeSince == null) {
+        activeSince = performance.now()
+      }
+    }
+
+    const handlePageHide = () => send('heartbeat', true)
+    send('start')
+    const heartbeat = window.setInterval(() => {
+      if (document.visibilityState === 'visible') send('heartbeat')
+    }, 15000)
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('pagehide', handlePageHide)
+
+    return () => {
+      window.clearInterval(heartbeat)
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('pagehide', handlePageHide)
+      send('heartbeat', true)
+    }
+  }, [analyticsConsent])
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60)

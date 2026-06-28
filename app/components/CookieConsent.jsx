@@ -67,7 +67,9 @@ export default function CookieConsent() {
           </h2>
           <p className="mt-2 text-sm leading-6 text-gray-300">
             Usamos cookies necesarias para el funcionamiento del sitio. Con tu permiso, los
-            servicios opcionales de medicion o anuncios tambien pueden usar cookies. Consulta nuestra{' '}
+            servicios opcionales registran la cantidad de visitas a la página principal y el tiempo
+            promedio que permanece abierta; también pueden usarse para anuncios. No guardamos tu
+            nombre, teléfono ni otros datos personales. Consulta nuestra{' '}
             <Link className="text-yellow-300 underline" href="/politica-cookies">
               Política de Cookies
             </Link>

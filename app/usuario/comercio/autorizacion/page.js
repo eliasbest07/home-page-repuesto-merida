@@ -75,6 +75,23 @@ function normalizeSearchText(value) {
     .toLocaleLowerCase('es')
 }
 
+function formatVisitDuration(seconds) {
+  const total = Math.max(0, Number(seconds) || 0)
+  if (total < 60) return `${Math.round(total)} s`
+  const minutes = Math.floor(total / 60)
+  const remainingSeconds = Math.round(total % 60)
+  if (minutes < 60) return `${minutes} min ${remainingSeconds} s`
+  const hours = Math.floor(minutes / 60)
+  return `${hours} h ${minutes % 60} min`
+}
+
+function formatAnalyticsDay(day) {
+  const date = new Date(`${day}T12:00:00`)
+  return Number.isNaN(date.getTime())
+    ? day
+    : new Intl.DateTimeFormat('es-VE', { day: '2-digit', month: 'short', year: 'numeric' }).format(date)
+}
+
 function mergeDayData(value) {
   if (!value || typeof value !== 'object') return { ...EMPTY_DAY, lista_ventas_repuestos: [] }
   return {
@@ -333,6 +350,8 @@ export default function ComercioAutorizacionPage() {
   const [archivingRepuestoId, setArchivingRepuestoId] = useState('')
   const [restoringRepuestoId, setRestoringRepuestoId] = useState('')
   const [pendingRepuestoPhotos, setPendingRepuestoPhotos] = useState([])
+  const [homeAnalytics, setHomeAnalytics] = useState([])
+  const [homeAnalyticsLoading, setHomeAnalyticsLoading] = useState(false)
   const pendingCommerceSelectionRef = useRef(null)
 
   useEffect(() => {
@@ -433,6 +452,12 @@ export default function ComercioAutorizacionPage() {
     [session?.perfil, session?.prefill, realtimeProfile],
   )
   const authorized = isAuthorized(profile.autorizado)
+
+  useEffect(() => {
+    if (!session?.token || !authorized) return
+    loadHomeAnalytics()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token, authorized])
   const selectedSavedDay = globalComerciosPorDia?.[selectedDay] || profile.comercios_por_dia?.[selectedDay] || null
   const dayCommerces = useMemo(
     () => dayCommerceList(selectedSavedDay, selectedDay),
@@ -617,6 +642,24 @@ export default function ComercioAutorizacionPage() {
 
   function setField(name, value) {
     setForm((current) => ({ ...current, [name]: value }))
+  }
+
+  async function loadHomeAnalytics() {
+    if (!session?.token) return
+    setHomeAnalyticsLoading(true)
+    try {
+      const res = await fetch('/api/analytics/pagina-principal', {
+        headers: { Authorization: `Bearer ${session.token}` },
+        cache: 'no-store',
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudieron cargar las estadísticas.')
+      setHomeAnalytics(body.days || [])
+    } catch (err) {
+      setError(err.message || 'No se pudieron cargar las estadísticas.')
+    } finally {
+      setHomeAnalyticsLoading(false)
+    }
   }
 
   function toggleBrand(name, vehicleType = form.tipo_vehiculo) {
@@ -1342,6 +1385,45 @@ export default function ComercioAutorizacionPage() {
         </aside>
 
         <div className="min-w-0 space-y-5">
+          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-extrabold uppercase text-amber-600">Página principal pública</p>
+                <h2 className="text-xl font-extrabold">Visitas y tiempo promedio</h2>
+              </div>
+              <SoftButton onClick={loadHomeAnalytics} disabled={homeAnalyticsLoading}>
+                {homeAnalyticsLoading ? 'Cargando...' : 'Actualizar estadísticas'}
+              </SoftButton>
+            </div>
+
+            {homeAnalytics.length === 0 ? (
+              <p className="mt-4 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+                {homeAnalyticsLoading ? 'Cargando estadísticas...' : 'Todavía no hay visitas registradas.'}
+              </p>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[440px] border-separate border-spacing-0 text-left text-sm">
+                  <thead>
+                    <tr className="text-xs uppercase tracking-wide text-slate-500">
+                      <th className="border-b border-slate-200 px-3 py-2">Día</th>
+                      <th className="border-b border-slate-200 px-3 py-2 text-right">Visitas</th>
+                      <th className="border-b border-slate-200 px-3 py-2 text-right">Tiempo promedio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {homeAnalytics.map((item) => (
+                      <tr key={item.day}>
+                        <td className="border-b border-slate-100 px-3 py-3 font-bold text-slate-800">{formatAnalyticsDay(item.day)}</td>
+                        <td className="border-b border-slate-100 px-3 py-3 text-right font-extrabold text-slate-950">{item.visits}</td>
+                        <td className="border-b border-slate-100 px-3 py-3 text-right font-bold text-slate-700">{formatVisitDuration(item.average_duration_seconds)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
           {error && <p className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
           {message && <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{message}</p>}
 
