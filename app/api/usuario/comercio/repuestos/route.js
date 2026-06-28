@@ -98,6 +98,7 @@ function serializeRepuesto(doc) {
     precio: data.precio ?? '',
     fotos: Array.isArray(data.fotos) ? data.fotos : [],
     aprobado: Boolean(data.aprobado),
+    archivado: Boolean(data.archivado),
     catalogo_id: data.catalogo_id || '',
     creado_en: data.creado_en?.toMillis ? data.creado_en.toMillis() : null,
   }
@@ -254,6 +255,7 @@ export async function POST(request) {
       precio,
       fotos: [],
       aprobado: false,
+      archivado: false,
       catalogo_id: '',
       creado_por: session.telefono,
       comercio_nombre: ownerCommerce?.nombre_comercio || ownerProfile?.nombre || '',
@@ -299,6 +301,7 @@ export async function POST(request) {
         precio,
         fotos: [],
         aprobado: false,
+        archivado: false,
         catalogo_id: '',
         creado_en: Date.now(),
       },
@@ -333,6 +336,18 @@ export async function PATCH(request) {
     if (!authorized && item.telefono && !allowedPhones.has(canonPhone(item.telefono))) {
       return NextResponse.json({ error: 'No puedes aprobar este repuesto.' }, { status: 403 })
     }
+    if (body.action === 'archive') {
+      if (item.aprobado) return NextResponse.json({ error: 'Un repuesto publicado no se puede archivar.' }, { status: 400 })
+      const now = adminFieldValue.serverTimestamp()
+      await ref.update({ archivado: true, archivado_en: now, actualizado_en: now })
+      return NextResponse.json({ ok: true, archivado: true })
+    }
+    if (body.action === 'restore') {
+      if (item.aprobado) return NextResponse.json({ error: 'Un repuesto publicado no puede volver a pendiente.' }, { status: 400 })
+      const now = adminFieldValue.serverTimestamp()
+      await ref.update({ archivado: false, archivado_en: null, actualizado_en: now })
+      return NextResponse.json({ ok: true, archivado: false })
+    }
     if (body.action === 'update') {
       if (item.aprobado) return NextResponse.json({ error: 'Un repuesto publicado ya no se puede editar aquí.' }, { status: 400 })
       const marca = cleanText(body.marca, 60)
@@ -361,7 +376,7 @@ export async function PATCH(request) {
       })
     }
     if (item.catalogo_id) {
-      await ref.update({ aprobado: true, actualizado_en: adminFieldValue.serverTimestamp() })
+      await ref.update({ aprobado: true, archivado: false, actualizado_en: adminFieldValue.serverTimestamp() })
       return NextResponse.json({ ok: true, catalogo_id: item.catalogo_id })
     }
 
@@ -404,6 +419,7 @@ export async function PATCH(request) {
       }),
       ref.update({
         aprobado: true,
+        archivado: false,
         comercio_id: effectiveCommerceId || item.comercio_id || '',
         dia: effectiveDia || item.dia || '',
         venta: effectiveVenta || item.venta || '',

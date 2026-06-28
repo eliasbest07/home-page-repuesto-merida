@@ -330,6 +330,8 @@ export default function ComercioAutorizacionPage() {
   const [editingRepuestoId, setEditingRepuestoId] = useState('')
   const [editingRepuestoForm, setEditingRepuestoForm] = useState(EMPTY_REPUESTO)
   const [editingRepuestoSaving, setEditingRepuestoSaving] = useState(false)
+  const [archivingRepuestoId, setArchivingRepuestoId] = useState('')
+  const [restoringRepuestoId, setRestoringRepuestoId] = useState('')
   const [pendingRepuestoPhotos, setPendingRepuestoPhotos] = useState([])
   const pendingCommerceSelectionRef = useRef(null)
 
@@ -444,7 +446,7 @@ export default function ComercioAutorizacionPage() {
     const knownPhones = new Set(dayCommerces.map((commerce) => canonPhone(commerce.whatsapp)).filter(Boolean))
 
     for (const item of repuestos) {
-      if (item.aprobado) continue
+      if (item.aprobado || item.archivado) continue
       const phone = canonPhone(item.telefono)
       if (!phone || knownPhones.has(phone)) continue
       const id = `phone_${phone}`
@@ -495,7 +497,7 @@ export default function ComercioAutorizacionPage() {
     if (item.dia) return item.dia === selectedDay
     return false
   })
-  const pendingApprovalCount = commerceRepuestos.filter((item) => !item.aprobado).length
+  const pendingApprovalCount = commerceRepuestos.filter((item) => !item.aprobado && !item.archivado).length
   const repuestosForCommerce = (commerce) => {
     const commercePhone = canonPhone(commerce.whatsapp)
     return repuestos.filter((item) => {
@@ -505,16 +507,18 @@ export default function ComercioAutorizacionPage() {
     })
   }
   const pendingCountForCommerce = (commerce) => repuestos.filter((item) => {
-    if (item.aprobado) return false
+    if (item.aprobado || item.archivado) return false
     if (item.comercio_id) return item.comercio_id === commerce.comercio_id
     if (commerce.whatsapp && item.telefono) return canonPhone(item.telefono) === canonPhone(commerce.whatsapp)
     return selectedCommerceId === commerce.comercio_id && (!item.dia || item.dia === selectedDay)
   }).length
   const repuestosVisibles = commerceRepuestos.filter((item) => {
+    if (item.archivado) return false
     if (currentVenta && item.venta && item.venta !== currentVenta) return false
     return true
   })
-  const repuestosPendientes = commerceRepuestos.filter((item) => !item.aprobado)
+  const repuestosPendientes = commerceRepuestos.filter((item) => !item.aprobado && !item.archivado)
+  const repuestosArchivados = commerceRepuestos.filter((item) => item.archivado)
   const commerceNameByPhone = useMemo(() => {
     const map = {}
     for (const commerce of allGlobalCommerces) {
@@ -527,8 +531,9 @@ export default function ComercioAutorizacionPage() {
     commerceNameByPhone[canonPhone(item.telefono)] || 'Comercio sin nombre'
   const allRepuestosSorted = [...repuestos].sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
   const allRepuestosFiltered = allRepuestosSorted.filter((item) => {
-    if (allRepuestosFilter === 'pendiente') return !item.aprobado
+    if (allRepuestosFilter === 'pendiente') return !item.aprobado && !item.archivado
     if (allRepuestosFilter === 'aprobado') return item.aprobado
+    if (allRepuestosFilter === 'archivado') return item.archivado
     return true
   })
   // La lista de marcas del repuesto sigue al toggle Carro/Moto (form.tipo_vehiculo):
@@ -1107,6 +1112,59 @@ export default function ComercioAutorizacionPage() {
     }
   }
 
+  async function archiveRepuesto(item) {
+    setArchivingRepuestoId(item.id)
+    setError('')
+    setMessage('')
+    try {
+      const res = await fetch('/api/usuario/comercio/repuestos', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({ action: 'archive', id: item.id }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo archivar el repuesto.')
+      setRepuestos((items) => items.map((current) => (
+        current.id === item.id ? { ...current, archivado: true } : current
+      )))
+      if (editingRepuestoId === item.id) setEditingRepuestoId('')
+      setMessage('Repuesto archivado. Ya no aparece como pendiente.')
+    } catch (err) {
+      setError(err.message || 'No se pudo archivar el repuesto.')
+    } finally {
+      setArchivingRepuestoId('')
+    }
+  }
+
+  async function restoreRepuesto(item) {
+    setRestoringRepuestoId(item.id)
+    setError('')
+    setMessage('')
+    try {
+      const res = await fetch('/api/usuario/comercio/repuestos', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({ action: 'restore', id: item.id }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo mover el repuesto a pendientes.')
+      setRepuestos((items) => items.map((current) => (
+        current.id === item.id ? { ...current, archivado: false } : current
+      )))
+      setMessage('Repuesto movido nuevamente a pendientes de aprobación.')
+    } catch (err) {
+      setError(err.message || 'No se pudo mover el repuesto a pendientes.')
+    } finally {
+      setRestoringRepuestoId('')
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
@@ -1300,7 +1358,7 @@ export default function ComercioAutorizacionPage() {
               </div>
 
               <div className="mt-3 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-                {[['todos', 'Todos'], ['pendiente', 'Pendientes'], ['aprobado', 'Aprobados']].map(([key, label]) => (
+                {[['todos', 'Todos'], ['pendiente', 'Pendientes'], ['aprobado', 'Aprobados'], ['archivado', 'Archivados']].map(([key, label]) => (
                   <button
                     key={key}
                     type="button"
@@ -1319,7 +1377,7 @@ export default function ComercioAutorizacionPage() {
                   </p>
                 ) : allRepuestosFiltered.map((item) => (
                   <article key={item.id} className="relative rounded-lg border border-slate-200 p-3">
-                    {!item.aprobado && editingRepuestoId !== item.id && (
+                    {!item.aprobado && !item.archivado && editingRepuestoId !== item.id && (
                       <button type="button" onClick={() => startEditingRepuesto(item)} className="absolute right-2 top-2 z-10 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm hover:border-amber-300">
                         Editar
                       </button>
@@ -1346,7 +1404,7 @@ export default function ComercioAutorizacionPage() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
-                          <StatusPill tone={item.aprobado ? 'good' : 'warn'}>{item.aprobado ? 'Publicado' : 'Pendiente'}</StatusPill>
+                          <StatusPill tone={item.aprobado ? 'good' : 'warn'}>{item.aprobado ? 'Publicado' : item.archivado ? 'Archivado' : 'Pendiente'}</StatusPill>
                         </div>
                         <p className="mt-1 text-xs font-bold text-amber-700">
                           {commerceNameForItem(item)} · {item.telefono || 'Sin WhatsApp'}
@@ -1360,8 +1418,8 @@ export default function ComercioAutorizacionPage() {
                         <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
                           {formatPrecio(item.precio)}
                         </span>
-                        <PrimaryButton onClick={() => approveRepuesto(item)} disabled={item.aprobado} className="flex-1 sm:flex-none">
-                          {item.aprobado ? 'Aprobado' : 'Aprobar publicacion'}
+                        <PrimaryButton onClick={() => approveRepuesto(item)} disabled={item.aprobado || item.archivado} className="flex-1 sm:flex-none">
+                          {item.aprobado ? 'Aprobado' : item.archivado ? 'Archivado' : 'Aprobar publicacion'}
                         </PrimaryButton>
                       </div>
                     </div>
@@ -1372,7 +1430,7 @@ export default function ComercioAutorizacionPage() {
                       uploading={uploadingPhotoId === item.id}
                       removingUrl={removingPhotoUrl}
                       onPick={(file) => uploadRepuestoPhoto(item, file)}
-                      onRemove={!item.aprobado ? (url) => removeRepuestoPhoto(item, url) : undefined}
+                      onRemove={!item.aprobado && !item.archivado ? (url) => removeRepuestoPhoto(item, url) : undefined}
                     />
                   </article>
                 ))}
@@ -1587,11 +1645,6 @@ export default function ComercioAutorizacionPage() {
                 </p>
               ) : repuestosPendientes.map((item) => (
                 <article key={item.id} className="relative rounded-lg border border-slate-200 p-3">
-                  {editingRepuestoId !== item.id && (
-                    <button type="button" onClick={() => startEditingRepuesto(item)} className="absolute right-2 top-2 z-10 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm hover:border-amber-300">
-                      Editar
-                    </button>
-                  )}
                   {editingRepuestoId === item.id ? (
                     <div className="grid gap-2">
                       <p className="text-xs font-extrabold uppercase tracking-wide text-amber-600">Editar repuesto</p>
@@ -1625,9 +1678,17 @@ export default function ComercioAutorizacionPage() {
                         <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
                           {formatPrecio(item.precio)}
                         </span>
-                        <PrimaryButton onClick={() => approveRepuesto(item.id)} className="flex-1 sm:flex-none">
-                          Aprobar publicacion
-                        </PrimaryButton>
+                        <div className="flex flex-1 gap-2 sm:flex-none">
+                          <PrimaryButton onClick={() => approveRepuesto(item.id)} className="flex-1 sm:flex-none">
+                            Aprobar publicacion
+                          </PrimaryButton>
+                          <SoftButton onClick={() => archiveRepuesto(item)} disabled={archivingRepuestoId === item.id} className="flex-1 sm:flex-none">
+                            {archivingRepuestoId === item.id ? 'Archivando...' : 'Archivar'}
+                          </SoftButton>
+                          <button type="button" onClick={() => startEditingRepuesto(item)} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm transition hover:border-amber-300">
+                            Editar
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1640,6 +1701,57 @@ export default function ComercioAutorizacionPage() {
                   />
                 </article>
               ))}
+            </div>
+
+            <div className="mt-5 border-t border-slate-200 pt-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-extrabold uppercase tracking-wide text-slate-500">Archivados</h3>
+                <StatusPill>{repuestosArchivados.length}</StatusPill>
+              </div>
+              {repuestosArchivados.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+                  Este comercio no tiene repuestos archivados.
+                </p>
+              ) : (
+                <div className="grid gap-3">
+                  {repuestosArchivados.map((item) => (
+                    <article key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="font-extrabold text-slate-900">{item.nombre}</h4>
+                            <StatusPill>Archivado</StatusPill>
+                          </div>
+                          <p className="mt-1 text-sm text-slate-600">
+                            {[item.marca, item.modelo, item.anio].filter(Boolean).join(' · ') || 'Sin compatibilidad'}
+                          </p>
+                          {item.nota && <p className="mt-1 text-sm text-slate-500">{item.nota}</p>}
+                        </div>
+                        <div className="flex shrink-0 items-start gap-2">
+                          <span className="rounded-lg bg-white px-3 py-2 text-sm font-extrabold text-slate-800">
+                            {formatPrecio(item.precio)}
+                          </span>
+                          <details className="relative">
+                            <summary className="cursor-pointer list-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold text-slate-700 hover:border-amber-300">
+                              Opciones
+                            </summary>
+                            <div className="absolute right-0 top-full z-20 mt-1 w-52 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg">
+                              <button
+                                type="button"
+                                onClick={() => restoreRepuesto(item)}
+                                disabled={restoringRepuestoId === item.id}
+                                className="w-full rounded-md px-3 py-2 text-left text-sm font-bold text-slate-700 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {restoringRepuestoId === item.id ? 'Moviendo...' : 'Mover a pendientes'}
+                              </button>
+                            </div>
+                          </details>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
 
