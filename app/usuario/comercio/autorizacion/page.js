@@ -499,10 +499,23 @@ export default function ComercioAutorizacionPage() {
     if (allRepuestosFilter === 'aprobado') return item.aprobado
     return true
   })
-  const marcaSource = allSelectedBrands.length > 0
-    ? allSelectedBrands.map((brand) => brand.name)
-    : [...CAR_BRANDS, ...MOTO_BRANDS].map((brand) => brand.name)
+  // La lista de marcas del repuesto sigue al toggle Carro/Moto (form.tipo_vehiculo):
+  // muestra las marcas que atiende el comercio para ese tipo y, si no eligio ninguna,
+  // cae al catalogo completo del tipo seleccionado.
+  const marcaSource = selectedBrands.length > 0
+    ? selectedBrands
+    : brands.map((brand) => brand.name)
   const marcaOptions = [...new Set(marcaSource)].map((name) => ({ name }))
+
+  // Si al cambiar el toggle Carro/Moto la marca elegida ya no esta en la lista, se limpia.
+  useEffect(() => {
+    setRepuestoForm((current) => {
+      if (!current.marca) return current
+      if (marcaOptions.some((brand) => brand.name === current.marca)) return current
+      return { ...current, marca: '' }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.tipo_vehiculo])
 
   useEffect(() => {
     const commerceList = dayCommerceList(selectedSavedDay, selectedDay)
