@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { useParams } from 'next/navigation'
 import { doc, getDoc } from 'firebase/firestore'
 import { firestore } from '@/lib/firebase'
+import AdSenseLoader from '@/app/components/AdSenseLoader'
 
 const WA_NUMBER = '+584123375417'
 
@@ -111,9 +112,13 @@ export default function AnuncioDetallePage() {
   const image = imgUrl(rawImage)
   const disponible = anuncio.disponible !== false
   const meta = [anuncio.ubicacion, formatDate(anuncio.creado_en)].filter(Boolean).join(' · ')
+  const hasRelevantPublisherContent = String(anuncio.titulo || '').trim().length >= 5
+    && String(anuncio.descripcion || '').trim().length >= 40
+    && Boolean(image || anuncio.categoria || anuncio.ubicacion)
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-950">
+      {hasRelevantPublisherContent && <AdSenseLoader force />}
       <header className="sticky top-0 z-20 bg-gray-950 px-4 py-3 text-white shadow-lg">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
           <Link href="/plaza" className="text-sm font-semibold text-gray-300 hover:text-white">

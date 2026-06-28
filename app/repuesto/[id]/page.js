@@ -7,6 +7,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { get, ref } from 'firebase/database'
 import { firestore, rtdb } from '@/lib/firebase'
 import { getRepuestoGuia } from '@/lib/repuestoGuia'
+import AdSenseLoader from '@/app/components/AdSenseLoader'
 
 const OFFICIAL_WHATSAPP = '584123375417'
 const DIRECTORY_KEY = 'repuestos-merida-directorio'
@@ -26,6 +27,13 @@ function formatPrice(value) {
 }
 
 function normalizeProduct(data, id) {
+  const meaningfulFields = [
+    firstImage(data.img),
+    data.precio,
+    data.descripcion,
+    data.modelos || data.vehiculo,
+    data.categoria,
+  ].filter((value) => String(value ?? '').trim()).length
   return {
     id,
     name: data.marca || data.categoria || data.descripcion || data.vehiculo || 'Repuesto',
@@ -44,6 +52,8 @@ function normalizeProduct(data, id) {
     marcaRaw: data.marca || '',
     modelosRaw: data.modelos || '',
     vehiculoRaw: data.vehiculo || '',
+    hasRelevantPublisherContent: String(data.marca || data.categoria || '').trim().length >= 3
+      && meaningfulFields >= 3,
   }
 }
 
@@ -243,6 +253,7 @@ export default function RepuestoDetailPage({ params }) {
 
   return (
     <div className="min-h-screen bg-[#f4f6f8] text-gray-900">
+      {product.hasRelevantPublisherContent && <AdSenseLoader force />}
       <header className="border-b border-gray-800 bg-gray-950 text-white">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2.5">

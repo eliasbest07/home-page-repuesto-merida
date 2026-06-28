@@ -333,6 +333,33 @@ export async function PATCH(request) {
     if (!authorized && item.telefono && !allowedPhones.has(canonPhone(item.telefono))) {
       return NextResponse.json({ error: 'No puedes aprobar este repuesto.' }, { status: 403 })
     }
+    if (body.action === 'update') {
+      if (item.aprobado) return NextResponse.json({ error: 'Un repuesto publicado ya no se puede editar aquí.' }, { status: 400 })
+      const marca = cleanText(body.marca, 60)
+      const modelo = cleanText(body.modelo, 80)
+      const anio = cleanYear(body.anio)
+      const nombre = cleanText(body.nombre, 120)
+      const nota = cleanText(body.nota, 500)
+      const precio = cleanText(body.precio, 40)
+      const tipoVehiculo = cleanText(body.tipo_vehiculo, 20) === 'moto' ? 'moto' : 'carro'
+      if (!marca || !modelo || !nombre) {
+        return NextResponse.json({ error: 'Completa marca, modelo y nombre del repuesto.' }, { status: 400 })
+      }
+      await ref.update({
+        marca,
+        modelo,
+        anio,
+        nombre,
+        nota,
+        precio,
+        tipo_vehiculo: tipoVehiculo,
+        actualizado_en: adminFieldValue.serverTimestamp(),
+      })
+      return NextResponse.json({
+        ok: true,
+        item: { id, marca, modelo, anio, nombre, nota, precio, tipo_vehiculo: tipoVehiculo },
+      })
+    }
     if (item.catalogo_id) {
       await ref.update({ aprobado: true, actualizado_en: adminFieldValue.serverTimestamp() })
       return NextResponse.json({ ok: true, catalogo_id: item.catalogo_id })

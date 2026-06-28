@@ -143,20 +143,31 @@ function SoftButton({ children, active = false, className = '', ...props }) {
 }
 
 // Fotos del repuesto: lista con scroll horizontal (2 a la vista) + agregar (máx 4).
-function RepuestoFotos({ fotos = [], uploading = false, onPick }) {
+function RepuestoFotos({ fotos = [], uploading = false, removingUrl = '', onPick, onRemove }) {
   return (
     <div className="mt-3 border-t border-slate-100 pt-3">
       <div className="flex gap-2 overflow-x-auto">
         {fotos.map((url) => (
-          <a
+          <div
             key={url}
-            href={url}
-            target="_blank"
-            rel="noreferrer"
             className="relative aspect-[4/3] w-[calc(50%-4px)] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white"
           >
-            <Image src={url} alt="Foto del repuesto" fill unoptimized className="object-contain p-1" />
-          </a>
+            <a href={url} target="_blank" rel="noreferrer" className="absolute inset-0">
+              <Image src={url} alt="Foto del repuesto" fill unoptimized className="object-contain p-1" />
+            </a>
+            {onRemove && (
+              <button
+                type="button"
+                onClick={() => onRemove(url)}
+                disabled={removingUrl === url}
+                className="absolute right-1 top-1 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-red-600 text-base font-extrabold text-white shadow disabled:opacity-50"
+                aria-label="Descartar foto"
+                title="Descartar foto"
+              >
+                ×
+              </button>
+            )}
+          </div>
         ))}
         {fotos.length < 4 && (
           <label
@@ -274,6 +285,7 @@ function MiniLocationMap({ lat, lng }) {
 export default function ComercioAutorizacionPage() {
   const router = useRouter()
   const repuestoFormRef = useRef(null)
+  const pendingRepuestosRef = useRef(null)
   const commerceInfoRef = useRef(null)
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -305,6 +317,10 @@ export default function ComercioAutorizacionPage() {
   const [repuestoSaving, setRepuestoSaving] = useState(false)
   const [repuestoForm, setRepuestoForm] = useState(EMPTY_REPUESTO)
   const [uploadingPhotoId, setUploadingPhotoId] = useState('')
+  const [removingPhotoUrl, setRemovingPhotoUrl] = useState('')
+  const [editingRepuestoId, setEditingRepuestoId] = useState('')
+  const [editingRepuestoForm, setEditingRepuestoForm] = useState(EMPTY_REPUESTO)
+  const [editingRepuestoSaving, setEditingRepuestoSaving] = useState(false)
   const [pendingRepuestoPhotos, setPendingRepuestoPhotos] = useState([])
 
   useEffect(() => {
@@ -505,7 +521,18 @@ export default function ComercioAutorizacionPage() {
   const marcaSource = selectedBrands.length > 0
     ? selectedBrands
     : brands.map((brand) => brand.name)
-  const marcaOptions = [...new Set(marcaSource)].map((name) => ({ name }))
+  const marcaOptions = [...new Set(marcaSource)].map((name) => ({
+    name,
+    icon: brands.find((brand) => brand.name === name)?.icon || '',
+  }))
+  const repuestoFormReady = Boolean(
+    session?.token
+    && selectedCommerceId
+    && currentVenta
+    && repuestoForm.marca
+    && repuestoForm.modelo.trim()
+    && repuestoForm.nombre.trim(),
+  )
 
   // Si al cambiar el toggle Carro/Moto la marca elegida ya no esta en la lista, se limpia.
   useEffect(() => {
@@ -843,6 +870,12 @@ export default function ComercioAutorizacionPage() {
       if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo guardar el repuesto.')
 
       let fotos = body.item.fotos || []
+      const createdItem = { ...body.item, fotos }
+      setRepuestos((items) => [createdItem, ...items.filter((item) => item.id !== createdItem.id)])
+      window.setTimeout(() => {
+        pendingRepuestosRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }, 50)
+
       if (pendingRepuestoPhotos.length > 0) {
         const newId = body.item.id
         for (const photo of pendingRepuestoPhotos) {
@@ -858,14 +891,18 @@ export default function ComercioAutorizacionPage() {
               body: data,
             })
             const fotoBody = await fotoRes.json().catch(() => ({}))
-            if (fotoRes.ok && fotoBody.ok) fotos = fotoBody.fotos
+            if (fotoRes.ok && fotoBody.ok) {
+              fotos = fotoBody.fotos
+              setRepuestos((items) => items.map((item) => (
+                item.id === newId ? { ...item, fotos } : item
+              )))
+            }
           } catch {
             // Si una foto falla, continuamos con las demas.
           }
         }
       }
 
-      setRepuestos((items) => [{ ...body.item, fotos }, ...items])
       clearPendingRepuestoPhotos()
       setRepuestoForm({ ...EMPTY_REPUESTO, marca: repuestoForm.marca })
       setMessage('Repuesto creado. Puedes aprobarlo para publicarlo en el catalogo.')
@@ -938,6 +975,66 @@ export default function ComercioAutorizacionPage() {
       setError(err?.message || 'No se pudo subir la foto.')
     } finally {
       setUploadingPhotoId('')
+    }
+  }
+
+  function startEditingRepuesto(item) {
+    setEditingRepuestoId(item.id)
+    setEditingRepuestoForm({
+      marca: item.marca || '',
+      modelo: item.modelo || '',
+      anio: item.anio || '',
+      nombre: item.nombre || '',
+      nota: item.nota || '',
+      precio: item.precio ?? '',
+      tipo_vehiculo: item.tipo_vehiculo || 'carro',
+    })
+    setError('')
+    setActivePanel('repuestos')
+    window.setTimeout(() => repuestoFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
+  async function saveRepuestoEdition() {
+    setEditingRepuestoSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/usuario/comercio/repuestos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
+        body: JSON.stringify({ action: 'update', id: editingRepuestoId, ...editingRepuestoForm }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo editar el repuesto.')
+      setRepuestos((items) => items.map((item) => (
+        item.id === editingRepuestoId ? { ...item, ...body.item } : item
+      )))
+      setEditingRepuestoId('')
+      setMessage('Información del repuesto actualizada.')
+    } catch (err) {
+      setError(err.message || 'No se pudo editar el repuesto.')
+    } finally {
+      setEditingRepuestoSaving(false)
+    }
+  }
+
+  async function removeRepuestoPhoto(item, url) {
+    setRemovingPhotoUrl(url)
+    setError('')
+    try {
+      const res = await fetch('/api/usuario/comercio/repuestos/foto', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
+        body: JSON.stringify({ id: item.id, url }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo quitar la foto.')
+      setRepuestos((items) => items.map((current) => (
+        current.id === item.id ? { ...current, fotos: body.fotos } : current
+      )))
+    } catch (err) {
+      setError(err.message || 'No se pudo quitar la foto.')
+    } finally {
+      setRemovingPhotoUrl('')
     }
   }
 
@@ -1137,7 +1234,7 @@ export default function ComercioAutorizacionPage() {
           {message && <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{message}</p>}
 
           {showAllRepuestos && (
-            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-extrabold uppercase text-amber-600">Todos los comercios</p>
@@ -1167,8 +1264,31 @@ export default function ComercioAutorizacionPage() {
                     No hay repuestos para mostrar.
                   </p>
                 ) : allRepuestosFiltered.map((item) => (
-                  <article key={item.id} className="rounded-lg border border-slate-200 p-3">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <article key={item.id} className="relative rounded-lg border border-slate-200 p-3">
+                    {!item.aprobado && editingRepuestoId !== item.id && (
+                      <button type="button" onClick={() => startEditingRepuesto(item)} className="absolute right-2 top-2 z-10 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm hover:border-amber-300">
+                        Editar
+                      </button>
+                    )}
+                    {editingRepuestoId === item.id ? (
+                      <div className="grid gap-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={editingRepuestoForm.marca} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, marca: event.target.value.slice(0, 60) }))} placeholder="Marca" className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                          <input value={editingRepuestoForm.modelo} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, modelo: event.target.value.slice(0, 80) }))} placeholder="Modelo" className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={editingRepuestoForm.anio} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, anio: event.target.value.replace(/\D/g, '').slice(0, 4) }))} placeholder="Año" inputMode="numeric" className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                          <input value={editingRepuestoForm.precio} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, precio: event.target.value.slice(0, 40) }))} placeholder="Precio" className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                        </div>
+                        <input value={editingRepuestoForm.nombre} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, nombre: event.target.value.slice(0, 120) }))} placeholder="Nombre del repuesto" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                        <textarea value={editingRepuestoForm.nota} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, nota: event.target.value.slice(0, 500) }))} placeholder="Referencia, estado, compatibilidad o garantía" rows={2} className="resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                        <div className="flex gap-2">
+                          <SoftButton onClick={() => setEditingRepuestoId('')} disabled={editingRepuestoSaving} className="flex-1">Cancelar</SoftButton>
+                          <PrimaryButton onClick={saveRepuestoEdition} disabled={editingRepuestoSaving} className="flex-1">{editingRepuestoSaving ? 'Guardando...' : 'Guardar cambios'}</PrimaryButton>
+                        </div>
+                      </div>
+                    ) : (
+                    <div className="flex flex-col gap-3 pr-16 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
@@ -1191,11 +1311,14 @@ export default function ComercioAutorizacionPage() {
                         </PrimaryButton>
                       </div>
                     </div>
+                    )}
 
                     <RepuestoFotos
                       fotos={item.fotos || []}
                       uploading={uploadingPhotoId === item.id}
+                      removingUrl={removingPhotoUrl}
                       onPick={(file) => uploadRepuestoPhoto(item, file)}
+                      onRemove={!item.aprobado ? (url) => removeRepuestoPhoto(item, url) : undefined}
                     />
                   </article>
                 ))}
@@ -1403,13 +1526,16 @@ export default function ComercioAutorizacionPage() {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3">
+            <div ref={pendingRepuestosRef} className="mt-4 grid gap-3 scroll-mt-24">
               {repuestosPendientes.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
                   Este comercio no tiene repuestos pendientes por aprobar.
                 </p>
               ) : repuestosPendientes.map((item) => (
-                <article key={item.id} className="rounded-lg border border-slate-200 p-3">
+                <article key={item.id} className="relative rounded-lg border border-slate-200 p-3">
+                  <button type="button" onClick={() => startEditingRepuesto(item)} className="absolute right-2 top-2 z-10 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm hover:border-amber-300">
+                    Editar
+                  </button>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
@@ -1430,7 +1556,9 @@ export default function ComercioAutorizacionPage() {
                   <RepuestoFotos
                     fotos={item.fotos || []}
                     uploading={uploadingPhotoId === item.id}
+                    removingUrl={removingPhotoUrl}
                     onPick={(file) => uploadRepuestoPhoto(item, file)}
+                    onRemove={(url) => removeRepuestoPhoto(item, url)}
                   />
                 </article>
               ))}
@@ -1499,29 +1627,71 @@ export default function ComercioAutorizacionPage() {
           )}
 
           {activePanel === 'repuestos' && (
-            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-extrabold uppercase text-amber-600">Inventario por venta</p>
-                  <h2 className="text-xl font-extrabold">Repuestos de {currentVenta || 'la venta seleccionada'}</h2>
+                  <h2 className="text-xl font-extrabold">
+                    Crear Repuesto Pendiente · {form.nombre_comercio || 'Comercio seleccionado'} · {dayLabel}
+                  </h2>
                 </div>
                 <SoftButton onClick={loadRepuestos} disabled={repuestosLoading}>
                   {repuestosLoading ? 'Cargando...' : 'Actualizar'}
                 </SoftButton>
               </div>
 
-              <form ref={repuestoFormRef} onSubmit={createRepuesto} className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 scroll-mt-24">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <select
-                    value={repuestoForm.marca}
-                    onChange={(event) => setRepuestoForm((current) => ({ ...current, marca: event.target.value }))}
-                    className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-amber-400"
-                  >
-                    <option value="">Marca</option>
-                    {marcaOptions.map((brand) => (
-                      <option key={brand.name} value={brand.name}>{brand.name}</option>
-                    ))}
-                  </select>
+              <form ref={repuestoFormRef} onSubmit={createRepuesto} className="mt-4 grid min-w-0 max-w-full gap-3 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 scroll-mt-24">
+                <div className="min-w-0 max-w-full">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                      Marca
+                    </p>
+                    <div className="inline-flex shrink-0 rounded-lg border border-slate-200 bg-white p-1">
+                      {['carro', 'moto'].map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setField('tipo_vehiculo', type)}
+                          aria-pressed={form.tipo_vehiculo === type}
+                          className={`h-8 rounded-md px-3 text-xs font-extrabold transition ${
+                            form.tipo_vehiculo === type
+                              ? 'bg-[#20263a] text-white'
+                              : 'text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          {type === 'carro' ? 'Carro' : 'Moto'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex w-full min-w-0 max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-2 pr-2">
+                    {marcaOptions.map((brand) => {
+                      const active = repuestoForm.marca === brand.name
+                      return (
+                        <button
+                          key={brand.name}
+                          type="button"
+                          onClick={() => setRepuestoForm((current) => ({ ...current, marca: brand.name }))}
+                          title={brand.name}
+                          aria-pressed={active}
+                          className={`flex h-[86px] w-[88px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg border bg-white px-1 text-[10px] font-bold transition ${
+                            active ? 'border-[#20263a] ring-2 ring-amber-300' : 'border-slate-200 hover:border-amber-300'
+                          }`}
+                        >
+                          <span className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200">
+                            {brand.icon ? (
+                              <Image src={brand.icon} alt="" width={30} height={30} className="h-7 w-7 object-contain" />
+                            ) : (
+                              <span className="text-sm font-extrabold text-slate-500">{brand.name.slice(0, 2)}</span>
+                            )}
+                          </span>
+                          <span className="w-full text-center leading-tight text-slate-600 line-clamp-2">{brand.name}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
                   <input
                     value={repuestoForm.modelo}
                     onChange={(event) => setRepuestoForm((current) => ({ ...current, modelo: event.target.value.slice(0, 80) }))}
@@ -1564,7 +1734,7 @@ export default function ComercioAutorizacionPage() {
                   onPick={addPendingRepuestoPhoto}
                   onRemove={removePendingRepuestoPhoto}
                 />
-                <PrimaryButton disabled={repuestoSaving || !currentVenta} className="w-full sm:w-auto">
+                <PrimaryButton type="submit" disabled={repuestoSaving || !repuestoFormReady} className="w-full sm:w-auto">
                   {repuestoSaving ? 'Guardando...' : 'Crear repuesto pendiente'}
                 </PrimaryButton>
               </form>

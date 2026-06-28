@@ -9,9 +9,9 @@ const ADSENSE_ENABLED = process.env.NEXT_PUBLIC_ADSENSE_ENABLED === 'true'
 // Carga el script de AdSense únicamente en rutas con contenido del editor.
 // En login, formularios, juegos, paneles, etc. no se inyecta el script, de modo
 // que esas pantallas nunca muestran anuncios (ni aun con Auto Ads activo).
-export default function AdSenseLoader() {
+export default function AdSenseLoader({ force = false }) {
   const pathname = usePathname()
-  if (!ADSENSE_ENABLED || !isAdRoute(pathname)) return null
+  if (!ADSENSE_ENABLED || (!force && !isAdRoute(pathname))) return null
 
   return (
     <Script

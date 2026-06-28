@@ -135,3 +135,41 @@ export async function POST(request) {
     return NextResponse.json({ error: error?.message || 'No se pudo subir la foto.' }, { status: 400 })
   }
 }
+
+export async function DELETE(request) {
+  try {
+    const session = authPayload(request)
+    if (!session) return NextResponse.json({ error: 'Sesión inválida.' }, { status: 401 })
+
+    const body = await request.json().catch(() => ({}))
+    const id = String(body.id || '').trim().slice(0, 64)
+    const url = String(body.url || '').trim()
+    if (!id || !url) return NextResponse.json({ error: 'Falta la foto del repuesto.' }, { status: 400 })
+
+    const { getAdminDb, getAdminRealtimeDb, adminFieldValue } = await import('@/lib/firebaseAdmin')
+    const db = getAdminDb()
+    const ref = db.collection(REPUESTOS_COLLECTION).doc(id)
+    const snap = await ref.get()
+    if (!snap.exists) return NextResponse.json({ error: 'Repuesto no encontrado.' }, { status: 404 })
+
+    const data = snap.data() || {}
+    const authorized = await currentAuthorization(getAdminRealtimeDb(), session)
+    const allowed = new Set([canonPhone(session.telefono), canonPhone(session.tel)].filter(Boolean))
+    if (!authorized && data.telefono && !allowed.has(canonPhone(data.telefono))) {
+      return NextResponse.json({ error: 'No puedes editar este repuesto.' }, { status: 403 })
+    }
+    const fotos = Array.isArray(data.fotos) ? data.fotos : []
+    const nextFotos = fotos.filter((foto) => foto !== url)
+    if (nextFotos.length === fotos.length) return NextResponse.json({ error: 'La foto ya no existe.' }, { status: 404 })
+
+    const now = adminFieldValue.serverTimestamp()
+    const writes = [ref.update({ fotos: nextFotos, actualizado_en: now })]
+    if (data.catalogo_id) {
+      writes.push(db.collection('merida').doc(data.catalogo_id).set({ img: nextFotos, actualizado_en: now }, { merge: true }))
+    }
+    await Promise.all(writes)
+    return NextResponse.json({ ok: true, fotos: nextFotos })
+  } catch (error) {
+    return NextResponse.json({ error: error?.message || 'No se pudo quitar la foto.' }, { status: 400 })
+  }
+}
