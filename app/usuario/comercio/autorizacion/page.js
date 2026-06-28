@@ -68,6 +68,13 @@ function fieldReady(value) {
   return String(value || '').trim().length > 0
 }
 
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es')
+}
+
 function mergeDayData(value) {
   if (!value || typeof value !== 'object') return { ...EMPTY_DAY, lista_ventas_repuestos: [] }
   return {
@@ -295,6 +302,7 @@ export default function ComercioAutorizacionPage() {
   const [globalComerciosPorDia, setGlobalComerciosPorDia] = useState({})
   const [selectedDay, setSelectedDay] = useState('lunes')
   const [selectedCommerceId, setSelectedCommerceId] = useState('')
+  const [commerceSearch, setCommerceSearch] = useState('')
   const [showNamedList, setShowNamedList] = useState(true)
   const [showBadWhatsappList, setShowBadWhatsappList] = useState(true)
   const [showNamelessList, setShowNamelessList] = useState(true)
@@ -322,6 +330,7 @@ export default function ComercioAutorizacionPage() {
   const [editingRepuestoForm, setEditingRepuestoForm] = useState(EMPTY_REPUESTO)
   const [editingRepuestoSaving, setEditingRepuestoSaving] = useState(false)
   const [pendingRepuestoPhotos, setPendingRepuestoPhotos] = useState([])
+  const pendingCommerceSelectionRef = useRef(null)
 
   useEffect(() => {
     let cancelled = false
@@ -458,6 +467,12 @@ export default function ComercioAutorizacionPage() {
   const namedCommerces = visibleCommerces.filter((c) => !isNamelessCommerce(c) && hasValidWhatsapp(c))
   const badWhatsappCommerces = visibleCommerces.filter((c) => !isNamelessCommerce(c) && !hasValidWhatsapp(c))
   const namelessCommerces = visibleCommerces.filter((c) => isNamelessCommerce(c))
+  const commerceSearchTerm = normalizeSearchText(commerceSearch.trim())
+  const searchedCommerces = commerceSearchTerm
+    ? allGlobalCommerces.filter((commerce) => (
+      normalizeSearchText(commerce.nombre_comercio).includes(commerceSearchTerm)
+    ))
+    : []
   const brands = form.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const selectedBrands = form.tipo_vehiculo === 'moto' ? form.marcas_moto : form.marcas_carro
   const allSelectedBrands = [
@@ -546,7 +561,10 @@ export default function ComercioAutorizacionPage() {
 
   useEffect(() => {
     const commerceList = dayCommerceList(selectedSavedDay, selectedDay)
-    const next = commerceList[0] || { ...EMPTY_DAY }
+    const requestedCommerce = pendingCommerceSelectionRef.current
+    const requestedForSelectedDay = requestedCommerce?.dia === selectedDay
+    const next = requestedForSelectedDay ? requestedCommerce : (commerceList[0] || { ...EMPTY_DAY })
+    if (requestedForSelectedDay) pendingCommerceSelectionRef.current = null
     setForm(next)
     setSelectedCommerceId(next.comercio_id || '')
     setSelectedVenta(next.lista_ventas_repuestos[0] || '')
@@ -618,14 +636,24 @@ export default function ComercioAutorizacionPage() {
     setActivePanel('comercio')
   }
 
-  function renderCommerceButton(commerce) {
-    const active = selectedCommerceId === commerce.comercio_id
+  function selectSearchedCommerce(commerce) {
+    if (commerce.dia && commerce.dia !== selectedDay) {
+      pendingCommerceSelectionRef.current = commerce
+      setSelectedDay(commerce.dia)
+      return
+    }
+    selectCommerce(commerce)
+  }
+
+  function renderCommerceButton(commerce, showDay = false) {
+    const active = selectedCommerceId === commerce.comercio_id && (!showDay || commerce.dia === selectedDay)
     const pendingCount = pendingCountForCommerce(commerce)
+    const commerceDayLabel = DAYS.find((day) => day.key === commerce.dia)?.label || commerce.dia
     return (
       <button
-        key={commerce.comercio_id}
+        key={showDay ? `${commerce.dia}_${commerce.comercio_id}` : commerce.comercio_id}
         type="button"
-        onClick={() => selectCommerce(commerce)}
+        onClick={() => (showDay ? selectSearchedCommerce(commerce) : selectCommerce(commerce))}
         className={`rounded-lg border px-3 py-2 text-left transition ${
           active ? 'border-[#20263a] bg-slate-50 ring-2 ring-amber-200' : 'border-slate-200 bg-white hover:border-amber-300'
         }`}
@@ -635,7 +663,7 @@ export default function ComercioAutorizacionPage() {
         </span>
         <span className="mt-1 flex items-center justify-between gap-2">
           <span className="truncate text-xs font-semibold text-slate-500">
-            {commerce.whatsapp || 'Sin WhatsApp'}
+            {showDay && commerceDayLabel ? `${commerceDayLabel} · ` : ''}{commerce.whatsapp || 'Sin WhatsApp'}
           </span>
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
             pendingCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'
@@ -1133,6 +1161,31 @@ export default function ComercioAutorizacionPage() {
                   {day.label}
                 </SoftButton>
               ))}
+            </div>
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              <label htmlFor="commerce-search" className="text-xs font-extrabold uppercase text-slate-500">
+                Buscar comercio
+              </label>
+              <input
+                id="commerce-search"
+                type="search"
+                value={commerceSearch}
+                onChange={(event) => setCommerceSearch(event.target.value)}
+                placeholder="Escribe parte del nombre"
+                autoComplete="off"
+                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+              />
+              {commerceSearchTerm && (
+                <div className="mt-3 grid gap-2" aria-live="polite">
+                  {searchedCommerces.length > 0 ? (
+                    searchedCommerces.map((commerce) => renderCommerceButton(commerce, true))
+                  ) : (
+                    <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500">
+                      No se encontraron comercios con ese nombre.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </section>
 
