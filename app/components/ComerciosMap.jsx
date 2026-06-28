@@ -63,7 +63,7 @@ function pinHtml(comercio, selected) {
     </div>`
 }
 
-export default function ComerciosMap() {
+export default function ComerciosMap({ large = false }) {
   const mapElRef = useRef(null)
   const mapRef = useRef(null)
   const LRef = useRef(null)
@@ -334,7 +334,12 @@ export default function ComerciosMap() {
 
       <div className="relative overflow-hidden rounded-3xl border border-[#e3d8c7] bg-[#f6f1e8] shadow-[0_10px_40px_rgba(120,90,60,0.12)]">
         {/* Mapa */}
-        <div ref={mapElRef} className="h-[420px] w-full sm:h-[520px] z-0" />
+        <div
+          ref={mapElRef}
+          className={large
+            ? 'z-0 h-[58vh] min-h-[460px] w-full sm:h-[68vh] sm:min-h-[560px]'
+            : 'z-0 h-[420px] w-full sm:h-[520px]'}
+        />
 
         {/* Botón "Estoy aquí" — ubica al usuario y muestra lo más cercano */}
         {status === 'ready' && (

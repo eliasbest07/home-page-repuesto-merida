@@ -1934,6 +1934,12 @@ export default function Home() {
               Explora el mapa, toca un comercio y descubre su ubicación, su tienda y los
               repuestos que tiene disponibles. Contacta directo por WhatsApp.
             </p>
+            <Link
+              href="/mapa"
+              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#3f352b] px-5 text-sm font-extrabold text-white transition hover:bg-[#2d261f]"
+            >
+              Abrir mapa grande
+            </Link>
           </div>
           <ComerciosMap />
         </div>
