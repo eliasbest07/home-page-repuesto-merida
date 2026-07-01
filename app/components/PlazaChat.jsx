@@ -3,6 +3,10 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
+import { collection, getDocs } from 'firebase/firestore'
+import { firestore } from '@/lib/firebase'
+import { matchesPlazaSearch } from '@/lib/plazaSearch'
+import { isPlazaAdApproved } from '@/lib/plazaApproval'
 
 // ════════════════════════════════════════════════
 // RESPUESTAS PREDEFINIDAS — JSON
@@ -29,6 +33,7 @@ const ANSWERS = {
 // Acciones directas de navegación
 const NAV_ACTIONS = [
   { label: '+ Publicar Servicio o Producto',  href: '/plaza/publicar',  style: 'bg-yellow-400 text-gray-900 font-bold hover:bg-yellow-300' },
+  { label: '🔩 Publicar un repuesto', href: '/?publicar=repuesto#catalogo', style: 'bg-white text-gray-900 font-bold hover:bg-yellow-50 border border-yellow-400' },
   { label: '🔍 Solicitar Producto o Servicio', href: '/plaza/solicitar', style: 'bg-gray-800 text-yellow-400 font-bold hover:bg-gray-700 border border-gray-700' },
 ]
 
@@ -50,6 +55,82 @@ const buildOsoWhatsAppUrl = (context = '') =>
   )}`
 
 const randomWhatsappDelay = () => 3000 + Math.floor(Math.random() * 12001)
+
+const SEARCH_STOP_WORDS = new Set([
+  'busco', 'buscar', 'buscame', 'quiero', 'necesito', 'muestrame', 'encontrar',
+  'un', 'una', 'unos', 'unas', 'el', 'la', 'los', 'las', 'de', 'del', 'para',
+  'por', 'favor', 'que', 'hay', 'tienen', 'tienes', 'plaza', 'repuesto', 'repuestos',
+])
+
+function searchTerms(message) {
+  const words = String(message || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .filter(word => !SEARCH_STOP_WORDS.has(word))
+  return words.join(' ')
+}
+
+function itemTime(item) {
+  const value = item.createdAt ?? item.creado_en
+  return value?.toMillis?.() ?? ((value?.seconds ?? 0) * 1000)
+}
+
+function firstImage(value) {
+  if (Array.isArray(value)) return value.find(Boolean) || ''
+  return typeof value === 'string' ? value : ''
+}
+
+async function searchMarketplace(message) {
+  const query = searchTerms(message)
+  if (query.length < 2) return []
+
+  const [adsSnapshot, partsSnapshot] = await Promise.all([
+    getDocs(collection(firestore, 'anuncios')),
+    getDocs(collection(firestore, 'merida')),
+  ])
+
+  const ads = adsSnapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .filter(item => item.disponible !== false && isPlazaAdApproved(item) && matchesPlazaSearch(item, query))
+    .sort((a, b) => itemTime(b) - itemTime(a))
+    .slice(0, 3)
+    .map(item => ({
+      id: item.id,
+      kind: 'Anuncio',
+      title: item.titulo || 'Anuncio de Plaza',
+      subtitle: item.categoria || item.descripcion || '',
+      price: item.precio ? `$${item.precio}` : 'Consultar',
+      image: firstImage(item.imagen_url || item.imagen_ref),
+      href: `/anuncio/${encodeURIComponent(item.id)}`,
+    }))
+
+  const parts = partsSnapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .filter(item => item.publicado !== 'agotado' && item.estado !== 'agotado')
+    .filter(item => matchesPlazaSearch({
+      titulo: item.marca || item.categoria,
+      descripcion: [item.descripcion, item.modelos, item.vehiculo].filter(Boolean).join(' '),
+      categoria: item.categoria,
+      vendedor: item.comercio_nombre,
+      tipo: item.tipo_vehiculo,
+    }, query))
+    .slice(0, 3)
+    .map(item => ({
+      id: item.id,
+      kind: 'Repuesto',
+      title: item.marca || item.categoria || 'Repuesto',
+      subtitle: item.modelos || item.vehiculo || item.descripcion || '',
+      price: item.precio ? (String(item.precio).startsWith('$') ? String(item.precio) : `$${item.precio}`) : 'Consultar',
+      image: firstImage(item.img),
+      href: `/repuesto/${encodeURIComponent(item.id)}`,
+    }))
+
+  return [...ads, ...parts].slice(0, 6)
+}
 
 export default function PlazaChat({ hideMobileLauncher = false }) {
   const [open, setOpen]         = useState(false)
@@ -104,7 +185,7 @@ export default function PlazaChat({ hideMobileLauncher = false }) {
     timeoutsRef.current.push(timeoutId)
   }
 
-  const appendAssistantMessage = ({ content, action = null, whatsappContext = '', showWhatsappCta = false }) => {
+  const appendAssistantMessage = ({ content, action = null, results = [], whatsappContext = '', showWhatsappCta = false }) => {
     const id = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     setMessages((prev) => [
       ...prev.map((message) => (
@@ -117,6 +198,7 @@ export default function PlazaChat({ hideMobileLauncher = false }) {
         role: 'assistant',
         content,
         action,
+        results,
         showWhatsAppCta: showWhatsappCta,
         whatsappHref: buildOsoWhatsAppUrl(whatsappContext || content),
       },
@@ -204,6 +286,16 @@ export default function PlazaChat({ hideMobileLauncher = false }) {
     // ── Llamada al API para preguntas libres ──
     setLoading(true)
     try {
+      const results = await searchMarketplace(msg).catch(() => [])
+      if (results.length > 0) {
+        appendAssistantMessage({
+          content: `Encontré ${results.length} resultado${results.length === 1 ? '' : 's'} similar${results.length === 1 ? '' : 'es'}:`,
+          results,
+          whatsappContext: msg,
+        })
+        return
+      }
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -351,6 +443,39 @@ export default function PlazaChat({ hideMobileLauncher = false }) {
                       {m.action.label} →
                     </Link>
                   )}
+                </div>
+              )}
+
+              {m.role === 'assistant' && m.results?.length > 0 && (
+                <div className="ml-8 grid w-[calc(100%-2rem)] grid-cols-1 gap-2">
+                  {m.results.map((result) => (
+                    <Link
+                      key={`${result.kind}-${result.id}`}
+                      href={result.href}
+                      className="flex overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-yellow-400"
+                    >
+                      <div
+                        className="h-20 w-20 shrink-0 bg-gray-100 bg-cover bg-center"
+                        style={result.image ? { backgroundImage: `url(${JSON.stringify(result.image)})` } : undefined}
+                      >
+                        {!result.image && <span className="flex h-full items-center justify-center text-2xl">📦</span>}
+                      </div>
+                      <div className="min-w-0 flex-1 p-2.5">
+                        <span className="text-[9px] font-extrabold uppercase tracking-wide text-yellow-600">{result.kind}</span>
+                        <p className="truncate text-xs font-bold text-gray-900">{result.title}</p>
+                        <p className="truncate text-[10px] text-gray-500">{result.subtitle}</p>
+                        <p className="mt-1 text-xs font-extrabold text-gray-900">{result.price}</p>
+                      </div>
+                    </Link>
+                  ))}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <Link href="/plaza/publicar" className="rounded-lg bg-yellow-400 px-2 py-2 text-center text-[10px] font-extrabold text-gray-900 hover:bg-yellow-300">
+                      + Nuevo anuncio
+                    </Link>
+                    <Link href="/?publicar=repuesto#catalogo" className="rounded-lg bg-gray-900 px-2 py-2 text-center text-[10px] font-extrabold text-yellow-400 hover:bg-gray-800">
+                      + Nuevo repuesto
+                    </Link>
+                  </div>
                 </div>
               )}
 

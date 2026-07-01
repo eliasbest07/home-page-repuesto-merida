@@ -9,6 +9,8 @@ import { get, onValue, ref as dbRef, serverTimestamp, update } from 'firebase/da
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
 import { firestore, rtdb, storage } from '../../lib/firebase'
 import { phoneKey, saveSession } from '@/lib/rifaSession'
+import { matchesPlazaSearch } from '@/lib/plazaSearch'
+import { isPlazaAdApproved } from '@/lib/plazaApproval'
 import AdSenseBlock from '@/app/components/AdSenseBlock'
 
 const PlazaChat = dynamic(() => import('../components/PlazaChat'), { ssr: false })
@@ -156,6 +158,16 @@ function chunk(arr, size) {
   return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
     arr.slice(i * size, i * size + size)
   )
+}
+
+function createdTime(item) {
+  const value = item.createdAt ?? item.creado_en
+  if (!value) return 0
+  if (typeof value.toMillis === 'function') return value.toMillis()
+  if (typeof value.seconds === 'number') return value.seconds * 1000
+  if (typeof value === 'number') return value
+  const parsed = new Date(value).getTime()
+  return Number.isNaN(parsed) ? 0 : parsed
 }
 
 // ════════════════════════════════════════════════
@@ -1173,6 +1185,7 @@ function UserMenu({ session, onClose, onLogout }) {
 export default function PlazaPage() {
   const [catActiva, setCatActiva]       = useState('Todos')
   const [busqueda, setBusqueda]         = useState('')
+  const [busquedaAplicada, setBusquedaAplicada] = useState('')
   const [selectedItem, setSelectedItem] = useState(null)
 
   // ── Sesión de usuario ──
@@ -1205,6 +1218,12 @@ export default function PlazaPage() {
   const [hoveredCol, setHoveredCol] = useState(null)
   const idleTimerRef = useRef(null)
 
+  // Evita reconstruir el feed y sus columnas en cada pulsación.
+  useEffect(() => {
+    const timeoutId = setTimeout(() => setBusquedaAplicada(busqueda), 300)
+    return () => clearTimeout(timeoutId)
+  }, [busqueda])
+
   // ── Fetch inicial — Firestore ──
   useEffect(() => {
     let cancelled = false
@@ -1215,12 +1234,8 @@ export default function PlazaPage() {
         if (cancelled) return
         const data = snap.docs
           .map(d => ({ id: d.id, ...d.data() }))
-          .filter(d => d.disponible !== false)
-          .sort((a, b) => {
-            const ta = a.creado_en?.seconds ?? 0
-            const tb = b.creado_en?.seconds ?? 0
-            return tb - ta
-          })
+          .filter(d => d.disponible !== false && isPlazaAdApproved(d))
+          .sort((a, b) => createdTime(b) - createdTime(a))
         setAnuncios(data.map(normalizeRow))
         setLoading(false)
       })
@@ -1236,7 +1251,7 @@ export default function PlazaPage() {
   ], [anuncios])
 
   // ── Reset lazy load al cambiar filtros ──
-  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [catActiva, busqueda])
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [catActiva, busquedaAplicada])
 
   // ── IntersectionObserver para lazy load mobile ──
   useEffect(() => {
@@ -1248,7 +1263,7 @@ export default function PlazaPage() {
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [loading, catActiva, busqueda])
+  }, [loading, catActiva, busquedaAplicada])
 
   const resetIdleTimer = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
@@ -1269,17 +1284,13 @@ export default function PlazaPage() {
   }, [])
 
   const filtrados = anuncios
-    .filter((p) => Boolean(p.whatsapp))
     .filter((p) => {
       if (catActiva === 'Todos') return true
       if (TIPO_FILTROS[catActiva]) return TIPO_FILTROS[catActiva](p)
       return p.categoria === catActiva
     })
-    .filter((p) => !busqueda ||
-      (p.titulo?.toLowerCase().includes(busqueda.toLowerCase()) ?? false) ||
-      (p.vendedor?.toLowerCase().includes(busqueda.toLowerCase()) ?? false) ||
-      (p.descripcion?.toLowerCase().includes(busqueda.toLowerCase()) ?? false))
-    .sort((a, b) => (b.prioridad === 'destacado') - (a.prioridad === 'destacado'))
+    .filter((p) => matchesPlazaSearch(p, busquedaAplicada))
+    .sort((a, b) => createdTime(b) - createdTime(a))
 
   // Distribuir en 3 columnas para desktop (round-robin)
   const cols = [
@@ -1382,7 +1393,7 @@ export default function PlazaPage() {
             <p className="text-red-600 font-semibold text-sm">No se pudo conectar con el servidor</p>
             <p className="text-red-400 text-xs mt-1">{error}</p>
             <button
-              onClick={() => { setError(null); setLoading(true); getDocs(collection(firestore, 'anuncios')).then(snap => { const data = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.disponible !== false).sort((a, b) => (b.creado_en?.seconds ?? 0) - (a.creado_en?.seconds ?? 0)); setAnuncios(data.map(normalizeRow)); setLoading(false) }).catch(e => { setError(e.message); setLoading(false) }) }}
+              onClick={() => { setError(null); setLoading(true); getDocs(collection(firestore, 'anuncios')).then(snap => { const data = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.disponible !== false && isPlazaAdApproved(d)).sort((a, b) => createdTime(b) - createdTime(a)); setAnuncios(data.map(normalizeRow)); setLoading(false) }).catch(e => { setError(e.message); setLoading(false) }) }}
               className="mt-3 text-xs font-bold text-red-600 underline"
             >
               Reintentar

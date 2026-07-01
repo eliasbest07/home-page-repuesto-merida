@@ -4,14 +4,21 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore'
+import { collection, getDocs } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
+import { plazaApprovalStatus } from '@/lib/plazaApproval'
 
 function imgUrl(ref) {
   if (!ref) return null
   if (ref.startsWith('http')) return ref
   return null
+}
+
+function canonPhone(raw) {
+  let digits = String(raw || '').replace(/\D/g, '')
+  if (digits.startsWith('58') && digits.length >= 12) digits = digits.slice(2)
+  return digits.replace(/^0+/, '')
 }
 
 const TIPO_LABEL = {
@@ -29,7 +36,9 @@ export default function MisAnunciosPage() {
   const [anuncios,  setAnuncios]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState(null)
-  const [toggling,  setToggling]  = useState(null) // id del anuncio que se está toggling
+  const [saving, setSaving] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editForm, setEditForm] = useState({ titulo: '', descripcion: '', categoria: '', precio: '' })
 
   // ── Auth guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -48,31 +57,54 @@ export default function MisAnunciosPage() {
     const telefono = session.whatsapp || session.telefono || ''
     if (!telefono) return
     setLoading(true)
-    const q = query(
-      collection(firestore, 'anuncios'),
-      where('telefono', '==', telefono),
-    )
-    getDocs(q)
+    const ownerPhone = canonPhone(telefono)
+    getDocs(collection(firestore, 'anuncios'))
       .then(snap => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        const data = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(item => canonPhone(item.whatsapp) === ownerPhone)
         setAnuncios(data)
         setLoading(false)
       })
       .catch(err => { setError(err.message); setLoading(false) })
   }, [session])
 
-  // ── Cambiar disponibilidad ──────────────────────────────────────────────────
-  async function toggleDisponible(anuncio) {
-    setToggling(anuncio.id)
+  async function updateAd(anuncio, body) {
+    setSaving(anuncio.id)
+    setError(null)
     try {
-      await updateDoc(doc(firestore, 'anuncios', anuncio.id), {
-        disponible: !anuncio.disponible,
+      const response = await fetch(`/api/plaza/anuncios/${encodeURIComponent(anuncio.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
+        body: JSON.stringify(body),
       })
-      setAnuncios(prev =>
-        prev.map(a => a.id === anuncio.id ? { ...a, disponible: !a.disponible } : a)
-      )
-    } catch (_) {}
-    setToggling(null)
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'No se pudo actualizar el anuncio.')
+      if (body.action === 'retire') {
+        setAnuncios(prev => prev.map(item => item.id === anuncio.id
+          ? { ...item, aprobado: false, disponible: false, estado_aprobacion: 'retirado' }
+          : item))
+      } else {
+        setAnuncios(prev => prev.map(item => item.id === anuncio.id
+          ? { ...item, ...body, aprobado: false, disponible: true, estado_aprobacion: 'pendiente' }
+          : item))
+        setEditingId(null)
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  function beginEdit(anuncio) {
+    setEditingId(anuncio.id)
+    setEditForm({
+      titulo: anuncio.titulo || '',
+      descripcion: anuncio.descripcion || '',
+      categoria: anuncio.categoria || '',
+      precio: anuncio.precio ?? '',
+    })
   }
 
   // ── Loading ─────────────────────────────────────────────────────────────────
@@ -140,8 +172,9 @@ export default function MisAnunciosPage() {
 
             {anuncios.map(a => {
               const tipo     = TIPO_LABEL[a.tipo] ?? { label: a.tipo, color: '#9CA3AF' }
-              const imgSrc   = imgUrl(a.imagen_ref)
+              const imgSrc   = imgUrl(Array.isArray(a.imagen_url) ? a.imagen_url[0] : (a.imagen_url || a.imagen_ref))
               const activo   = Boolean(a.disponible)
+              const approval = plazaApprovalStatus(a)
 
               return (
                 <article
@@ -178,23 +211,15 @@ export default function MisAnunciosPage() {
                       )}
 
                       <div className="flex items-center gap-2 mt-2">
-                        {/* Toggle disponible */}
-                        <button
-                          onClick={() => toggleDisponible(a)}
-                          disabled={toggling === a.id}
-                          className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full transition-all
-                            ${activo
-                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                            } disabled:opacity-50`}
-                        >
-                          {toggling === a.id
-                            ? <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                            : <span className={`w-2 h-2 rounded-full ${activo ? 'bg-green-500' : 'bg-gray-400'}`} />
-                          }
-                          {activo ? 'Activo' : 'Pausado'}
-                        </button>
-
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                          approval === 'aprobado'
+                            ? 'bg-green-100 text-green-700'
+                            : approval === 'rechazado' || approval === 'retirado'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {approval === 'aprobado' ? 'Aprobado' : approval === 'rechazado' ? 'Rechazado' : approval === 'retirado' ? 'Retirado' : 'Pendiente de aprobación'}
+                        </span>
                         <span className="text-gray-300 text-xs">·</span>
                         <span className="text-xs text-gray-400">#{a.id}</span>
                       </div>
@@ -204,6 +229,35 @@ export default function MisAnunciosPage() {
                   {/* Descripción */}
                   {a.descripcion && (
                     <p className="text-xs text-gray-500 px-3 pb-3 line-clamp-2 leading-relaxed">{a.descripcion}</p>
+                  )}
+
+                  {editingId === a.id ? (
+                    <form
+                      className="space-y-2 border-t border-gray-100 p-3"
+                      onSubmit={(event) => { event.preventDefault(); updateAd(a, { action: 'edit', ...editForm }) }}
+                    >
+                      <input value={editForm.titulo} onChange={e => setEditForm(form => ({ ...form, titulo: e.target.value }))} placeholder="Título" required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                      <textarea value={editForm.descripcion} onChange={e => setEditForm(form => ({ ...form, descripcion: e.target.value }))} placeholder="Descripción" required rows={3} className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input value={editForm.categoria} onChange={e => setEditForm(form => ({ ...form, categoria: e.target.value }))} placeholder="Categoría" required className="rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                        <input type="number" min="0" step="0.01" value={editForm.precio} onChange={e => setEditForm(form => ({ ...form, precio: e.target.value }))} placeholder="Precio" required className="rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+                      </div>
+                      <div className="flex gap-2">
+                        <button disabled={saving === a.id} className="rounded-lg bg-yellow-400 px-3 py-2 text-xs font-bold text-gray-900 disabled:opacity-50">Guardar y enviar a revisión</button>
+                        <button type="button" onClick={() => setEditingId(null)} className="rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-600">Cancelar</button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex gap-2 border-t border-gray-100 p-3">
+                      <button onClick={() => beginEdit(a)} disabled={saving === a.id || approval === 'retirado'} className="flex-1 rounded-lg bg-gray-100 px-3 py-2 text-xs font-bold text-gray-700 disabled:opacity-40">Editar</button>
+                      <button
+                        onClick={() => window.confirm('¿Retirar este anuncio? Dejará de mostrarse en Plaza.') && updateAd(a, { action: 'retire' })}
+                        disabled={saving === a.id || approval === 'retirado'}
+                        className="flex-1 rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-600 disabled:opacity-40"
+                      >
+                        {saving === a.id ? 'Procesando…' : 'Retirar anuncio'}
+                      </button>
+                    </div>
                   )}
                 </article>
               )

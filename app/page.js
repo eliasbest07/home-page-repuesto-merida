@@ -642,6 +642,11 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('publicar') === 'repuesto') setCatalogFormOpen(true)
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
 
     ensureSession()

@@ -7,11 +7,11 @@ service cloud.firestore {
     // Actualizar: solo si el telefono coincide
     match /anuncios/{id} {
       allow read: if true;
-      allow create: if request.resource.data.keys().hasAll(['titulo', 'tipo', 'telefono'])
-                    && request.resource.data.titulo is string
-                    && request.resource.data.titulo.size() > 0;
-      allow update: if request.resource.data.telefono == resource.data.telefono
-                    || request.auth != null;
+      // Las publicaciones web se crean desde /api/plaza/anuncios, que valida
+      // sesión y cédula. Firebase Admin omite estas reglas.
+      allow create: if false;
+      // Edición y retiro pasan por la API, que valida el token de WhatsApp.
+      allow update: if false;
       allow delete: if request.auth != null;
     }
 

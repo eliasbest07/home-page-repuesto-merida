@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation'
 import { doc, getDoc } from 'firebase/firestore'
 import { firestore } from '@/lib/firebase'
 import AdSenseLoader from '@/app/components/AdSenseLoader'
+import { isPlazaAdApproved } from '@/lib/plazaApproval'
 
 const WA_NUMBER = '+584123375417'
 
@@ -75,7 +76,12 @@ export default function AnuncioDetallePage() {
           setError('Anuncio no encontrado.')
           return
         }
-        setAnuncio(normalizeRow({ id: snap.id, ...snap.data() }))
+        const data = { id: snap.id, ...snap.data() }
+        if (!isPlazaAdApproved(data)) {
+          setError('Este anuncio está pendiente de aprobación.')
+          return
+        }
+        setAnuncio(normalizeRow(data))
       })
       .catch((err) => {
         if (!cancelled) setError(err?.message || 'No se pudo cargar el anuncio.')

@@ -5,9 +5,6 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
-import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage'
-import { firestore, storage } from '../../../lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
 
 const PlazaChat = dynamic(() => import('../../components/PlazaChat'), { ssr: false })
@@ -119,40 +116,14 @@ export default function PublicarPage() {
     setApiError(null)
 
     try {
-      const telefono = session.whatsapp || session.telefono || ''
-
-      // 1. Crear documento en Firestore
-      const docRef = await addDoc(collection(firestore, 'anuncios'), {
-        tipo:        form.tipo,
-        titulo:      form.titulo.trim(),
-        descripcion: form.descripcion.trim(),
-        precio:      Number(form.precio),
-        categoria:   form.categoria,
-        disponible:  true,
-        prioridad:   'media',
-        telefono,
-        whatsapp:    telefono,
-        vendedor:    telefono,
-        redes:       [],
-        pagos:       [],
-        imagen_url:  null,
-        createdAt:   serverTimestamp(),
-        updatedAt:   serverTimestamp(),
+      const response = await fetch('/api/plaza/anuncios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
+        body: JSON.stringify({ ...form, imagen: fotos[0]?.dataUrl || null }),
       })
-
-      setNewId(docRef.id)
-
-      // 2. Subir imagen a Firebase Storage si existe
-      if (fotos.length > 0) {
-        const ext   = fotos[0].name.split('.').pop() || 'jpg'
-        const path  = `imagenes_anuncios/${docRef.id}.${ext}`
-        const imgRef = storageRef(storage, path)
-        await uploadString(imgRef, fotos[0].dataUrl, 'data_url')
-        const url = await getDownloadURL(imgRef)
-        // actualizar el campo imagen_url (import updateDoc en el bloque siguiente)
-        const { updateDoc, doc } = await import('firebase/firestore')
-        await updateDoc(doc(firestore, 'anuncios', docRef.id), { imagen_url: url })
-      }
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'No se pudo enviar el anuncio.')
+      setNewId(data.id)
 
       setSubmitted(true)
     } catch (err) {
@@ -188,7 +159,7 @@ export default function PublicarPage() {
             <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center text-4xl mx-auto mb-6">✅</div>
             <h1 className="font-bold text-2xl text-gray-900 mb-3">¡Publicación enviada!</h1>
             <p className="text-gray-500 text-sm leading-relaxed mb-6">
-              Tu publicación <strong>&ldquo;{form.titulo}&rdquo;</strong> fue creada correctamente
+              Tu publicación <strong>&ldquo;{form.titulo}&rdquo;</strong> fue enviada para revisión
               {newId && <span className="text-gray-400"> (#{newId})</span>}.
             </p>
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-left text-sm text-yellow-900 mb-6">
@@ -196,7 +167,7 @@ export default function PublicarPage() {
               <ul className="space-y-1 text-xs">
                 <li>✔ Revisión manual por el equipo Plaza</li>
                 <li>✔ Aprobación o solicitud de correcciones</li>
-                <li>✔ Tu publicación aparece en el feed de Plaza</li>
+                <li>✔ Aparecerá en Plaza cuando sea aprobada</li>
               </ul>
             </div>
             <div className="flex gap-3">
