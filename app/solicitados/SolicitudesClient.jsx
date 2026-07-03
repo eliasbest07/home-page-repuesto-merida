@@ -63,6 +63,18 @@ function normalize(value = '') {
     .trim()
 }
 
+function hasVenezuelanPhoneNumber(value = '') {
+  // Celulares venezolanos en formato local (04xx) o internacional (+58/0058).
+  // Se permiten los separadores que la gente usa normalmente al escribirlos.
+  return /(?:^|[^\d])(?:(?:(?:\+|00)58)[\s().-]*|0)(?:412|414|416|424|426)(?:[\s().-]*\d){7}(?!\d)/.test(String(value))
+}
+
+function commentsContainQuote(comments = []) {
+  return comments.some((comment) => (
+    !comment.eliminado && hasVenezuelanPhoneNumber(comment.texto)
+  ))
+}
+
 function titleCase(value = '') {
   return String(value)
     .trim()
@@ -993,6 +1005,10 @@ function RequestCard({
                   {titleCase(request.repuesto)}
                 </h2>
               </div>
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide ${STATUS[request.estado]?.className || STATUS.solicitado.className}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${STATUS[request.estado]?.dot || STATUS.solicitado.dot}`} />
+                {STATUS[request.estado]?.label || STATUS.solicitado.label}
+              </span>
             </div>
 
             <div className="mt-3 flex flex-wrap gap-1.5">
@@ -1174,8 +1190,14 @@ export default function SolicitudesClient() {
         uniqueIds.add(id)
         return true
       })
+      .map((request) => ({
+        ...request,
+        estado: commentsContainQuote(commentsByRequest[String(request.id)])
+          ? 'cotizado'
+          : 'solicitado',
+      }))
       .sort((a, b) => Number(b.creado_en || 0) - Number(a.creado_en || 0))
-  }, [firebaseRequests])
+  }, [commentsByRequest, firebaseRequests])
 
   // Solicitud destacada por enlace (/solicitados?solicitud=161): se abre su
   // debate y se hace scroll hasta su tarjeta.
