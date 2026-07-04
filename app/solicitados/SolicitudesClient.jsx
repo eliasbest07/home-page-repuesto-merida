@@ -64,9 +64,9 @@ function normalize(value = '') {
 }
 
 function hasVenezuelanPhoneNumber(value = '') {
-  // Celulares venezolanos en formato local (04xx) o internacional (+58/0058).
-  // Se permiten los separadores que la gente usa normalmente al escribirlos.
-  return /(?:^|[^\d])(?:(?:(?:\+|00)58)[\s().-]*|0)(?:412|414|416|424|426)(?:[\s().-]*\d){7}(?!\d)/.test(String(value))
+  // Celulares venezolanos con o sin 0/código de país. Se permiten los
+  // separadores que la gente usa normalmente al escribirlos.
+  return /(?:^|[^\d])(?:(?:(?:(?:\+|00)?58)[\s().-]*0?)|0)?(?:412|414|416|424|426)(?:[\s().-]*\d){7}(?!\d)/.test(String(value))
 }
 
 function commentsContainQuote(comments = []) {
