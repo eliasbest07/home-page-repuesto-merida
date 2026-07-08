@@ -27,7 +27,7 @@ export default function RequestChecklist() {
     const required = [
       ['marca', 'Marca'],
       ['modelo', 'Modelo'],
-      ['anio', 'Ano'],
+      ['anio', 'Año'],
       ['repuesto', 'Repuesto'],
     ]
     return required.filter(([key]) => !clean(form[key])).map(([, label]) => label)
@@ -40,7 +40,7 @@ export default function RequestChecklist() {
       `Vehiculo: ${clean(form.tipo) || 'carro'}`,
       `Marca: ${clean(form.marca) || '[marca]'}`,
       `Modelo: ${clean(form.modelo) || '[modelo]'}`,
-      `Ano: ${clean(form.anio) || '[ano]'}`,
+      `Año: ${clean(form.anio) || '[año]'}`,
       form.motor ? `Motor/version: ${clean(form.motor)}` : '',
       `Repuesto: ${clean(form.repuesto) || '[repuesto]'}`,
       form.referencia ? `Numero de parte o referencia: ${clean(form.referencia)}` : '',
@@ -103,7 +103,7 @@ export default function RequestChecklist() {
               </select>
             </label>
             <label className="grid gap-1.5 text-sm font-bold">
-              Ano
+              Año
               <input
                 value={form.anio}
                 onChange={(event) => updateField('anio', event.target.value.replace(/\D/g, '').slice(0, 4))}

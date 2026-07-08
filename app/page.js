@@ -2139,7 +2139,7 @@ export default function Home() {
                 <div className="min-w-0">
                   <h3 className="font-brand text-xl font-bold text-white">Guia de solicitud</h3>
                   <p className="text-gray-400 text-sm mt-1 leading-relaxed">
-                    Prepara marca, modelo, ano, motor y fotos antes de pedir una cotizacion.
+                    Prepara marca, modelo, año, motor y fotos antes de pedir una cotizacion.
                   </p>
                 </div>
               </div>

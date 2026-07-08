@@ -22,7 +22,7 @@ export const metadata = {
 const essentials = [
   {
     title: 'Identificacion del vehiculo',
-    body: 'Marca, modelo, ano y version reducen las respuestas ambiguas. En un mismo modelo puede cambiar el motor, la caja, el sistema electrico o el tipo de freno.',
+    body: 'Marca, modelo, año y version reducen las respuestas ambiguas. En un mismo modelo puede cambiar el motor, la caja, el sistema electrico o el tipo de freno.',
   },
   {
     title: 'Nombre exacto del repuesto',
@@ -58,8 +58,8 @@ const examples = [
 
 const faqs = [
   {
-    q: 'Que hago si no se el ano exacto del carro?',
-    a: 'Revisa el carnet, documento de compra o placa identificadora. Si no tienes el dato, envia fotos del vehiculo y explica que el ano esta por confirmar.',
+    q: 'Que hago si no se el año exacto del carro?',
+    a: 'Revisa el carnet, documento de compra o placa identificadora. Si no tienes el dato, envia fotos del vehiculo y explica que el año esta por confirmar.',
   },
   {
     q: 'Conviene enviar foto del documento del vehiculo?',
@@ -67,7 +67,7 @@ const faqs = [
   },
   {
     q: 'Por que preguntan por motor o version?',
-    a: 'Porque dos carros con la misma carroceria pueden usar piezas diferentes segun cilindrada, transmision, ano de fabricacion o mercado de origen.',
+    a: 'Porque dos carros con la misma carroceria pueden usar piezas diferentes segun cilindrada, transmision, año de fabricacion o mercado de origen.',
   },
   {
     q: 'Como comparo dos cotizaciones?',
