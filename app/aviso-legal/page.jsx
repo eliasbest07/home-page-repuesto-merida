@@ -3,6 +3,7 @@ import LegalPage from '@/app/components/LegalPage'
 export const metadata = {
   title: 'Aviso Legal | Repuestos Mérida',
   description: 'Información legal, titularidad y condiciones de uso de Repuestos Mérida.',
+  alternates: { canonical: '/aviso-legal' },
 }
 
 export default function AvisoLegal() {

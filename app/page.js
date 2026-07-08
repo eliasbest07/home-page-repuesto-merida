@@ -1246,6 +1246,13 @@ export default function Home() {
             >
               Blog
             </Link>
+            <Link
+              href="/guia-repuesto"
+              onClick={() => setMenuOpen(false)}
+              className="block text-gray-300 hover:text-[#FFD700] text-sm font-medium py-2 transition-colors"
+            >
+              Guia para pedir repuestos
+            </Link>
             {['#categorias', '#catalogo', '#nosotros', '#contacto', '#servicios'].map((href, i) => (
               <a
                 key={href}
@@ -2118,6 +2125,42 @@ export default function Home() {
               </div>
             </Link>
 
+            {/* ── Guia ── */}
+            <Link
+              href="/guia-repuesto"
+              className="group relative flex flex-col gap-4 bg-gray-900 rounded-2xl p-6 border border-gray-800 hover:border-[#FFD700]/60 hover:shadow-xl hover:shadow-yellow-500/10 transition-all duration-300 overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+              <div className="flex items-start gap-4 relative">
+                <div className="w-14 h-14 rounded-xl bg-[#FFD700]/10 border border-[#FFD700]/20 flex items-center justify-center text-3xl shrink-0 group-hover:scale-110 transition-transform">
+                  🧾
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-brand text-xl font-bold text-white">Guia de solicitud</h3>
+                  <p className="text-gray-400 text-sm mt-1 leading-relaxed">
+                    Prepara marca, modelo, ano, motor y fotos antes de pedir una cotizacion.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 relative">
+                {['Checklist', 'Compatibilidad', 'WhatsApp'].map(t => (
+                  <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
+                    {t}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[#FFD700] text-sm font-semibold relative">
+                Abrir guia
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
+                  className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeLinecap="round">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              </div>
+            </Link>
+
             {/* ── Piedra, papel o tijera ── */}
             <Link
               href="/piedra-papel-tijera"
@@ -2345,6 +2388,7 @@ export default function Home() {
                 <li><a href="#categorias" className="hover:text-[#FFD700] transition-colors">Categorías</a></li>
                 <li><a href="#catalogo" className="hover:text-[#FFD700] transition-colors">Catálogo</a></li>
                 <li><Link href="/solicitados" className="hover:text-[#FFD700] transition-colors">Repuestos solicitados</Link></li>
+                <li><Link href="/guia-repuesto" className="hover:text-[#FFD700] transition-colors">Guía para pedir repuestos</Link></li>
                 <li><Link href="/blog" className="hover:text-[#FFD700] transition-colors">Blog</Link></li>
                 <li><a href="#nosotros" className="hover:text-[#FFD700] transition-colors">Nosotros</a></li>
                 <li><a href="#contacto" className="hover:text-[#FFD700] transition-colors">Contacto</a></li>

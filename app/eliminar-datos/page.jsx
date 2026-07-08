@@ -1,3 +1,9 @@
+export const metadata = {
+  title: 'Eliminar Datos | Repuestos Mérida',
+  description: 'Instrucciones para solicitar la eliminación de datos personales asociados a Repuestos Mérida.',
+  alternates: { canonical: '/eliminar-datos' },
+}
+
 export default function Eliminar() {
     return (
     <main className="flex min-h-screen flex-col items-center justify-between p-24">

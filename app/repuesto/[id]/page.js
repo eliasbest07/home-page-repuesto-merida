@@ -7,7 +7,6 @@ import { doc, getDoc } from 'firebase/firestore'
 import { get, ref } from 'firebase/database'
 import { firestore, rtdb } from '@/lib/firebase'
 import { getRepuestoGuia } from '@/lib/repuestoGuia'
-import AdSenseLoader from '@/app/components/AdSenseLoader'
 
 const OFFICIAL_WHATSAPP = '584123375417'
 const DIRECTORY_KEY = 'repuestos-merida-directorio'
@@ -253,7 +252,6 @@ export default function RepuestoDetailPage({ params }) {
 
   return (
     <div className="min-h-screen bg-[#f4f6f8] text-gray-900">
-      {product.hasRelevantPublisherContent && <AdSenseLoader force />}
       <header className="border-b border-gray-800 bg-gray-950 text-white">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2.5">

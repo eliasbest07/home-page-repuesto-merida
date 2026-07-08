@@ -1,3 +1,9 @@
+export const metadata = {
+  title: 'Términos y Condiciones | Repuestos Mérida',
+  description: 'Condiciones de uso de Repuestos Mérida para usuarios, comercios, publicaciones, solicitudes y contacto dentro de la plataforma.',
+  alternates: { canonical: '/terminos-condiciones' },
+}
+
 export default function Terminios() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-between p-24">

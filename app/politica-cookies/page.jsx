@@ -3,6 +3,7 @@ import LegalPage from '@/app/components/LegalPage'
 export const metadata = {
   title: 'Política de Cookies | Repuestos Mérida',
   description: 'Información sobre las cookies utilizadas por Repuestos Mérida.',
+  alternates: { canonical: '/politica-cookies' },
 }
 
 export default function PoliticaCookies() {

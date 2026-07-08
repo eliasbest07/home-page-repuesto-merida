@@ -1,3 +1,9 @@
+export const metadata = {
+  title: 'Política de Privacidad | Repuestos Mérida',
+  description: 'Cómo Repuestos Mérida recopila, usa, protege y permite gestionar los datos personales de usuarios y comercios.',
+  alternates: { canonical: '/politica-privacidad' },
+}
+
 export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-between p-24">

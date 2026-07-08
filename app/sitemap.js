@@ -37,6 +37,12 @@ export default function sitemap() {
       priority: 0.8,
     },
     {
+      url: `${SITE_URL}/guia-repuesto`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.85,
+    },
+    {
       url: `${SITE_URL}/soporte`,
       lastModified: now,
       changeFrequency: 'monthly',
