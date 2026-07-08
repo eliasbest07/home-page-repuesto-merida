@@ -36,6 +36,12 @@ export default function sitemap() {
       changeFrequency: 'weekly',
       priority: 0.8,
     },
+    {
+      url: `${SITE_URL}/soporte`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
     ...articulos,
     {
       url: `${SITE_URL}/politica-privacidad`,
