@@ -353,6 +353,7 @@ export default function ComercioAutorizacionPage() {
   const [homeAnalytics, setHomeAnalytics] = useState([])
   const [homeAnalyticsLoading, setHomeAnalyticsLoading] = useState(false)
   const pendingCommerceSelectionRef = useRef(null)
+  const lastSelectedDayRef = useRef(selectedDay)
 
   useEffect(() => {
     let cancelled = false
@@ -591,9 +592,17 @@ export default function ComercioAutorizacionPage() {
   }, [form.tipo_vehiculo])
 
   useEffect(() => {
+    const dayChanged = lastSelectedDayRef.current !== selectedDay
+    lastSelectedDayRef.current = selectedDay
     const commerceList = dayCommerceList(selectedSavedDay, selectedDay)
     const requestedCommerce = pendingCommerceSelectionRef.current
     const requestedForSelectedDay = requestedCommerce?.dia === selectedDay
+    // Si la lista del dia se refresca (p. ej. tras guardar) y el comercio
+    // seleccionado sigue existiendo, se mantiene la seleccion y el formulario.
+    if (!dayChanged && !requestedForSelectedDay && selectedCommerceId
+      && commerceList.some((commerce) => commerce.comercio_id === selectedCommerceId)) {
+      return
+    }
     const next = requestedForSelectedDay ? requestedCommerce : (commerceList[0] || { ...EMPTY_DAY })
     if (requestedForSelectedDay) pendingCommerceSelectionRef.current = null
     setForm(next)
@@ -604,6 +613,7 @@ export default function ComercioAutorizacionPage() {
     setError('')
     setMessage('')
     setActivePanel('comercios')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay, selectedSavedDay])
 
   useEffect(() => {
