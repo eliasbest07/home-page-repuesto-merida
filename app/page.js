@@ -315,6 +315,7 @@ function normalizeHomeProduct(item, id) {
     whatsapp: item.whatsapp || WA_NUMBER,
     descripcion: item.descripcion || '',
     userID: item.userID || '',
+    comercio: item.comercio || '',
   }
 }
 
@@ -386,8 +387,17 @@ function isCoordinateText(value) {
     && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
 }
 
-function sellerDisplayName(user = {}) {
-  return user.nombre || user.google_nombre || 'Comercio afiliado'
+// El nombre visible es el del comercio: primero el guardado en el catálogo,
+// luego el del perfil del dueño; el nombre personal queda como último recurso.
+function sellerDisplayName(user = {}, producto = {}) {
+  return (
+    producto.comercio
+    || user.nombre_comercio
+    || user.comercio_autorizado?.nombre_comercio
+    || user.nombre
+    || user.google_nombre
+    || 'Comercio afiliado'
+  )
 }
 
 function sellerDisplayLocation(user = {}) {
@@ -903,7 +913,7 @@ export default function Home() {
       imagen: detalleRepuesto.producto.imagen || '',
       nota: detalleNota.trim(),
       preguntas: detallePreguntas.trim(),
-      comercio: sellerDisplayName(detalleRepuesto.user || {}),
+      comercio: sellerDisplayName(detalleRepuesto.user || {}, detalleRepuesto.producto),
       ubicacion: sellerDisplayLocation(detalleRepuesto.user || {}),
       savedAt: Date.now(),
     }
@@ -2489,7 +2499,7 @@ export default function Home() {
 
               <div className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-700">
                 <p className="font-semibold text-gray-900">
-                  {sellerDisplayName(rutaTienda.user || {})}
+                  {sellerDisplayName(rutaTienda.user || {}, rutaTienda.producto)}
                 </p>
                 {rutaTienda.user?.tipovender && (
                   <p className="mt-1 text-gray-500">Tipo: {rutaTienda.user.tipovender}</p>
@@ -2630,7 +2640,7 @@ export default function Home() {
                       <div className="min-w-0 flex-1">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Comercio</p>
                         <p className="mt-0.5 text-base font-bold leading-snug">
-                          {sellerDisplayName(detalleRepuesto.user || {})}
+                          {sellerDisplayName(detalleRepuesto.user || {}, detalleRepuesto.producto)}
                         </p>
                         {detalleRepuesto.user?.tipovender && (
                           <p className="mt-0.5 text-xs text-gray-400">{detalleRepuesto.user.tipovender}</p>
@@ -2676,7 +2686,7 @@ export default function Home() {
                       </div>
                       <iframe
                         src={detalleRepuesto.mapEmbedUrl}
-                        title={`Ubicación de ${sellerDisplayName(detalleRepuesto.user || {})}`}
+                        title={`Ubicación de ${sellerDisplayName(detalleRepuesto.user || {}, detalleRepuesto.producto)}`}
                         className="h-64 w-full border-0"
                         loading="lazy"
                         referrerPolicy="no-referrer-when-downgrade"

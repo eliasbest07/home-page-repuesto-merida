@@ -393,9 +393,19 @@ export async function PATCH(request) {
     const repuestoFotos = Array.isArray(item.fotos) ? item.fotos.filter(Boolean) : []
     const fallbackImage = commerce.comercio_foto_url || profile.comercio_foto_url || ''
     const img = repuestoFotos.length ? repuestoFotos : (fallbackImage ? [fallbackImage] : [])
+    // El catálogo pertenece al comercio dueño del repuesto, no a quien aprueba:
+    // el nombre nunca cae al nombre personal y el userID apunta al nodo del dueño.
+    const commerceName = cleanText(
+      commerce.nombre_comercio || item.comercio_nombre || profile.nombre_comercio || '',
+      120,
+    )
+    const commerceOwnerId = owner?.uid || cleanPhone(ownerPhone)
 
     await Promise.all([
       catalogRef.set({
+        // La app ordena el catálogo por idPublicacion: sin este campo el
+        // documento queda excluido de los resultados.
+        idPublicacion: catalogRef.id,
         marca: item.nombre || 'Repuesto',
         categoria: effectiveVenta || 'Repuestos',
         modelos: [item.marca, item.modelo, item.anio].filter(Boolean).join(' '),
@@ -406,10 +416,11 @@ export async function PATCH(request) {
         relevancia: '0',
         publicado: 'publicado',
         estado: 'disponible',
-        whatsapp: commerce.whatsapp || session.telefono,
-        userID: session.tel || session.telefono,
-        propietario_id: session.tel || session.telefono,
-        comercio: commerce.nombre_comercio || profile.nombre || '',
+        whatsapp: commerce.whatsapp || item.comercio_whatsapp || ownerPhone,
+        userID: commerceOwnerId,
+        propietario_id: commerceOwnerId,
+        aprobado_por: session.tel || session.telefono,
+        comercio: commerceName,
         comercio_direccion: commerce.comercio_direccion || '',
         comercio_lat: commerce.comercio_lat ?? null,
         comercio_lng: commerce.comercio_lng ?? null,
