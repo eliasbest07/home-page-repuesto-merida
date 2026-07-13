@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { verifyRifaToken } from '@/lib/rifaJwt'
+import { canManageCommerces } from '@/lib/comercioAuthorization'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -65,10 +66,6 @@ function priceLabel(value) {
   const s = String(value).trim()
   if (!s) return 'Consultar'
   return /^\d+(\.\d+)?$/.test(s) ? `$${s}` : s
-}
-
-function isAuthorized(value) {
-  return value === true || value === 'true' || value === 1 || value === '1'
 }
 
 // Slug ASCII para deduplicar modelos: "Toyota" -> "toyota".
@@ -138,14 +135,6 @@ async function findRealtimeUserByPhone(rtdb, telefono) {
   return null
 }
 
-async function currentAuthorization(rtdb, session) {
-  const [rifasSnap, official] = await Promise.all([
-    rtdb.ref(`rifas_usuarios/${cleanPhone(session.tel || session.telefono)}/autorizado`).get(),
-    findRealtimeUserByPhone(rtdb, session.telefono),
-  ])
-  return isAuthorized(rifasSnap.val()) || isAuthorized(official?.user?.autorizado)
-}
-
 function commerceFromProfile(profile = {}, commerceId = '', dia = '') {
   const dayValue = dia ? profile.comercios_por_dia?.[dia] : null
   const dayCommerce = dayValue?.comercios && commerceId
@@ -167,7 +156,7 @@ export async function GET(request) {
 
     if (scope === 'all') {
       const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
-      const authorized = await currentAuthorization(getAdminRealtimeDb(), session)
+      const authorized = await canManageCommerces(getAdminRealtimeDb(), session)
       if (!authorized) return NextResponse.json({ error: 'No puedes ver repuestos de otros comercios.' }, { status: 403 })
 
       let snap
@@ -216,7 +205,7 @@ export async function POST(request) {
     const body = await request.json().catch(() => ({}))
     const { getAdminDb, getAdminRealtimeDb, adminFieldValue } = await import('@/lib/firebaseAdmin')
     const rtdb = getAdminRealtimeDb()
-    const authorized = await currentAuthorization(rtdb, session)
+    const authorized = await canManageCommerces(rtdb, session)
     const comercioId = cleanText(body.comercio_id, 80)
     const dia = cleanText(body.dia, 20).toLowerCase()
     const venta = cleanText(body.venta, 80)
@@ -331,7 +320,7 @@ export async function PATCH(request) {
     if (!snap.exists) return NextResponse.json({ error: 'No existe el repuesto.' }, { status: 404 })
 
     const item = snap.data() || {}
-    const authorized = await currentAuthorization(rtdb, session)
+    const authorized = await canManageCommerces(rtdb, session)
     const allowedPhones = new Set([canonPhone(session.telefono), canonPhone(session.tel)].filter(Boolean))
     if (!authorized && item.telefono && !allowedPhones.has(canonPhone(item.telefono))) {
       return NextResponse.json({ error: 'No puedes aprobar este repuesto.' }, { status: 403 })

@@ -3,7 +3,7 @@ import { rtdb } from '@/lib/firebase'
 import { ref, get } from 'firebase/database'
 import { phoneKey } from '@/lib/whatsappAuth'
 import { signRifaToken } from '@/lib/rifaJwt'
-import { resolverPerfil, canonPhone } from '@/lib/perfilUsuario'
+import { resolverPerfil, construirPerfil, canonPhone } from '@/lib/perfilUsuario'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -28,22 +28,37 @@ async function verifyGoogle(idToken) {
   }
 }
 
-// Busca el WhatsApp ya vinculado a esta cuenta de Google.
+function storedPhone(user = {}, fallbackKey = '') {
+  const candidates = [user.whatsapp, user.telefono, user.phone, user.numero, user.id]
+  if (/^[+\d\s().-]+$/.test(String(fallbackKey || ''))) candidates.push(fallbackKey)
+
+  for (const value of candidates) {
+    const clean = phoneKey(value)
+    if (clean.length >= 10 && canonPhone(value).length >= 10) return String(value)
+  }
+  return ''
+}
+
+// Busca el usuario de Realtime Database vinculado a esta cuenta de Google.
 // 1) /users/{uid}: usuarios del app Android (la clave del nodo es el uid de Google).
 // 2) /users/*: nodo con google_uid/google_email igual (lo escribe el flujo magic).
 // 3) rifas_usuarios: fallback legacy de vinculaciones antiguas.
-// Devuelve { telefono, key } o null.
-async function findLinkedPhone({ uid, email }) {
+// Devuelve tambien el nodo exacto para no mezclar perfiles que comparten telefono.
+async function findLinkedUser({ uid, email }) {
   const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
   const adminRtdb = getAdminRealtimeDb()
+  let directUserExists = false
 
   // 1) Registro oficial del app Android, indexado por uid de Google.
   if (uid) {
     const snap = await adminRtdb.ref(`users/${uid}`).get()
     if (snap.exists()) {
+      directUserExists = true
       const u = snap.val() || {}
-      const wa = u.whatsapp || ''
-      if (canonPhone(wa)) return { telefono: wa, key: phoneKey(wa) }
+      const telefono = storedPhone(u)
+      if (telefono) {
+        return { telefono, key: phoneKey(telefono), realtimeUid: uid, user: u, source: 'users' }
+      }
     }
   }
 
@@ -56,8 +71,10 @@ async function findLinkedPhone({ uid, email }) {
       const matchUid = uid && v.google_uid === uid
       const matchEmail = email && String(v.google_email || '').toLowerCase() === email
       if (matchUid || matchEmail) {
-        const wa = v.whatsapp || k
-        return { telefono: wa, key: phoneKey(wa) }
+        const telefono = storedPhone(v, k)
+        if (telefono) {
+          return { telefono, key: phoneKey(telefono), realtimeUid: k, user: v, source: 'users' }
+        }
       }
     }
   }
@@ -71,12 +88,35 @@ async function findLinkedPhone({ uid, email }) {
       const matchUid = uid && v.google_uid === uid
       const matchEmail = email && String(v.google_email || '').toLowerCase() === email
       if (matchUid || matchEmail) {
-        return { telefono: v.whatsapp || key, key }
+        const telefono = storedPhone(v, key)
+        if (telefono) return { telefono, key: phoneKey(telefono), user: v, source: 'rifas_usuarios' }
       }
     }
   }
 
-  return null
+  return directUserExists ? { missingPhone: true } : null
+}
+
+async function resolveLinkedProfile(linked, googleUid) {
+  if (linked.source !== 'users' || !linked.user) {
+    return resolverPerfil({ telefono: linked.telefono, key: linked.key })
+  }
+
+  const rifasSnap = await get(ref(rtdb, `rifas_usuarios/${linked.key}`))
+  const rifas = rifasSnap.exists() ? rifasSnap.val() : null
+  const { perfil, completo } = construirPerfil({
+    telefono: linked.telefono,
+    rifas,
+    oficial: { uid: linked.realtimeUid, ...linked.user },
+  })
+  const exactProfile = {
+    ...perfil,
+    uid: linked.realtimeUid,
+    google_uid: googleUid,
+  }
+  return completo
+    ? { perfil: exactProfile, prefill: null }
+    : { perfil: null, prefill: exactProfile }
 }
 
 export async function POST(request) {
@@ -87,23 +127,34 @@ export async function POST(request) {
       return NextResponse.json({ error: 'No se pudo validar la cuenta de Google.' }, { status: 401 })
     }
 
-    const linked = await findLinkedPhone(google)
+    const linked = await findLinkedUser(google)
     if (!linked?.key) {
-      // No tiene WhatsApp vinculado todavía: el cliente sigue con la verificación por WhatsApp.
-      return NextResponse.json({ ok: true, linked: false })
+      return NextResponse.json({
+        ok: true,
+        linked: false,
+        reason: linked?.missingPhone ? 'missing_phone' : 'not_found',
+      })
     }
 
     const { telefono, key } = linked
     const [{ perfil, prefill }, vendSnap] = await Promise.all([
-      resolverPerfil({ telefono, key }),
+      resolveLinkedProfile(linked, google.uid),
       get(ref(rtdb, `vendedor_index/${key}`)),
     ])
     const rifas_vendedor = vendSnap.exists() ? Object.keys(vendSnap.val() || {}) : []
-    const { token, expiresAt } = signRifaToken({ tel: key, telefono })
+    const { token, expiresAt } = signRifaToken({
+      tel: key,
+      telefono,
+      uid: google.uid,
+      ...(linked.realtimeUid ? { realtime_uid: linked.realtimeUid } : {}),
+      auth_provider: 'google',
+    })
 
     return NextResponse.json({
       ok: true,
       linked: true,
+      google_uid: google.uid,
+      realtime_uid: linked.realtimeUid || '',
       telefono,
       perfil,
       prefill,

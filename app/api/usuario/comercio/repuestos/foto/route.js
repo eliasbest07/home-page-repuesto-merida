@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { verifyRifaToken } from '@/lib/rifaJwt'
+import { canManageCommerces } from '@/lib/comercioAuthorization'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -25,10 +26,6 @@ function canonPhone(raw) {
   return d.replace(/^0+/, '')
 }
 
-function isAuthorized(value) {
-  return value === true || value === 'true' || value === 1 || value === '1'
-}
-
 function bearerToken(request) {
   const header = request.headers.get('authorization') || ''
   const match = header.match(/^Bearer\s+(.+)$/i)
@@ -40,26 +37,6 @@ function authPayload(request) {
   const telefono = cleanPhone(payload?.telefono || payload?.tel)
   if (!payload || telefono.length < 10) return null
   return { ...payload, telefono }
-}
-
-async function findRealtimeUserByPhone(rtdb, telefono) {
-  const target = canonPhone(telefono)
-  const snap = await rtdb.ref('users').get()
-  if (!snap.exists()) return null
-
-  for (const user of Object.values(snap.val() || {})) {
-    if (user && typeof user === 'object' && canonPhone(user.whatsapp || user.telefono) === target) return user
-  }
-
-  return null
-}
-
-async function currentAuthorization(rtdb, session) {
-  const [rifasSnap, official] = await Promise.all([
-    rtdb.ref(`rifas_usuarios/${cleanPhone(session.tel || session.telefono)}/autorizado`).get(),
-    findRealtimeUserByPhone(rtdb, session.telefono),
-  ])
-  return isAuthorized(rifasSnap.val()) || isAuthorized(official?.autorizado)
 }
 
 // Sube una foto al repuesto. La imagen llega ya comprimida desde el cliente
@@ -91,7 +68,7 @@ export async function POST(request) {
     if (!snap.exists) return NextResponse.json({ error: 'Repuesto no encontrado.' }, { status: 404 })
 
     const data = snap.data() || {}
-    const authorized = await currentAuthorization(getAdminRealtimeDb(), session)
+    const authorized = await canManageCommerces(getAdminRealtimeDb(), session)
     const allowed = new Set([canonPhone(session.telefono), canonPhone(session.tel)].filter(Boolean))
     if (!authorized && data.telefono && !allowed.has(canonPhone(data.telefono))) {
       return NextResponse.json({ error: 'No puedes editar este repuesto.' }, { status: 403 })
@@ -153,7 +130,7 @@ export async function DELETE(request) {
     if (!snap.exists) return NextResponse.json({ error: 'Repuesto no encontrado.' }, { status: 404 })
 
     const data = snap.data() || {}
-    const authorized = await currentAuthorization(getAdminRealtimeDb(), session)
+    const authorized = await canManageCommerces(getAdminRealtimeDb(), session)
     const allowed = new Set([canonPhone(session.telefono), canonPhone(session.tel)].filter(Boolean))
     if (!authorized && data.telefono && !allowed.has(canonPhone(data.telefono))) {
       return NextResponse.json({ error: 'No puedes editar este repuesto.' }, { status: 403 })

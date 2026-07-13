@@ -325,6 +325,7 @@ export default function ComercioAutorizacionPage() {
   const [showNamelessList, setShowNamelessList] = useState(true)
   const [showSidebarLists, setShowSidebarLists] = useState(true)
   const [showAllRepuestos, setShowAllRepuestos] = useState(false)
+  const [showHomeAnalytics, setShowHomeAnalytics] = useState(false)
   const [showSalesInventory, setShowSalesInventory] = useState(true)
   const [allRepuestosFilter, setAllRepuestosFilter] = useState('todos')
   const [activePanel, setActivePanel] = useState('comercios')
@@ -454,11 +455,6 @@ export default function ComercioAutorizacionPage() {
   )
   const authorized = isAuthorized(profile.autorizado)
 
-  useEffect(() => {
-    if (!session?.token || !authorized) return
-    loadHomeAnalytics()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.token, authorized])
   const selectedSavedDay = globalComerciosPorDia?.[selectedDay] || profile.comercios_por_dia?.[selectedDay] || null
   const dayCommerces = useMemo(
     () => dayCommerceList(selectedSavedDay, selectedDay),
@@ -672,6 +668,15 @@ export default function ComercioAutorizacionPage() {
     }
   }
 
+  function toggleHomeAnalytics() {
+    if (showHomeAnalytics) {
+      setShowHomeAnalytics(false)
+      return
+    }
+    setShowHomeAnalytics(true)
+    if (homeAnalytics.length === 0 && !homeAnalyticsLoading) loadHomeAnalytics()
+  }
+
   function toggleBrand(name, vehicleType = form.tipo_vehiculo) {
     const key = vehicleType === 'moto' ? 'marcas_moto' : 'marcas_carro'
     setForm((current) => {
@@ -872,6 +877,7 @@ export default function ComercioAutorizacionPage() {
       const data = new FormData()
       data.append('dia', selectedDay)
       data.append('comercio_id', selectedCommerceId || form.comercio_id || '')
+      data.append('realtime_user_uid', form.realtime_user_uid || '')
       data.append('nombre_comercio', form.nombre_comercio)
       data.append('whatsapp', form.whatsapp)
       data.append('direccion', form.comercio_direccion)
@@ -1319,6 +1325,9 @@ export default function ComercioAutorizacionPage() {
               <SoftButton active={showAllRepuestos} onClick={() => setShowAllRepuestos((prev) => !prev)}>
                 {showAllRepuestos ? 'Ocultar repuestos' : 'Repuestos (todos)'}
               </SoftButton>
+              <SoftButton active={showHomeAnalytics} onClick={toggleHomeAnalytics}>
+                {showHomeAnalytics ? 'Ocultar estadísticas' : 'Ver estadísticas'}
+              </SoftButton>
             </div>
             {showSidebarLists && (
             <div className="mt-4 border-t border-slate-200 pt-4">
@@ -1395,6 +1404,7 @@ export default function ComercioAutorizacionPage() {
         </aside>
 
         <div className="min-w-0 space-y-5">
+          {showHomeAnalytics && (
           <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -1433,6 +1443,7 @@ export default function ComercioAutorizacionPage() {
               </div>
             )}
           </section>
+          )}
 
           {error && <p className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
           {message && <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{message}</p>}

@@ -40,12 +40,6 @@ function loginMessage(redirect) {
   return `Hola Oso, quiero iniciar sesión en Repuestos Mérida desde ${origin}. Mándame el link, por favor.`
 }
 
-function googleLoginMessage(redirect, user) {
-  const origin = loginOriginFromRedirect(redirect)
-  const name = user?.displayName || user?.email || 'mi cuenta de Google'
-  return `Hola Oso, inicié con Google (${name}) en Repuestos Mérida desde ${origin}. Verifica mi WhatsApp y mándame el link, por favor.`
-}
-
 export default function LoginPage() {
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-500">Cargando…</div>}>
@@ -92,44 +86,34 @@ function LoginInner() {
       const user = credential.user
       const idToken = await user.getIdToken()
 
-      // Si esta cuenta de Google ya tiene un WhatsApp vinculado, entra directo
-      // sin volver a pedir verificación por WhatsApp.
-      try {
-        const res = await fetch('/api/auth/google', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken }),
-        })
-        const data = await res.json().catch(() => ({}))
-        if (res.ok && data.ok && data.linked && data.token) {
-          saveSession({
-            telefono: data.telefono,
-            perfil: data.perfil,
-            prefill: data.prefill || null,
-            rifas_vendedor: data.rifas_vendedor || [],
-            token: data.token,
-            expiresAt: data.expiresAt,
-          })
-          if (!data.perfil) router.replace(`/registro?redirect=${encodeURIComponent(redirect)}`)
-          else router.replace(redirect)
-          return
-        }
-      } catch {
-        // Si falla el atajo, seguimos con la verificación por WhatsApp.
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'No se pudo validar la cuenta de Google.')
+      }
+      if (!data.linked || !data.token) {
+        const message = data.reason === 'missing_phone'
+          ? 'Tu usuario existe en Firebase, pero no tiene un número guardado en su perfil.'
+          : 'Esta cuenta de Google no está registrada en Repuestos Mérida.'
+        throw new Error(message)
       }
 
-      try {
-        localStorage.setItem('login_redirect', redirect)
-        localStorage.setItem('login_google_pending', JSON.stringify({
-          uid: user.uid,
-          email: user.email || '',
-          displayName: user.displayName || '',
-          photoURL: user.photoURL || '',
-          idToken,
-          at: Date.now(),
-        }))
-      } catch {}
-      window.location.href = waOficialUrl(googleLoginMessage(redirect, user))
+      saveSession({
+        telefono: data.telefono,
+        google_uid: data.google_uid || user.uid,
+        realtime_uid: data.realtime_uid || user.uid,
+        perfil: data.perfil,
+        prefill: data.prefill || null,
+        rifas_vendedor: data.rifas_vendedor || [],
+        token: data.token,
+        expiresAt: data.expiresAt,
+      })
+      if (!data.perfil) router.replace(`/registro?redirect=${encodeURIComponent(redirect)}`)
+      else router.replace(redirect)
     } catch (error) {
       setGoogleError(error?.message || 'No se pudo iniciar con Google.')
       setGoogleLoading(false)
@@ -152,13 +136,13 @@ function LoginInner() {
           <div className="flex flex-col items-center text-center mb-6">
             <Image src="/iconorm.png" alt="Repuestos Mérida" width={80} height={80} className="rounded-2xl shadow-md mb-3" />
             <h1 className="text-2xl sm:text-3xl font-bold font-brand text-gray-900">Repuestos Mérida</h1>
-            <p className="text-sm text-gray-500 mt-1">Inicia sesión con tu WhatsApp.</p>
+            <p className="text-sm text-gray-500 mt-1">Inicia sesión con Google o WhatsApp.</p>
           </div>
 
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              Pulsa el botón: se abrirá WhatsApp con un mensaje listo. Envíalo y el
-              Oso te responderá con un enlace. Ábrelo y entrarás automáticamente.
+              Con Google entrarás directamente si tu cuenta ya existe en Repuestos Mérida.
+              WhatsApp queda disponible como método alternativo.
             </p>
             <p className="rounded-xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-semibold text-yellow-800">
               Origen: {origin}
@@ -190,7 +174,7 @@ function LoginInner() {
               Iniciar sesión por WhatsApp
             </a>
             <p className="text-xs text-gray-500 text-center">
-              Con Google también se abrirá WhatsApp para verificar tu número con el bot oficial (+{WA_OFICIAL}).
+              Iniciar con Google no abrirá WhatsApp ni pedirá una segunda verificación.
             </p>
           </div>
         </div>

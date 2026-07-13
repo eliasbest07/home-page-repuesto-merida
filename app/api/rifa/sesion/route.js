@@ -2,7 +2,34 @@ import { NextResponse } from 'next/server'
 import { rtdb } from '@/lib/firebase'
 import { ref, get } from 'firebase/database'
 import { verifyRifaToken, signRifaToken, shouldRefreshToken } from '@/lib/rifaJwt'
-import { resolverPerfil } from '@/lib/perfilUsuario'
+import { resolverPerfil, construirPerfil } from '@/lib/perfilUsuario'
+
+async function resolveSessionProfile(payload, telefono, tel) {
+  if (payload.auth_provider !== 'google' || !payload.uid) {
+    return resolverPerfil({ telefono, key: tel })
+  }
+
+  const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
+  const realtimeUid = payload.realtime_uid || payload.uid
+  const userSnap = await getAdminRealtimeDb().ref(`users/${realtimeUid}`).get()
+  if (!userSnap.exists()) return resolverPerfil({ telefono, key: tel })
+
+  const rifasSnap = await get(ref(rtdb, `rifas_usuarios/${tel}`))
+  const rifas = rifasSnap.exists() ? rifasSnap.val() : null
+  const { perfil, completo } = construirPerfil({
+    telefono,
+    rifas,
+    oficial: { uid: realtimeUid, ...(userSnap.val() || {}) },
+  })
+  const exactProfile = {
+    ...perfil,
+    uid: realtimeUid,
+    google_uid: payload.uid,
+  }
+  return completo
+    ? { perfil: exactProfile, prefill: null }
+    : { perfil: null, prefill: exactProfile }
+}
 
 export async function POST(request) {
   try {
@@ -15,7 +42,7 @@ export async function POST(request) {
     const tel = payload.tel
     const telefono = payload.telefono || tel
     const [{ perfil, prefill }, vendSnap] = await Promise.all([
-      resolverPerfil({ telefono, key: tel }),
+      resolveSessionProfile(payload, telefono, tel),
       get(ref(rtdb, `vendedor_index/${tel}`)),
     ])
     const rifas_vendedor = vendSnap.exists() ? Object.keys(vendSnap.val() || {}) : []
@@ -23,7 +50,13 @@ export async function POST(request) {
     let outToken = token
     let expiresAt = payload.exp * 1000
     if (shouldRefreshToken(payload)) {
-      const signed = signRifaToken({ tel, telefono })
+      const signed = signRifaToken({
+        tel,
+        telefono,
+        ...(payload.uid ? { uid: payload.uid } : {}),
+        ...(payload.realtime_uid ? { realtime_uid: payload.realtime_uid } : {}),
+        ...(payload.auth_provider ? { auth_provider: payload.auth_provider } : {}),
+      })
       outToken = signed.token
       expiresAt = signed.expiresAt
     }
@@ -32,6 +65,8 @@ export async function POST(request) {
       ok: true,
       telefono: payload.telefono || null,
       tel,
+      google_uid: payload.uid || '',
+      realtime_uid: payload.realtime_uid || payload.uid || '',
       perfil,
       prefill,
       rifas_vendedor,
