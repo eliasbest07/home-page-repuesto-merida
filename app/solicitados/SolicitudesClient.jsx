@@ -19,6 +19,7 @@ import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage
 import { firestore, storage } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
 import { formatFileSize, MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
+import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
 import AdSenseBlock from '@/app/components/AdSenseBlock'
 
 const COMMENT_COLLECTION = 'solicitudes_comentarios'
@@ -27,20 +28,6 @@ const REQUEST_COLLECTION = 'solicitudes_repuestos'
 const LOGIN_URL = '/login?redirect=%2Fsolicitados'
 const MAX_COMMENT_IMAGES = 6
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
-
-const BRAND_ICONS = {
-  chevrolet: '/mobile-catalog/brands/chevrolet.png',
-  daihatsu: '/mobile-catalog/brands/Daihatsu.png',
-  dodge: '/catalog-assets/car-brands/dodge.png',
-  ford: '/mobile-catalog/brands/ford.png',
-  hyundai: '/mobile-catalog/brands/hyundai.png',
-  mazda: '/mobile-catalog/brands/mazda.png',
-  mitsubishi: '/mobile-catalog/brands/mitsubishi.png',
-  renault: '/mobile-catalog/brands/renault.png',
-  suzuki: '/mobile-catalog/brands/suzuki.png',
-  toyota: '/mobile-catalog/brands/toyota.png',
-  volkswagen: '/mobile-catalog/brands/volkswagen.png',
-}
 
 const STATUS = {
   solicitado: {
@@ -61,6 +48,24 @@ function normalize(value = '') {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
+}
+
+const BRAND_ICONS = Object.fromEntries(
+  [...CAR_BRANDS, ...MOTO_BRANDS].map((brand) => [normalize(brand.name), brand.icon])
+)
+
+function handleHorizontalWheel(event) {
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+
+  const rail = event.currentTarget
+  const maxScrollLeft = rail.scrollWidth - rail.clientWidth
+  if (maxScrollLeft <= 0) return
+
+  const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, rail.scrollLeft + event.deltaY))
+  if (nextScrollLeft === rail.scrollLeft) return
+
+  event.preventDefault()
+  rail.scrollLeft = nextScrollLeft
 }
 
 function hasVenezuelanPhoneNumber(value = '') {
@@ -1648,7 +1653,12 @@ export default function SolicitudesClient() {
               )}
             </div>
 
-            <div className="scrollbar-none flex gap-2 overflow-x-auto pb-1" role="list" aria-label="Marcas de vehículos">
+            <div
+              className="catalog-scrollbar flex gap-2 overflow-x-auto overscroll-x-contain pb-3"
+              role="list"
+              aria-label="Marcas de vehículos"
+              onWheel={handleHorizontalWheel}
+            >
               <button
                 type="button"
                 onClick={() => setBrandFilter('todas')}
