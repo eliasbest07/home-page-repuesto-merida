@@ -24,6 +24,11 @@ function internationalPhone(raw) {
   return canon ? `+58${canon}` : ''
 }
 
+function localPhone(raw) {
+  const canon = canonPhone(raw)
+  return canon ? `0${canon}` : ''
+}
+
 function phoneVariants(raw) {
   const clean = cleanPhone(raw)
   const canon = canonPhone(raw)
@@ -382,30 +387,35 @@ export async function PATCH(request) {
     const repuestoFotos = Array.isArray(item.fotos) ? item.fotos.filter(Boolean) : []
     const fallbackImage = commerce.comercio_foto_url || profile.comercio_foto_url || ''
     const img = repuestoFotos.length ? repuestoFotos : (fallbackImage ? [fallbackImage] : [])
-    // El catálogo pertenece al comercio dueño del repuesto, no a quien aprueba:
-    // el nombre nunca cae al nombre personal y el userID apunta al nodo del dueño.
+    // El catálogo pertenece al comercio elegido en el pendiente, no a quien
+    // aprueba; el userID sigue apuntando al nodo RTDB del dueño.
     const commerceName = cleanText(
-      commerce.nombre_comercio || item.comercio_nombre || profile.nombre_comercio || '',
+      item.comercio_nombre || profile.nombre || commerce.nombre_comercio || profile.nombre_comercio || '',
       120,
     )
     const commerceOwnerId = owner?.uid || cleanPhone(ownerPhone)
+    const catalogDescription = [item.nombre, item.nota]
+      .map((value) => cleanText(value, 500))
+      .filter(Boolean)
+      .join(' — ')
+      .slice(0, 500)
 
     await Promise.all([
       catalogRef.set({
         // La app ordena el catálogo por idPublicacion: sin este campo el
         // documento queda excluido de los resultados.
         idPublicacion: catalogRef.id,
-        marca: item.nombre || 'Repuesto',
+        marca: item.marca || 'Repuesto',
         categoria: effectiveVenta || 'Repuestos',
         modelos: [item.marca, item.modelo, item.anio].filter(Boolean).join(' '),
-        descripcion: item.nota || '',
+        descripcion: catalogDescription,
         vehiculo: item.tipo_vehiculo || 'carro',
         precio: priceLabel(item.precio),
         img,
         relevancia: '0',
         publicado: 'publicado',
         estado: 'disponible',
-        whatsapp: commerce.whatsapp || item.comercio_whatsapp || ownerPhone,
+        whatsapp: localPhone(commerce.whatsapp || item.comercio_whatsapp || ownerPhone),
         userID: commerceOwnerId,
         propietario_id: commerceOwnerId,
         aprobado_por: session.tel || session.telefono,

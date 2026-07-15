@@ -792,12 +792,16 @@ export default function Home() {
     const matchVehicle = !catalogVehicleType || (p.tipo_vehiculo || 'carro') === catalogVehicleType
     const matchBrand = matchesCatalogBrand(p, selectedBrand)
     const matchCat = catActiva === 'todos' || p.categoria === catActiva
-    const q = busqueda.toLowerCase()
-    const matchSearch = !q ||
-      p.nombre.toLowerCase().includes(q) ||
-      p.marca.toLowerCase().includes(q) ||
-      p.compat.toLowerCase().includes(q) ||
-      (p.descripcion || '').toLowerCase().includes(q)
+    const q = normalizeText(busqueda)
+    const sellerName = sellerDisplayName(usersById?.[p.userID] || {}, p)
+    const searchableText = normalizeText([
+      p.nombre,
+      p.marca,
+      p.compat,
+      p.descripcion,
+      sellerName,
+    ].filter(Boolean).join(' '))
+    const matchSearch = !q || searchableText.includes(q)
     return matchVehicle && matchBrand && matchCat && matchSearch
   })
 
@@ -1380,7 +1384,7 @@ export default function Home() {
               </div>
               <input
                 type="text"
-                placeholder="Selecciona la marca y busca un repuesto o crea una solicitud"
+                placeholder="Busca un repuesto o comercio, o crea una solicitud"
                 value={busqueda}
                 onFocus={() => setRequestFormOpen(true)}
                 onChange={(e) => { setBusqueda(e.target.value); setCatActiva('todos') }}
@@ -1766,7 +1770,7 @@ export default function Home() {
                 </div>
                 <input
                   type="text"
-                  placeholder="Buscar…"
+                  placeholder="Buscar repuesto o comercio…"
                   value={busqueda}
                   onChange={(e) => { setBusqueda(e.target.value); setCatActiva('todos') }}
                   className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm w-full focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
