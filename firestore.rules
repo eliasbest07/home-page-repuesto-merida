@@ -2,6 +2,31 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function authenticatedOwner(data) {
+      return request.auth != null
+             && data.schema_version == 2
+             && data.owner_uid == request.auth.uid;
+    }
+
+    function questionAuthor(data) {
+      return request.auth != null
+             && (data.autor_uid == request.auth.uid || data.uid == request.auth.uid);
+    }
+
+    function questionSeller(data) {
+      return request.auth != null
+             && (data.vendedor_id == request.auth.uid || data.vendedorId == request.auth.uid);
+    }
+
+    function catalogOwner(data) {
+      return request.auth != null
+             && (
+               data.owner_uid == request.auth.uid
+               || data.userID == request.auth.uid
+               || data.propietario_id == request.auth.uid
+             );
+    }
+
     // Anuncios: lectura pública para el feed
     // Escritura: cualquiera que envíe los campos requeridos (auth por OTP/WhatsApp en cliente)
     // Actualizar: solo si el telefono coincide
@@ -36,7 +61,18 @@ service cloud.firestore {
     // Catálogo público de repuestos para la home.
     match /merida/{id} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow create: if catalogOwner(request.resource.data);
+      allow update: if catalogOwner(resource.data)
+                    && catalogOwner(request.resource.data)
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly([
+                           'marca', 'categoria', 'modelos', 'descripcion',
+                           'vehiculo', 'precio', 'img', 'buscar', 'relevancia',
+                           'publicado', 'estado', 'whatsapp', 'comercio',
+                           'comercio_direccion', 'comercio_lat', 'comercio_lng',
+                           'actualizado_en'
+                         ]);
+      allow delete: if catalogOwner(resource.data);
     }
 
     // Comentarios públicos en la lista de repuestos solicitados.
@@ -172,27 +208,25 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Solicitudes creadas desde la portada.
+    // Solicitudes v2: la web y el bot escriben con Admin SDK; Flutter puede
+    // crear solo documentos cuyo owner_uid sea el Firebase Auth actual.
     match /solicitudes_repuestos/{id} {
       allow read: if true;
-      allow create: if request.resource.data.keys().hasOnly([
-                      'id',
-                      'contacto_id',
-                      'repuesto',
-                      'tipo_vehiculo',
-                      'marca',
-                      'modelo',
-                      'anio',
-                      'cantidad',
-                      'estado',
-                      'confianza',
-                      'falta_info',
-                      'destacada',
-                      'notas',
-                      'creado_en',
-                      'title',
-                      'numero'
+      allow create: if authenticatedOwner(request.resource.data)
+                    && request.resource.data.keys().hasAll([
+                      'schema_version', 'record_type', 'origen', 'operation_id',
+                      'owner_uid', 'owner_uids', 'uid', 'repuesto',
+                      'tipo_vehiculo', 'marca', 'modelo', 'anio', 'estado',
+                      'creado_en', 'actualizado_en'
                     ])
+                    && request.resource.data.record_type == 'solicitud_repuesto'
+                    && request.resource.data.origen == 'app_movil'
+                    && request.resource.data.operation_id is string
+                    && request.resource.data.operation_id.size() > 0
+                    && request.resource.data.operation_id.size() <= 180
+                    && request.resource.data.owner_uids is list
+                    && request.resource.data.owner_uids.size() <= 8
+                    && request.resource.data.uid == request.auth.uid
                     && request.resource.data.id is int
                     && request.resource.data.repuesto is string
                     && request.resource.data.repuesto.size() > 0
@@ -210,8 +244,47 @@ service cloud.firestore {
                     && request.resource.data.numero.size() <= 18
                     && request.resource.data.estado == 'solicitado'
                     && request.resource.data.destacada == false
-                    && request.resource.data.creado_en == request.time;
+                    && request.resource.data.creado_en == request.time
+                    && request.resource.data.actualizado_en == request.time;
       allow update, delete: if false;
+    }
+
+    // Contrato dual durante la transición: cada pregunta v2 lleva los nombres
+    // canónicos (producto_id/pregunta/vendedor_id) y los heredados que consume
+    // Flutter (idPublicacion/texto/vendedorId).
+    match /preguntas_repuestos/{id} {
+      allow read: if true;
+      allow create: if questionAuthor(request.resource.data)
+                    && request.resource.data.schema_version == 2
+                    && request.resource.data.record_type == 'pregunta_repuesto'
+                    && request.resource.data.origen == 'app_movil'
+                    && request.resource.data.producto_id is string
+                    && request.resource.data.producto_id.size() > 0
+                    && request.resource.data.producto_id.size() <= 128
+                    && request.resource.data.idPublicacion == request.resource.data.producto_id
+                    && request.resource.data.pregunta is string
+                    && request.resource.data.pregunta.size() <= 500
+                    && request.resource.data.texto == request.resource.data.pregunta
+                    && request.resource.data.vendedorId == request.resource.data.vendedor_id
+                    && request.resource.data.creado_en == request.time
+                    && request.resource.data.actualizado_en == request.time;
+      allow update: if (
+                      questionAuthor(resource.data)
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['texto', 'pregunta', 'editado_en', 'actualizado_en'])
+                      && request.resource.data.texto == request.resource.data.pregunta
+                      && request.resource.data.texto is string
+                      && request.resource.data.texto.size() > 0
+                      && request.resource.data.texto.size() <= 500
+                    ) || (
+                      questionSeller(resource.data)
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['respuesta', 'respondida', 'respuesta_en', 'actualizado_en'])
+                      && request.resource.data.respuesta is string
+                      && request.resource.data.respuesta.size() > 0
+                      && request.resource.data.respondida == true
+                    );
+      allow delete: if questionAuthor(resource.data);
     }
 
     // Enlaces mágicos de login: SOLO el bot (admin SDK) los crea/borra. La web

@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server'
 import { verifyRifaToken } from '@/lib/rifaJwt'
 import { canManageCommerces } from '@/lib/comercioAuthorization'
+import {
+  DATA_SCHEMA_VERSION,
+  identityIdForPhone,
+  resolveRealtimeIdentities,
+} from '@/lib/dataContractV2'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -159,6 +164,12 @@ function serializeRepuesto(doc) {
   return {
     id: doc.id,
     source,
+    schema_version: data.schema_version || 1,
+    operation_id: data.operation_id || '',
+    estado_aprobacion: data.estado_aprobacion || (data.aprobado ? 'aprobado' : data.archivado ? 'archivado' : 'pendiente'),
+    owner_uid: data.owner_uid || data.realtime_user_uid || '',
+    owner_uids: Array.isArray(data.owner_uids) ? data.owner_uids : [],
+    identity_id: data.identity_id || '',
     telefono: data.telefono || '',
     telefono_normalizado: data.telefono_normalizado || '',
     comercio_whatsapp: data.comercio_whatsapp || '',
@@ -194,12 +205,21 @@ function serializeAppPending(uid, pendingId, data = {}, user = {}, resolved = {}
   const commerce = Object.keys(linkedCommerce).length
     ? linkedCommerce
     : commerceFromProfile(commerceOwner, data.comercio_id || commerceOwner.comercio_autorizado?.comercio_id || '', dia)
-  const phone = commerce.whatsapp || commerceOwner.whatsapp || commerceOwner.telefono || commerceOwner.phone || ''
+  const phone = commerce.whatsapp || data.comercio_whatsapp || data.telefono
+    || commerceOwner.whatsapp || commerceOwner.telefono || commerceOwner.phone || ''
   const categoria = cleanText(data.categoria, 120)
 
   return {
     id: `app:${uid}:${pendingId}`,
     source: APP_PENDING_SOURCE,
+    schema_version: data.schema_version || 1,
+    operation_id: data.operation_id || `app:${uid}:${pendingId}`,
+    estado_aprobacion: data.estado_aprobacion || 'pendiente',
+    owner_uid: data.owner_uid || data.realtime_user_uid || resolved.uid || uid,
+    owner_uids: Array.isArray(data.owner_uids)
+      ? data.owner_uids
+      : Array.from(new Set([uid, data.realtime_user_uid, resolved.uid].filter(Boolean))),
+    identity_id: data.identity_id || identityIdForPhone(phone),
     app_uid: uid,
     app_pending_id: pendingId,
     app_association_status: resolved.linked ? 'vinculado' : 'sin_comercio',
@@ -208,7 +228,7 @@ function serializeAppPending(uid, pendingId, data = {}, user = {}, resolved = {}
     telefono: phone,
     telefono_normalizado: internationalPhone(phone),
     comercio_whatsapp: phone,
-    comercio_nombre: commerce.nombre_comercio || commerceOwner.nombre_comercio
+    comercio_nombre: commerce.nombre_comercio || data.comercio_nombre || commerceOwner.nombre_comercio
       || commerceOwner.nombre || commerceOwner.google_nombre || '',
     creado_por: uid,
     comercio_id: commerce.comercio_id || cleanText(data.comercio_id, 80),
@@ -350,10 +370,22 @@ function findCommerceByPhone(users = {}, rawPhone = '', preferredDay = '') {
 function resolveAppCommerce(users = {}, appUid = '', pending = {}) {
   const directUser = users[appUid] && typeof users[appUid] === 'object' ? users[appUid] : {}
   const requestedId = cleanText(pending.comercio_id, 80)
+  const hintedUid = realtimeKey(pending.realtime_user_uid, 128)
   const preferredDay = cleanText(
     pending.dia || directUser.comercio_dia_actual || directUser.comercio_autorizado?.dia,
     20,
   ).toLowerCase()
+
+  if (hintedUid && users[hintedUid] && typeof users[hintedUid] === 'object') {
+    const hintedUser = users[hintedUid]
+    const hintedById = requestedId
+      ? findCommerceById({ [hintedUid]: hintedUser }, requestedId, preferredDay)
+      : null
+    const hinted = hintedById || firstCommerceFromUser(hintedUid, hintedUser, preferredDay)
+    if (hinted) {
+      return { ...hinted, day: hinted.commerce.dia || preferredDay, linked: true, reason: 'realtime_user_uid' }
+    }
+  }
 
   if (requestedId) {
     const requested = findCommerceById(users, requestedId, preferredDay)
@@ -367,7 +399,8 @@ function resolveAppCommerce(users = {}, appUid = '', pending = {}) {
     return { ...direct, day: direct.commerce.dia || preferredDay, linked: true, reason: 'app_uid' }
   }
 
-  const phone = directUser.whatsapp || directUser.telefono || directUser.phone || ''
+  const phone = pending.comercio_whatsapp || pending.telefono
+    || directUser.whatsapp || directUser.telefono || directUser.phone || ''
   const byPhone = findCommerceByPhone(users, phone, preferredDay)
   if (byPhone) {
     return { ...byPhone, day: byPhone.commerce.dia || preferredDay, linked: true, reason: 'whatsapp' }
@@ -490,13 +523,23 @@ export async function POST(request) {
 
     const requestedTelefono = cleanPhone(body.telefono || body.whatsapp)
     const ownerPhone = authorized && requestedTelefono ? requestedTelefono : session.telefono
-    const owner = await findRealtimeUserByPhone(rtdb, ownerPhone)
+    const identities = await resolveRealtimeIdentities(rtdb, ownerPhone)
+    const owner = identities[0] ? { uid: identities[0].uid, user: identities[0].profile } : null
+    const ownerUids = identities.map((identity) => identity.uid)
     const ownerProfile = owner?.user || await commerceProfile(rtdb, { ...session, telefono: ownerPhone, tel: ownerPhone })
     const ownerCommerce = commerceFromProfile(ownerProfile, comercioId, dia)
     const db = getAdminDb()
 
     const repuestoRef = db.collection(REPUESTOS_COLLECTION).doc()
     const repuestoData = {
+      schema_version: DATA_SCHEMA_VERSION,
+      record_type: 'comercio_repuesto_pendiente',
+      origen: 'web',
+      operation_id: `web:${repuestoRef.id}`,
+      estado_aprobacion: 'pendiente',
+      owner_uid: owner?.uid || '',
+      owner_uids: ownerUids,
+      identity_id: identityIdForPhone(ownerPhone),
       telefono: ownerPhone,
       telefono_normalizado: internationalPhone(ownerPhone),
       comercio_id: comercioId,
@@ -517,6 +560,7 @@ export async function POST(request) {
       comercio_nombre: ownerCommerce?.nombre_comercio || ownerProfile?.nombre || '',
       comercio_whatsapp: ownerCommerce?.whatsapp || ownerProfile?.whatsapp || ownerPhone,
       creado_en: adminFieldValue.serverTimestamp(),
+      actualizado_en: adminFieldValue.serverTimestamp(),
     }
 
     // Modelo compartido para autocompletado: deduplicado por marca+modelo+anio.
@@ -559,6 +603,12 @@ export async function POST(request) {
         aprobado: false,
         archivado: false,
         catalogo_id: '',
+        schema_version: DATA_SCHEMA_VERSION,
+        operation_id: `web:${repuestoRef.id}`,
+        estado_aprobacion: 'pendiente',
+        owner_uid: owner?.uid || '',
+        owner_uids: ownerUids,
+        identity_id: identityIdForPhone(ownerPhone),
         creado_en: Date.now(),
       },
     })
@@ -641,6 +691,17 @@ export async function PATCH(request) {
 
       await Promise.all([
         catalogRef.set({
+          schema_version: DATA_SCHEMA_VERSION,
+          record_type: 'repuesto_catalogo',
+          origen: 'app_movil',
+          operation_id: pending.operation_id || `app:${appUid}:${appPendingId}`,
+          owner_uid: matchedCommerce?.uid || pending.realtime_user_uid || appUid,
+          owner_uids: Array.from(new Set([
+            appUid,
+            matchedCommerce?.uid,
+            pending.realtime_user_uid,
+          ].filter(Boolean))),
+          identity_id: pending.identity_id || identityIdForPhone(ownerPhone),
           idPublicacion: catalogRef.id,
           marca,
           categoria,
@@ -670,6 +731,8 @@ export async function PATCH(request) {
         }),
         pendingRef.update({
           publicado: 'publicado',
+          schema_version: DATA_SCHEMA_VERSION,
+          estado_aprobacion: 'aprobado',
           catalogo_id: catalogRef.id,
           aprobado_en: Date.now(),
           aprobado_por: session.tel || session.telefono,
@@ -694,13 +757,13 @@ export async function PATCH(request) {
     if (body.action === 'archive') {
       if (item.aprobado) return NextResponse.json({ error: 'Un repuesto publicado no se puede archivar.' }, { status: 400 })
       const now = adminFieldValue.serverTimestamp()
-      await ref.update({ archivado: true, archivado_en: now, actualizado_en: now })
+      await ref.update({ archivado: true, estado_aprobacion: 'archivado', archivado_en: now, actualizado_en: now })
       return NextResponse.json({ ok: true, archivado: true })
     }
     if (body.action === 'restore') {
       if (item.aprobado) return NextResponse.json({ error: 'Un repuesto publicado no puede volver a pendiente.' }, { status: 400 })
       const now = adminFieldValue.serverTimestamp()
-      await ref.update({ archivado: false, archivado_en: null, actualizado_en: now })
+      await ref.update({ archivado: false, estado_aprobacion: 'pendiente', archivado_en: null, actualizado_en: now })
       return NextResponse.json({ ok: true, archivado: false })
     }
     if (body.action === 'update') {
@@ -731,7 +794,12 @@ export async function PATCH(request) {
       })
     }
     if (item.catalogo_id) {
-      await ref.update({ aprobado: true, archivado: false, actualizado_en: adminFieldValue.serverTimestamp() })
+      await ref.update({
+        aprobado: true,
+        archivado: false,
+        estado_aprobacion: 'aprobado',
+        actualizado_en: adminFieldValue.serverTimestamp(),
+      })
       return NextResponse.json({ ok: true, catalogo_id: item.catalogo_id })
     }
 
@@ -766,6 +834,16 @@ export async function PATCH(request) {
 
     await Promise.all([
       catalogRef.set({
+        schema_version: DATA_SCHEMA_VERSION,
+        record_type: 'repuesto_catalogo',
+        origen: item.origen || item.fuente || 'web',
+        operation_id: item.operation_id || `comercio-repuesto:${id}`,
+        owner_uid: item.owner_uid || commerceOwnerId,
+        owner_uids: Array.from(new Set([
+          ...(Array.isArray(item.owner_uids) ? item.owner_uids : []),
+          commerceOwnerId,
+        ].filter(Boolean))),
+        identity_id: item.identity_id || identityIdForPhone(ownerPhone),
         // La app ordena el catálogo por idPublicacion: sin este campo el
         // documento queda excluido de los resultados.
         idPublicacion: catalogRef.id,
@@ -794,6 +872,7 @@ export async function PATCH(request) {
       ref.update({
         aprobado: true,
         archivado: false,
+        estado_aprobacion: 'aprobado',
         comercio_id: effectiveCommerceId || item.comercio_id || '',
         dia: effectiveDia || item.dia || '',
         venta: effectiveVenta || item.venta || '',
@@ -826,9 +905,18 @@ export async function DELETE(request) {
     if (!allowedPhones.has(repuestoPhone(snap.data() || {}))) {
       return NextResponse.json({ error: 'No puedes borrar este repuesto.' }, { status: 403 })
     }
-    await ref.delete()
+    // Borrado lógico: conserva trazabilidad y evita pérdida irreversible por
+    // errores de identidad o una acción accidental desde el panel.
+    const now = (await import('@/lib/firebaseAdmin')).adminFieldValue.serverTimestamp()
+    await ref.update({
+      archivado: true,
+      eliminado: true,
+      estado_aprobacion: 'eliminado',
+      eliminado_en: now,
+      actualizado_en: now,
+    })
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, deleted: 'soft' })
   } catch (error) {
     return NextResponse.json({ error: error?.message || 'No se pudo borrar el repuesto.' }, { status: 400 })
   }

@@ -10,7 +10,12 @@
 /coverage
 /scripts/*
 !/scripts/audit-firebase-commerce.mjs
+!/scripts/report-firebase-ecosystem.mjs
+!/scripts/migrate-firebase-identity-v2.mjs
+!/scripts/backup-firebase-ecosystem.mjs
+!/scripts/verify-firebase-backup.mjs
 /output/audits/
+/backups/
 # next.js
 /.next/
 /out/
@@ -45,3 +50,11 @@ anuncios.json
 
 # Documento interno de diseño (no publicar)
 docs/bestpoint-sistema.md
+/docs/
+
+!/docs/arquitectura-integral-repuestos-merida-para-ia.md
+!/docs/informe-mercado-sentimiento-necesidades-repuestos-merida.md
+!/docs/prompts-diagramas-y-dashboard-repuestos-merida.md
+!/docs/migracion-identidad-y-contrato-v2.md
+
+/scripts/

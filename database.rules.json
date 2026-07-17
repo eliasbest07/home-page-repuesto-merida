@@ -1,8 +1,28 @@
 {
   "rules": {
     "anuncios":        { ".read": true, ".write": true },
-    "users":           { ".read": true, ".write": true },
+    "users": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
     "verificarCedula": { ".read": true, ".write": true },
+
+    "identity_index": {
+      ".read": false,
+      ".write": false
+    },
+
+    "aprobarPublicacion": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$pendingId": {
+          ".validate": "!newData.exists() || (newData.child('schema_version').val() === 2 && newData.child('owner_uid').val() === auth.uid && newData.child('publicado').val() === 'espera' && newData.child('estado_aprobacion').val() === 'pendiente')"
+        }
+      }
+    },
 
     "bingoRooms":           { ".read": true, ".write": true },
     "bingoRoomCodes":       { ".read": true, ".write": true },

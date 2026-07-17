@@ -8,6 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "audit:firebase-commerce": "node --env-file-if-exists=.env.local scripts/audit-firebase-commerce.mjs",
+    "report:firebase-ecosystem": "node --env-file-if-exists=.env.local scripts/report-firebase-ecosystem.mjs",
+    "migrate:firebase-identity-v2": "node --env-file-if-exists=.env.local scripts/migrate-firebase-identity-v2.mjs",
+    "backup:firebase": "node --env-file-if-exists=.env.local scripts/backup-firebase-ecosystem.mjs",
+    "verify:firebase-backup": "node scripts/verify-firebase-backup.mjs",
     "seo:audit": "node scripts/technical-seo-audit.mjs"
   },
   "dependencies": {

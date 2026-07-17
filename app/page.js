@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
-import { collection, getDocs, addDoc, query, where, limit, serverTimestamp } from 'firebase/firestore'
+import { collection, getDocs, query, where, limit } from 'firebase/firestore'
 import { get, ref } from 'firebase/database'
 import { firestore, rtdb } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
@@ -934,15 +934,22 @@ export default function Home() {
   function registrarPreguntaEnFirestore() {
     if (!detalleRepuesto) return
     const pregunta = detallePreguntas.trim()
-    if (!pregunta) return
-    addDoc(collection(firestore, 'preguntas_repuestos'), {
-      producto_id: String(detalleRepuesto.producto.id),
-      producto_nombre: detalleRepuesto.producto.nombre || '',
-      vendedor_id: detalleRepuesto.producto.userID || '',
-      pregunta,
-      respuesta: '',
-      respondida: false,
-      creado_en: serverTimestamp(),
+    if (!pregunta || !requestSession?.token) return
+    const operationId = `web:${requestSession.telefono}:${detalleRepuesto.producto.id}:${Date.now()}`
+    fetch('/api/preguntas', {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${requestSession.token}`,
+      },
+      body: JSON.stringify({
+        producto_id: String(detalleRepuesto.producto.id),
+        producto_nombre: detalleRepuesto.producto.nombre || '',
+        vendedor_id: detalleRepuesto.producto.userID || '',
+        pregunta,
+        operation_id: operationId,
+      }),
     }).catch(() => { })
   }
 
@@ -976,25 +983,24 @@ export default function Home() {
     setRequestMessage('')
 
     try {
-      const requestId = Date.now()
-      await addDoc(collection(firestore, 'solicitudes_repuestos'), {
-        id: requestId,
-        contacto_id: numero,
-        repuesto,
-        tipo_vehiculo: requestForm.tipoVehiculo,
-        marca,
-        modelo,
-        anio,
-        cantidad: '',
-        estado: 'solicitado',
-        confianza: 1,
-        falta_info: '',
-        destacada: false,
-        notas: '',
-        creado_en: serverTimestamp(),
-        title: `+${numero}`,
-        numero,
+      const operationId = `web:${numero}:${Date.now()}`
+      const response = await fetch('/api/solicitudes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${requestSession.token}`,
+        },
+        body: JSON.stringify({
+          repuesto,
+          tipo_vehiculo: requestForm.tipoVehiculo,
+          marca,
+          modelo,
+          anio,
+          operation_id: operationId,
+        }),
       })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || 'No se pudo publicar la solicitud.')
 
       setRequestForm({
         tipoVehiculo: 'carro',
