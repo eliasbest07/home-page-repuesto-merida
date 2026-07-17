@@ -52,6 +52,48 @@ function canonPhone(raw) {
   return d.replace(/^0+/, '')
 }
 
+function repuestoPhone(item = {}) {
+  const candidates = [
+    item.comercio_whatsapp,
+    item.telefono,
+    item.telefono_normalizado,
+    item.creado_por,
+  ]
+  for (const candidate of candidates) {
+    const phone = canonPhone(candidate)
+    if (phone.length >= 10) return phone
+  }
+  return ''
+}
+
+function repuestoBelongsToCommerce(item, commerce = {}) {
+  const itemPhone = repuestoPhone(item)
+  const commercePhone = canonPhone(commerce.whatsapp || commerce.whatsapp_normalizado)
+
+  if (isAppPending(item)) {
+    if (item.dia && commerce.dia && item.dia !== commerce.dia) return false
+    if (item.comercio_id && commerce.comercio_id) return item.comercio_id === commerce.comercio_id
+
+    const itemUid = item.realtime_user_uid || item.app_uid
+    if (itemUid && commerce.realtime_user_uid) return itemUid === commerce.realtime_user_uid
+  }
+
+  // El WhatsApp es la fuente de enlace para los repuestos creados desde la
+  // app. Si ambos lados tienen uno válido, evita que un comercio_id viejo los
+  // asigne al comercio incorrecto.
+  if (itemPhone && commercePhone) return itemPhone === commercePhone
+  if (item.comercio_id && commerce.comercio_id) return item.comercio_id === commerce.comercio_id
+  return false
+}
+
+function isAppPending(item) {
+  return item?.source === 'app_realtime'
+}
+
+function isBotPending(item) {
+  return item?.source === 'bot_whatsapp'
+}
+
 function isAuthorized(value) {
   return value === true || value === 'true' || value === 1 || value === '1'
 }
@@ -193,7 +235,7 @@ function RepuestoFotos({ fotos = [], uploading = false, removingUrl = '', onPick
             )}
           </div>
         ))}
-        {fotos.length < 4 && (
+        {onPick && fotos.length < 4 && (
           <label
             className={`flex aspect-[4/3] w-[calc(50%-4px)] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2 text-center text-xs font-bold text-slate-500 hover:border-amber-400 ${uploading ? 'pointer-events-none opacity-60' : ''}`}
           >
@@ -469,15 +511,19 @@ export default function ComercioAutorizacionPage() {
 
     for (const item of repuestos) {
       if (item.aprobado || item.archivado) continue
-      const phone = canonPhone(item.telefono)
+      if (item.dia && item.dia !== selectedDay) continue
+      const phone = repuestoPhone(item)
       if (!phone || knownPhones.has(phone)) continue
       const id = `phone_${phone}`
       if (!byId.has(id)) {
         byId.set(id, mergeDayData({
           comercio_id: id,
           dia: selectedDay,
-          nombre_comercio: item.comercio_nombre || 'Comercio pendiente',
-          whatsapp: item.telefono,
+          nombre_comercio: item.app_association_status === 'sin_comercio'
+            ? `${item.comercio_nombre || 'Usuario de la app'} · sin comercio vinculado`
+            : item.comercio_nombre || 'Comercio pendiente',
+          whatsapp: item.comercio_whatsapp || item.telefono || item.creado_por,
+          realtime_user_uid: item.realtime_user_uid || item.app_uid || '',
           lista_ventas_repuestos: item.venta ? [item.venta] : ['Repuestos destacados'],
           tipo_vehiculo: item.tipo_vehiculo || 'carro',
         }))
@@ -512,26 +558,24 @@ export default function ComercioAutorizacionPage() {
   const commerceCedulaVerified = Boolean(commerceIdentity.cedula) || commerceIdentity.cedula_estado === 'aprobado'
   const commerceCedulaPending = commerceIdentity.cedula_estado === 'pendiente'
   const currentVenta = selectedVenta || form.lista_ventas_repuestos[0] || ''
-  const selectedFormPhone = canonPhone(form.whatsapp)
   const commerceRepuestos = repuestos.filter((item) => {
-    if (item.comercio_id) return selectedCommerceId && item.comercio_id === selectedCommerceId
-    if (selectedFormPhone && item.telefono) return canonPhone(item.telefono) === selectedFormPhone
+    if (repuestoBelongsToCommerce(item, form)) return true
+    if (repuestoPhone(item) || item.comercio_id) return false
     if (item.dia) return item.dia === selectedDay
     return false
   })
   const pendingApprovalCount = commerceRepuestos.filter((item) => !item.aprobado && !item.archivado).length
   const repuestosForCommerce = (commerce) => {
-    const commercePhone = canonPhone(commerce.whatsapp)
     return repuestos.filter((item) => {
-      if (item.comercio_id) return item.comercio_id === commerce.comercio_id
-      if (commercePhone && item.telefono) return canonPhone(item.telefono) === commercePhone
+      if (repuestoBelongsToCommerce(item, commerce)) return true
+      if (repuestoPhone(item) || item.comercio_id) return false
       return selectedCommerceId === commerce.comercio_id && (!item.dia || item.dia === selectedDay)
     })
   }
   const pendingCountForCommerce = (commerce) => repuestos.filter((item) => {
     if (item.aprobado || item.archivado) return false
-    if (item.comercio_id) return item.comercio_id === commerce.comercio_id
-    if (commerce.whatsapp && item.telefono) return canonPhone(item.telefono) === canonPhone(commerce.whatsapp)
+    if (repuestoBelongsToCommerce(item, commerce)) return true
+    if (repuestoPhone(item) || item.comercio_id) return false
     return selectedCommerceId === commerce.comercio_id && (!item.dia || item.dia === selectedDay)
   }).length
   const repuestosVisibles = commerceRepuestos.filter((item) => {
@@ -550,7 +594,7 @@ export default function ComercioAutorizacionPage() {
     return map
   }, [allGlobalCommerces])
   const commerceNameForItem = (item) =>
-    commerceNameByPhone[canonPhone(item.telefono)] || 'Comercio sin nombre'
+    commerceNameByPhone[repuestoPhone(item)] || item.comercio_nombre || 'Comercio sin nombre'
   const allRepuestosSorted = [...repuestos].sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
   const allRepuestosFiltered = allRepuestosSorted.filter((item) => {
     if (allRepuestosFilter === 'pendiente') return !item.aprobado && !item.archivado
@@ -1135,6 +1179,14 @@ export default function ComercioAutorizacionPage() {
     const target = typeof itemArg === 'object' && itemArg ? itemArg : repuestos.find((r) => r.id === itemArg)
     if (!target) return
     const id = target.id
+    const matchingCommerces = allGlobalCommerces.filter((commerce) => repuestoBelongsToCommerce(target, commerce))
+    const selectedCommerceMatches = repuestoBelongsToCommerce(target, form)
+      && (!target.dia || target.dia === selectedDay)
+    const linkedCommerce = selectedCommerceMatches
+      ? { ...form, comercio_id: selectedCommerceId || form.comercio_id }
+      : matchingCommerces.find((commerce) => commerce.dia === target.dia) || matchingCommerces[0]
+    const approvalCommerceId = linkedCommerce?.comercio_id || target.comercio_id || ''
+    const approvalDay = linkedCommerce?.dia || target.dia || selectedDay
     setError('')
     setMessage('')
     try {
@@ -1146,8 +1198,11 @@ export default function ComercioAutorizacionPage() {
         },
         body: JSON.stringify({
           id,
-          comercio_id: target.comercio_id || selectedCommerceId || form.comercio_id || '',
-          dia: target.dia || selectedDay,
+          source: target.source || '',
+          app_uid: target.app_uid || '',
+          app_pending_id: target.app_pending_id || '',
+          comercio_id: approvalCommerceId,
+          dia: approvalDay,
           venta: target.venta || currentVenta,
         }),
       })
@@ -1158,8 +1213,8 @@ export default function ComercioAutorizacionPage() {
           ? {
             ...item,
             aprobado: true,
-            comercio_id: item.comercio_id || selectedCommerceId || form.comercio_id || '',
-            dia: item.dia || selectedDay,
+            comercio_id: approvalCommerceId,
+            dia: approvalDay,
             venta: item.venta || currentVenta,
             catalogo_id: body.catalogo_id || item.catalogo_id,
           }
@@ -1480,7 +1535,7 @@ export default function ComercioAutorizacionPage() {
                   </p>
                 ) : allRepuestosFiltered.map((item) => (
                   <article key={item.id} className="relative rounded-lg border border-slate-200 p-3">
-                    {!item.aprobado && !item.archivado && editingRepuestoId !== item.id && (
+                    {!isAppPending(item) && !item.aprobado && !item.archivado && editingRepuestoId !== item.id && (
                       <button type="button" onClick={() => startEditingRepuesto(item)} className="absolute right-2 top-2 z-10 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm hover:border-amber-300">
                         Editar
                       </button>
@@ -1508,9 +1563,14 @@ export default function ComercioAutorizacionPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
                           <StatusPill tone={item.aprobado ? 'good' : 'warn'}>{item.aprobado ? 'Publicado' : item.archivado ? 'Archivado' : 'Pendiente'}</StatusPill>
+                          {isAppPending(item) && <StatusPill>App móvil</StatusPill>}
+                          {isAppPending(item) && item.app_association_status === 'sin_comercio' && (
+                            <StatusPill tone="warn">Sin comercio vinculado</StatusPill>
+                          )}
+                          {isBotPending(item) && <StatusPill>Bot WhatsApp</StatusPill>}
                         </div>
                         <p className="mt-1 text-xs font-bold text-amber-700">
-                          {commerceNameForItem(item)} · {item.telefono || 'Sin WhatsApp'}
+                          {commerceNameForItem(item)} · {item.comercio_whatsapp || item.telefono || 'Sin WhatsApp'}
                         </p>
                         <p className="mt-1 text-sm text-slate-600">
                           {[item.marca, item.modelo, item.anio].filter(Boolean).join(' · ') || 'Sin compatibilidad'}
@@ -1532,8 +1592,8 @@ export default function ComercioAutorizacionPage() {
                       fotos={item.fotos || []}
                       uploading={uploadingPhotoId === item.id}
                       removingUrl={removingPhotoUrl}
-                      onPick={(file) => uploadRepuestoPhoto(item, file)}
-                      onRemove={!item.aprobado && !item.archivado ? (url) => removeRepuestoPhoto(item, url) : undefined}
+                      onPick={isAppPending(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
+                      onRemove={!isAppPending(item) && !item.aprobado && !item.archivado ? (url) => removeRepuestoPhoto(item, url) : undefined}
                     />
                   </article>
                 ))}
@@ -1771,7 +1831,14 @@ export default function ComercioAutorizacionPage() {
                   ) : (
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
+                          {isAppPending(item) && <StatusPill>App móvil</StatusPill>}
+                          {isAppPending(item) && item.app_association_status === 'sin_comercio' && (
+                            <StatusPill tone="warn">Sin comercio vinculado</StatusPill>
+                          )}
+                          {isBotPending(item) && <StatusPill>Bot WhatsApp</StatusPill>}
+                        </div>
                         <p className="mt-1 text-sm text-slate-600">
                           {[item.marca, item.modelo, item.anio].filter(Boolean).join(' · ') || 'Sin compatibilidad'}
                         </p>
@@ -1782,15 +1849,19 @@ export default function ComercioAutorizacionPage() {
                           {formatPrecio(item.precio)}
                         </span>
                         <div className="flex flex-1 gap-2 sm:flex-none">
-                          <PrimaryButton onClick={() => approveRepuesto(item.id)} className="flex-1 sm:flex-none">
+                          <PrimaryButton onClick={() => approveRepuesto(item)} className="flex-1 sm:flex-none">
                             Aprobar publicacion
                           </PrimaryButton>
-                          <SoftButton onClick={() => archiveRepuesto(item)} disabled={archivingRepuestoId === item.id} className="flex-1 sm:flex-none">
-                            {archivingRepuestoId === item.id ? 'Archivando...' : 'Archivar'}
-                          </SoftButton>
-                          <button type="button" onClick={() => startEditingRepuesto(item)} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm transition hover:border-amber-300">
-                            Editar
-                          </button>
+                          {!isAppPending(item) && (
+                            <>
+                              <SoftButton onClick={() => archiveRepuesto(item)} disabled={archivingRepuestoId === item.id} className="flex-1 sm:flex-none">
+                                {archivingRepuestoId === item.id ? 'Archivando...' : 'Archivar'}
+                              </SoftButton>
+                              <button type="button" onClick={() => startEditingRepuesto(item)} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm transition hover:border-amber-300">
+                                Editar
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1799,8 +1870,8 @@ export default function ComercioAutorizacionPage() {
                     fotos={item.fotos || []}
                     uploading={uploadingPhotoId === item.id}
                     removingUrl={removingPhotoUrl}
-                    onPick={(file) => uploadRepuestoPhoto(item, file)}
-                    onRemove={(url) => removeRepuestoPhoto(item, url)}
+                    onPick={isAppPending(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
+                    onRemove={isAppPending(item) ? undefined : (url) => removeRepuestoPhoto(item, url)}
                   />
                 </article>
               ))}
@@ -2056,6 +2127,11 @@ export default function ComercioAutorizacionPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
                           <StatusPill tone={item.aprobado ? 'good' : 'warn'}>{item.aprobado ? 'Publicado' : 'Pendiente'}</StatusPill>
+                          {isAppPending(item) && <StatusPill>App móvil</StatusPill>}
+                          {isAppPending(item) && item.app_association_status === 'sin_comercio' && (
+                            <StatusPill tone="warn">Sin comercio vinculado</StatusPill>
+                          )}
+                          {isBotPending(item) && <StatusPill>Bot WhatsApp</StatusPill>}
                         </div>
                         <p className="mt-1 text-sm text-slate-600">
                           {[item.marca, item.modelo, item.anio].filter(Boolean).join(' · ') || 'Sin compatibilidad'}
@@ -2066,7 +2142,7 @@ export default function ComercioAutorizacionPage() {
                         <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
                           {formatPrecio(item.precio)}
                         </span>
-                        <PrimaryButton onClick={() => approveRepuesto(item.id)} disabled={item.aprobado} className="flex-1 sm:flex-none">
+                        <PrimaryButton onClick={() => approveRepuesto(item)} disabled={item.aprobado} className="flex-1 sm:flex-none">
                           {item.aprobado ? 'Aprobado' : 'Aprobar publicacion'}
                         </PrimaryButton>
                       </div>
@@ -2075,7 +2151,7 @@ export default function ComercioAutorizacionPage() {
                     <RepuestoFotos
                       fotos={item.fotos || []}
                       uploading={uploadingPhotoId === item.id}
-                      onPick={(file) => uploadRepuestoPhoto(item, file)}
+                      onPick={isAppPending(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
                     />
                   </article>
                 ))}

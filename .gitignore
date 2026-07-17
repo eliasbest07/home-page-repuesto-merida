@@ -8,7 +8,9 @@
 # testing
 .playwright-cli/
 /coverage
-/scripts
+/scripts/*
+!/scripts/audit-firebase-commerce.mjs
+/output/audits/
 # next.js
 /.next/
 /out/

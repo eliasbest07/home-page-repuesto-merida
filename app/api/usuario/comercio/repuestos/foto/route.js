@@ -26,6 +26,20 @@ function canonPhone(raw) {
   return d.replace(/^0+/, '')
 }
 
+function repuestoPhone(data = {}) {
+  const candidates = [
+    data.comercio_whatsapp,
+    data.telefono,
+    data.telefono_normalizado,
+    data.creado_por,
+  ]
+  for (const candidate of candidates) {
+    const phone = canonPhone(candidate)
+    if (phone.length >= 10) return phone
+  }
+  return ''
+}
+
 function bearerToken(request) {
   const header = request.headers.get('authorization') || ''
   const match = header.match(/^Bearer\s+(.+)$/i)
@@ -70,7 +84,7 @@ export async function POST(request) {
     const data = snap.data() || {}
     const authorized = await canManageCommerces(getAdminRealtimeDb(), session)
     const allowed = new Set([canonPhone(session.telefono), canonPhone(session.tel)].filter(Boolean))
-    if (!authorized && data.telefono && !allowed.has(canonPhone(data.telefono))) {
+    if (!authorized && !allowed.has(repuestoPhone(data))) {
       return NextResponse.json({ error: 'No puedes editar este repuesto.' }, { status: 403 })
     }
 
@@ -132,7 +146,7 @@ export async function DELETE(request) {
     const data = snap.data() || {}
     const authorized = await canManageCommerces(getAdminRealtimeDb(), session)
     const allowed = new Set([canonPhone(session.telefono), canonPhone(session.tel)].filter(Boolean))
-    if (!authorized && data.telefono && !allowed.has(canonPhone(data.telefono))) {
+    if (!authorized && !allowed.has(repuestoPhone(data))) {
       return NextResponse.json({ error: 'No puedes editar este repuesto.' }, { status: 403 })
     }
     const fotos = Array.isArray(data.fotos) ? data.fotos : []

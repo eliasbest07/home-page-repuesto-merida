@@ -8,6 +8,9 @@ export const dynamic = 'force-dynamic'
 const REPUESTOS_COLLECTION = 'comercio_repuestos'
 const MODELOS_COLLECTION = 'modelos_vehiculos'
 const CATALOGO_COLLECTION = 'merida'
+const APP_PENDING_PATH = 'aprobarPublicacion'
+const APP_PENDING_SOURCE = 'app_realtime'
+const FIREBASE_PUSH_CHARS = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
 
 function cleanPhone(value) {
   return String(value || '').replace(/\D/g, '')
@@ -29,6 +32,11 @@ function localPhone(raw) {
   return canon ? `0${canon}` : ''
 }
 
+function appPhone(raw) {
+  const canon = canonPhone(raw)
+  return canon ? `58${canon}` : ''
+}
+
 function phoneVariants(raw) {
   const clean = cleanPhone(raw)
   const canon = canonPhone(raw)
@@ -37,7 +45,22 @@ function phoneVariants(raw) {
     canon,
     canon ? `0${canon}` : '',
     canon ? `58${canon}` : '',
+    canon ? `+58${canon}` : '',
   ].filter(Boolean)))
+}
+
+function repuestoPhone(data = {}) {
+  const candidates = [
+    data.comercio_whatsapp,
+    data.telefono,
+    data.telefono_normalizado,
+    data.creado_por,
+  ]
+  for (const candidate of candidates) {
+    const phone = canonPhone(candidate)
+    if (phone.length >= 10) return phone
+  }
+  return ''
 }
 
 function bearerToken(request) {
@@ -55,6 +78,51 @@ function authPayload(request) {
 
 function cleanText(value, max = 120) {
   return String(value || '').trim().slice(0, max)
+}
+
+function realtimeKey(value, max = 128) {
+  const key = String(value || '').trim().slice(0, max)
+  return key && !/[.#$/\[\]]/.test(key) ? key : ''
+}
+
+function parseFotos(value) {
+  if (Array.isArray(value)) return value.map((item) => cleanText(item, 1000)).filter(Boolean).slice(0, 12)
+  if (value && typeof value === 'object') {
+    return Object.values(value).map((item) => cleanText(item, 1000)).filter(Boolean).slice(0, 12)
+  }
+  const text = String(value || '').trim()
+  if (!text) return []
+  try {
+    const parsed = JSON.parse(text)
+    return parseFotos(parsed)
+  } catch {
+    return /^https?:\/\//i.test(text) ? [text.slice(0, 1000)] : []
+  }
+}
+
+function pushTimestamp(key) {
+  const value = String(key || '').slice(0, 8)
+  if (value.length !== 8) return null
+  let timestamp = 0
+  for (const char of value) {
+    const index = FIREBASE_PUSH_CHARS.indexOf(char)
+    if (index < 0) return null
+    timestamp = (timestamp * 64) + index
+  }
+  return Number.isSafeInteger(timestamp) ? timestamp : null
+}
+
+function searchTokens(...values) {
+  return Array.from(new Set(
+    values
+      .join(' ')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .map((item) => item.trim())
+      .filter((item) => item.length >= 2),
+  )).slice(0, 40)
 }
 
 function cleanYear(value) {
@@ -85,9 +153,18 @@ function slug(value) {
 
 function serializeRepuesto(doc) {
   const data = doc.data() || {}
+  const source = data.fuente === 'bot_whatsapp' || data.realtime_user_uid
+    ? 'bot_whatsapp'
+    : 'comercio_repuestos'
   return {
     id: doc.id,
+    source,
     telefono: data.telefono || '',
+    telefono_normalizado: data.telefono_normalizado || '',
+    comercio_whatsapp: data.comercio_whatsapp || '',
+    comercio_nombre: data.comercio_nombre || '',
+    creado_por: data.creado_por || '',
+    realtime_user_uid: data.realtime_user_uid || '',
     comercio_id: data.comercio_id || '',
     dia: data.dia || '',
     venta: data.venta || '',
@@ -103,6 +180,52 @@ function serializeRepuesto(doc) {
     archivado: Boolean(data.archivado),
     catalogo_id: data.catalogo_id || '',
     creado_en: data.creado_en?.toMillis ? data.creado_en.toMillis() : null,
+  }
+}
+
+function serializeAppPending(uid, pendingId, data = {}, user = {}, resolved = {}) {
+  const commerceOwner = resolved.user && typeof resolved.user === 'object' ? resolved.user : user
+  const linkedCommerce = resolved.commerce && typeof resolved.commerce === 'object' ? resolved.commerce : {}
+  const dia = cleanText(
+    data.dia || resolved.day || linkedCommerce.dia
+      || commerceOwner.comercio_dia_actual || commerceOwner.comercio_autorizado?.dia || '',
+    20,
+  ).toLowerCase()
+  const commerce = Object.keys(linkedCommerce).length
+    ? linkedCommerce
+    : commerceFromProfile(commerceOwner, data.comercio_id || commerceOwner.comercio_autorizado?.comercio_id || '', dia)
+  const phone = commerce.whatsapp || commerceOwner.whatsapp || commerceOwner.telefono || commerceOwner.phone || ''
+  const categoria = cleanText(data.categoria, 120)
+
+  return {
+    id: `app:${uid}:${pendingId}`,
+    source: APP_PENDING_SOURCE,
+    app_uid: uid,
+    app_pending_id: pendingId,
+    app_association_status: resolved.linked ? 'vinculado' : 'sin_comercio',
+    app_association_reason: resolved.reason || '',
+    realtime_user_uid: resolved.uid || uid,
+    telefono: phone,
+    telefono_normalizado: internationalPhone(phone),
+    comercio_whatsapp: phone,
+    comercio_nombre: commerce.nombre_comercio || commerceOwner.nombre_comercio
+      || commerceOwner.nombre || commerceOwner.google_nombre || '',
+    creado_por: uid,
+    comercio_id: commerce.comercio_id || cleanText(data.comercio_id, 80),
+    dia: commerce.dia || dia,
+    venta: categoria,
+    tipo_vehiculo: cleanText(data.vehiculo, 20).toLowerCase() === 'moto' ? 'moto' : 'carro',
+    marca: cleanText(data.marca, 60),
+    modelo: cleanText(data.modelos, 160),
+    anio: '',
+    nombre: categoria || 'Repuesto desde la app',
+    nota: cleanText(data.descripcion, 500),
+    precio: cleanText(data.precio, 40),
+    fotos: parseFotos(data.fotos),
+    aprobado: false,
+    archivado: false,
+    catalogo_id: '',
+    creado_en: pushTimestamp(pendingId),
   }
 }
 
@@ -148,6 +271,118 @@ function commerceFromProfile(profile = {}, commerceId = '', dia = '') {
   return dayCommerce || profile.comercio_autorizado || profile
 }
 
+function findCommerceById(users = {}, commerceId = '', preferredDay = '') {
+  if (!commerceId) return null
+
+  for (const [uid, user] of Object.entries(users)) {
+    if (!user || typeof user !== 'object') continue
+    const preferred = user.comercios_por_dia?.[preferredDay]?.comercios?.[commerceId]
+    if (preferred && typeof preferred === 'object') return { uid, user, commerce: preferred }
+
+    for (const value of Object.values(user.comercios_por_dia || {})) {
+      const commerce = value?.comercios?.[commerceId]
+      if (commerce && typeof commerce === 'object') return { uid, user, commerce }
+    }
+
+    if (user.comercio_autorizado?.comercio_id === commerceId) {
+      return { uid, user, commerce: user.comercio_autorizado }
+    }
+  }
+
+  return null
+}
+
+function firstCommerceFromUser(uid, user = {}, preferredDay = '') {
+  const currentId = cleanText(user.comercio_autorizado?.comercio_id, 80)
+  if (currentId) {
+    const direct = findCommerceById({ [uid]: user }, currentId, preferredDay)
+    if (direct) return direct
+  }
+
+  const days = Object.entries(user.comercios_por_dia || {})
+    .sort(([a], [b]) => {
+      if (a === preferredDay) return -1
+      if (b === preferredDay) return 1
+      return 0
+    })
+  for (const [day, value] of days) {
+    for (const [commerceId, commerce] of Object.entries(value?.comercios || {})) {
+      if (!commerce || typeof commerce !== 'object') continue
+      return {
+        uid,
+        user,
+        commerce: { ...commerce, comercio_id: commerce.comercio_id || commerceId, dia: commerce.dia || day },
+      }
+    }
+  }
+
+  if (user.comercio_autorizado && typeof user.comercio_autorizado === 'object') {
+    return { uid, user, commerce: user.comercio_autorizado }
+  }
+  if (user.nombre_comercio || user.vender === true) return { uid, user, commerce: user }
+  return null
+}
+
+function findCommerceByPhone(users = {}, rawPhone = '', preferredDay = '') {
+  const target = canonPhone(rawPhone)
+  if (target.length < 10) return null
+  const matches = []
+
+  for (const [uid, user] of Object.entries(users)) {
+    if (!user || typeof user !== 'object') continue
+    for (const [day, value] of Object.entries(user.comercios_por_dia || {})) {
+      for (const [commerceId, commerce] of Object.entries(value?.comercios || {})) {
+        if (!commerce || typeof commerce !== 'object') continue
+        const phone = commerce.whatsapp || commerce.whatsapp_normalizado || user.whatsapp || user.telefono
+        if (canonPhone(phone) !== target) continue
+        matches.push({
+          uid,
+          user,
+          commerce: { ...commerce, comercio_id: commerce.comercio_id || commerceId, dia: commerce.dia || day },
+        })
+      }
+    }
+  }
+
+  return matches.find((entry) => entry.commerce.dia === preferredDay) || matches[0] || null
+}
+
+function resolveAppCommerce(users = {}, appUid = '', pending = {}) {
+  const directUser = users[appUid] && typeof users[appUid] === 'object' ? users[appUid] : {}
+  const requestedId = cleanText(pending.comercio_id, 80)
+  const preferredDay = cleanText(
+    pending.dia || directUser.comercio_dia_actual || directUser.comercio_autorizado?.dia,
+    20,
+  ).toLowerCase()
+
+  if (requestedId) {
+    const requested = findCommerceById(users, requestedId, preferredDay)
+    if (requested) {
+      return { ...requested, day: requested.commerce.dia || preferredDay, linked: true, reason: 'comercio_id' }
+    }
+  }
+
+  const direct = firstCommerceFromUser(appUid, directUser, preferredDay)
+  if (direct) {
+    return { ...direct, day: direct.commerce.dia || preferredDay, linked: true, reason: 'app_uid' }
+  }
+
+  const phone = directUser.whatsapp || directUser.telefono || directUser.phone || ''
+  const byPhone = findCommerceByPhone(users, phone, preferredDay)
+  if (byPhone) {
+    return { ...byPhone, day: byPhone.commerce.dia || preferredDay, linked: true, reason: 'whatsapp' }
+  }
+
+  return {
+    uid: appUid,
+    user: directUser,
+    commerce: {},
+    day: preferredDay,
+    linked: false,
+    reason: Object.keys(directUser).length ? 'usuario_sin_comercio' : 'usuario_no_encontrado',
+  }
+}
+
 export async function GET(request) {
   try {
     const session = authPayload(request)
@@ -161,17 +396,40 @@ export async function GET(request) {
 
     if (scope === 'all') {
       const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
-      const authorized = await canManageCommerces(getAdminRealtimeDb(), session)
+      const rtdb = getAdminRealtimeDb()
+      const authorized = await canManageCommerces(rtdb, session)
       if (!authorized) return NextResponse.json({ error: 'No puedes ver repuestos de otros comercios.' }, { status: 403 })
 
-      let snap
-      try {
-        snap = await db.collection(REPUESTOS_COLLECTION).orderBy('creado_en', 'desc').limit(500).get()
-      } catch {
-        snap = await db.collection(REPUESTOS_COLLECTION).limit(500).get()
+      const [recentSnap, firestorePendingSnap, appPendingSnap, usersSnap] = await Promise.all([
+        db.collection(REPUESTOS_COLLECTION).orderBy('creado_en', 'desc').limit(500).get()
+          .catch(() => db.collection(REPUESTOS_COLLECTION).limit(500).get()),
+        db.collection(REPUESTOS_COLLECTION).where('aprobado', '==', false).limit(1000).get()
+          .catch(() => ({ docs: [] })),
+        rtdb.ref(APP_PENDING_PATH).get(),
+        rtdb.ref('users').get(),
+      ])
+
+      const users = usersSnap.exists() ? usersSnap.val() || {} : {}
+      const appItems = []
+      if (appPendingSnap.exists()) {
+        for (const [uid, pendingById] of Object.entries(appPendingSnap.val() || {})) {
+          if (!pendingById || typeof pendingById !== 'object') continue
+          for (const [pendingId, pending] of Object.entries(pendingById)) {
+            if (!pending || typeof pending !== 'object') continue
+            if (cleanText(pending.publicado, 30).toLowerCase() !== 'espera') continue
+            const resolved = resolveAppCommerce(users, uid, pending)
+            appItems.push(serializeAppPending(uid, pendingId, pending, resolved.user, resolved))
+          }
+        }
       }
-      const items = snap.docs
-        .map(serializeRepuesto)
+
+      const firestoreDocsById = new Map()
+      recentSnap.docs.forEach((doc) => firestoreDocsById.set(doc.id, doc))
+      firestorePendingSnap.docs.forEach((doc) => firestoreDocsById.set(doc.id, doc))
+      const items = [
+        ...Array.from(firestoreDocsById.values()).map(serializeRepuesto),
+        ...appItems,
+      ]
         .sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
       return NextResponse.json({ ok: true, items })
     }
@@ -181,8 +439,12 @@ export async function GET(request) {
       ...phoneVariants(session.tel),
       ...phoneVariants(requestedTelefono),
     ]))
+    // Los repuestos creados desde la app pueden identificar al comercio en
+    // `comercio_whatsapp` o, en documentos antiguos, en `creado_por`. La web
+    // usa `telefono`, por eso se consultan las tres formas y se deduplican.
+    const phoneFields = ['telefono', 'comercio_whatsapp', 'creado_por']
     const snaps = await Promise.all(
-      variants.map((telefono) => db.collection(REPUESTOS_COLLECTION).where('telefono', '==', telefono).get()),
+      phoneFields.map((field) => db.collection(REPUESTOS_COLLECTION).where(field, 'in', variants).get()),
     )
     const docsById = new Map()
     snaps.forEach((snap) => snap.docs.forEach((doc) => docsById.set(doc.id, doc)))
@@ -193,7 +455,7 @@ export async function GET(request) {
     ].filter(Boolean))
     const items = Array.from(docsById.values())
       .map(serializeRepuesto)
-      .filter((item) => !item.telefono || targets.has(canonPhone(item.telefono)))
+      .filter((item) => targets.has(repuestoPhone(item)))
       .sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
 
     return NextResponse.json({ ok: true, items })
@@ -320,6 +582,105 @@ export async function PATCH(request) {
     const { getAdminDb, getAdminRealtimeDb, adminFieldValue } = await import('@/lib/firebaseAdmin')
     const db = getAdminDb()
     const rtdb = getAdminRealtimeDb()
+
+    if (cleanText(body.source, 30) === APP_PENDING_SOURCE) {
+      const appUid = realtimeKey(body.app_uid)
+      const appPendingId = realtimeKey(body.app_pending_id)
+      if (!appUid || !appPendingId) {
+        return NextResponse.json({ error: 'El repuesto de la app no tiene una referencia válida.' }, { status: 400 })
+      }
+
+      const authorized = await canManageCommerces(rtdb, session)
+      if (!authorized) {
+        return NextResponse.json({ error: 'No puedes aprobar repuestos de la app.' }, { status: 403 })
+      }
+
+      const pendingRef = rtdb.ref(`${APP_PENDING_PATH}/${appUid}/${appPendingId}`)
+      const [pendingSnap, usersSnap] = await Promise.all([
+        pendingRef.get(),
+        rtdb.ref('users').get(),
+      ])
+      if (!pendingSnap.exists()) {
+        return NextResponse.json({ error: 'El repuesto ya no está en espera.' }, { status: 404 })
+      }
+
+      const pending = pendingSnap.val() || {}
+      const currentStatus = cleanText(pending.publicado, 30).toLowerCase()
+      if (currentStatus !== 'espera') {
+        if (pending.catalogo_id) return NextResponse.json({ ok: true, catalogo_id: pending.catalogo_id })
+        return NextResponse.json({ error: 'El repuesto ya no está pendiente.' }, { status: 400 })
+      }
+
+      const users = usersSnap.exists() ? usersSnap.val() || {} : {}
+      const profile = users[appUid] && typeof users[appUid] === 'object' ? users[appUid] : {}
+      const requestedCommerceId = cleanText(body.comercio_id, 80)
+      const requestedDay = cleanText(body.dia, 20).toLowerCase()
+      const matchedCommerce = findCommerceById(users, requestedCommerceId, requestedDay)
+      const commerceProfile = matchedCommerce?.user || profile
+      const commerce = matchedCommerce?.commerce || commerceFromProfile(profile, requestedCommerceId, requestedDay)
+      const effectiveCommerceId = commerce.comercio_id || requestedCommerceId
+      const effectiveDay = commerce.dia || requestedDay || profile.comercio_dia_actual || ''
+      const categoria = cleanText(pending.categoria || body.venta, 80) || 'Repuestos'
+      const marca = cleanText(pending.marca, 60) || 'Repuesto'
+      const modelos = cleanText(pending.modelos, 160)
+      const descripcion = cleanText(pending.descripcion, 500)
+      const vehiculo = cleanText(pending.vehiculo, 20).toLowerCase() === 'moto' ? 'moto' : 'carro'
+      const estado = cleanText(pending.estado, 40) || 'disponible'
+      const precio = cleanText(pending.precio, 40) || 'Consultar'
+      const img = parseFotos(pending.fotos)
+      const ownerPhone = commerce.whatsapp || profile.whatsapp || profile.telefono || profile.phone || ''
+      const commerceName = cleanText(
+        commerce.nombre_comercio || commerceProfile.nombre_comercio || profile.nombre || profile.google_nombre || '',
+        120,
+      )
+      const requestedCatalogId = realtimeKey(pending.idPublicacion || appPendingId, 120)
+      const catalogRef = requestedCatalogId
+        ? db.collection(CATALOGO_COLLECTION).doc(requestedCatalogId)
+        : db.collection(CATALOGO_COLLECTION).doc()
+      const now = adminFieldValue.serverTimestamp()
+
+      await Promise.all([
+        catalogRef.set({
+          idPublicacion: catalogRef.id,
+          marca,
+          categoria,
+          modelos,
+          descripcion,
+          vehiculo,
+          precio,
+          img,
+          buscar: searchTokens(marca, categoria, modelos, descripcion),
+          relevancia: '0',
+          publicado: 'publicado',
+          estado,
+          whatsapp: appPhone(ownerPhone),
+          userID: appUid,
+          propietario_id: appUid,
+          aprobado_por: session.tel || session.telefono,
+          comercio: commerceName,
+          comercio_direccion: commerce.comercio_direccion || commerceProfile.comercio_direccion || '',
+          comercio_lat: commerce.comercio_lat ?? commerceProfile.comercio_lat ?? null,
+          comercio_lng: commerce.comercio_lng ?? commerceProfile.comercio_lng ?? null,
+          comercio_id: effectiveCommerceId || '',
+          dia: effectiveDay,
+          fuente: 'app_movil',
+          app_pendiente_id: appPendingId,
+          creado_en: now,
+          actualizado_en: now,
+        }),
+        pendingRef.update({
+          publicado: 'publicado',
+          catalogo_id: catalogRef.id,
+          aprobado_en: Date.now(),
+          aprobado_por: session.tel || session.telefono,
+          comercio_id: effectiveCommerceId || '',
+          dia: effectiveDay,
+        }),
+      ])
+
+      return NextResponse.json({ ok: true, catalogo_id: catalogRef.id })
+    }
+
     const ref = db.collection(REPUESTOS_COLLECTION).doc(id)
     const snap = await ref.get()
     if (!snap.exists) return NextResponse.json({ error: 'No existe el repuesto.' }, { status: 404 })
@@ -327,7 +688,7 @@ export async function PATCH(request) {
     const item = snap.data() || {}
     const authorized = await canManageCommerces(rtdb, session)
     const allowedPhones = new Set([canonPhone(session.telefono), canonPhone(session.tel)].filter(Boolean))
-    if (!authorized && item.telefono && !allowedPhones.has(canonPhone(item.telefono))) {
+    if (!authorized && !allowedPhones.has(repuestoPhone(item))) {
       return NextResponse.json({ error: 'No puedes aprobar este repuesto.' }, { status: 403 })
     }
     if (body.action === 'archive') {
@@ -375,9 +736,12 @@ export async function PATCH(request) {
     }
 
     const effectiveDia = item.dia || dia
-    const effectiveCommerceId = item.comercio_id || commerceId
+    // Al aprobar desde /usuario/comercio/autorizacion, el comercio seleccionado
+    // por WhatsApp puede tener un id distinto al que guardo la app. El id
+    // confirmado por el administrador debe reemplazar ese enlace viejo.
+    const effectiveCommerceId = commerceId || item.comercio_id
     const effectiveVenta = item.venta || venta
-    const ownerPhone = item.telefono || session.telefono
+    const ownerPhone = repuestoPhone(item) || session.telefono
     const owner = await findRealtimeUserByPhone(rtdb, ownerPhone)
     const profile = owner?.user || await commerceProfile(rtdb, { ...session, telefono: ownerPhone, tel: ownerPhone })
     const commerce = commerceFromProfile(profile, effectiveCommerceId, effectiveDia)
@@ -390,7 +754,7 @@ export async function PATCH(request) {
     // El catálogo pertenece al comercio elegido en el pendiente, no a quien
     // aprueba; el userID sigue apuntando al nodo RTDB del dueño.
     const commerceName = cleanText(
-      item.comercio_nombre || profile.nombre || commerce.nombre_comercio || profile.nombre_comercio || '',
+      commerce.nombre_comercio || profile.nombre_comercio || item.comercio_nombre || profile.nombre || '',
       120,
     )
     const commerceOwnerId = owner?.uid || cleanPhone(ownerPhone)
@@ -459,7 +823,7 @@ export async function DELETE(request) {
     const snap = await ref.get()
     if (!snap.exists) return NextResponse.json({ error: 'No existe el repuesto.' }, { status: 404 })
     const allowedPhones = new Set([canonPhone(session.telefono), canonPhone(session.tel)].filter(Boolean))
-    if (snap.data()?.telefono && !allowedPhones.has(canonPhone(snap.data()?.telefono))) {
+    if (!allowedPhones.has(repuestoPhone(snap.data() || {}))) {
       return NextResponse.json({ error: 'No puedes borrar este repuesto.' }, { status: 403 })
     }
     await ref.delete()
