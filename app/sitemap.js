@@ -25,6 +25,12 @@ export default function sitemap() {
       priority: 0.9,
     },
     {
+      url: `${SITE_URL}/plaza/ayuda`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.75,
+    },
+    {
       url: `${SITE_URL}/solicitados`,
       lastModified: now,
       changeFrequency: 'daily',

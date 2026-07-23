@@ -1324,13 +1324,13 @@ export default function PlazaPage() {
 
       {/* ── Top bar ── */}
       <header className="sticky top-0 z-40 bg-gray-900 shadow-lg">
-        <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+        <div className="flex items-center gap-2 px-3 pt-3 pb-2 sm:gap-3 sm:px-4">
           <Link href="/" className="flex items-center gap-2 shrink-0">
             <Image src="/iconorm.png" alt="Repuestos Mérida" width={32} height={32} className="rounded-lg" />
-            <span className="font-bold text-yellow-400 text-lg leading-none">Plaza</span>
+            <span className="hidden font-bold text-yellow-400 text-lg leading-none sm:inline">Plaza</span>
           </Link>
 
-          <div className="relative flex-1">
+          <div className="relative min-w-0 flex-1">
             <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -1347,9 +1347,16 @@ export default function PlazaPage() {
 
           <Link
             href="/plaza/publicar"
-            className="shrink-0 bg-yellow-400 text-gray-900 font-bold text-sm px-3 py-2 rounded-xl hover:bg-yellow-300 transition-all active:scale-95 whitespace-nowrap"
+            className="shrink-0 bg-yellow-400 text-gray-900 font-bold text-xs px-2.5 py-2.5 rounded-xl hover:bg-yellow-300 transition-all active:scale-95 whitespace-nowrap sm:px-3 sm:py-2 sm:text-sm"
           >
             Vender
+          </Link>
+
+          <Link
+            href="/plaza/ayuda"
+            className="shrink-0 border border-gray-600 bg-gray-800 text-white font-bold text-xs px-2.5 py-2.5 rounded-xl hover:border-yellow-400 hover:text-yellow-400 transition-all active:scale-95 whitespace-nowrap sm:px-3 sm:py-2 sm:text-sm"
+          >
+            Ayuda
           </Link>
 
           {/* Botón de usuario */}
