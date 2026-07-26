@@ -37,11 +37,13 @@ function imgUrl(fuente) {
   return `/api/img?url=${encodeURIComponent(url)}`
 }
 
+// Todos los anuncios contactan al numero oficial para pedir informacion
 function waUrl(item) {
-  const num = String(item.whatsapp || WA_NUMBER).replace(/\s/g, '')
-  const texto = item.titulo
-    ? `Hola, vi el anuncio: *${item.titulo}* en Plaza - Repuestos Merida. Esta disponible?`
-    : 'Hola, vi tu anuncio en Plaza - Repuestos Merida. Esta disponible?'
+  const num = WA_NUMBER.replace(/\s/g, '')
+  const ref = item?.id ? ` (Ref: ${item.id})` : ''
+  const texto = item?.titulo
+    ? `Hola, quiero informacion del anuncio: *${item.titulo}*${ref} en Plaza - Repuestos Merida. Esta disponible?`
+    : `Hola, quiero informacion de un anuncio${ref} en Plaza - Repuestos Merida. Esta disponible?`
   return `https://wa.me/${num}?text=${encodeURIComponent(texto)}`
 }
 

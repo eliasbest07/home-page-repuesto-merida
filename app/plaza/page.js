@@ -129,12 +129,13 @@ const TIPO_BADGE = {
 
 const WA_NUMBER = '+584123375417'
 
-// Usa el whatsapp propio del anuncio si existe, si no usa el global
+// Todos los anuncios contactan al número oficial para pedir información
 const waUrl = (item) => {
-  const num   = (item.whatsapp ?? WA_NUMBER).replace(/\s/g, '')
-  const texto = item.titulo
-    ? `Hola, vi el anuncio: *${item.titulo}* en Plaza – Repuestos Mérida. ¿Está disponible?`
-    : 'Hola, vi tu anuncio en Plaza – Repuestos Mérida. ¿Está disponible?'
+  const num  = WA_NUMBER.replace(/\s/g, '')
+  const ref  = item?.id ? ` (Ref: ${item.id})` : ''
+  const texto = item?.titulo
+    ? `Hola, quiero información del anuncio: *${item.titulo}*${ref} en Plaza – Repuestos Mérida. ¿Está disponible?`
+    : `Hola, quiero información de un anuncio${ref} en Plaza – Repuestos Mérida. ¿Está disponible?`
   return `https://wa.me/${num}?text=${encodeURIComponent(texto)}`
 }
 

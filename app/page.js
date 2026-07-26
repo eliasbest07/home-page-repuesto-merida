@@ -654,6 +654,7 @@ export default function Home() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('publicar') === 'repuesto') setCatalogFormOpen(true)
+    if (params.get('crear-solicitud') === '1') setRequestFormOpen(true)
   }, [])
 
   useEffect(() => {
@@ -1374,6 +1375,7 @@ export default function Home() {
           </div>
 
           <div
+            id="solicitar-repuesto"
             className={`home-request-form ${requestFormOpen ? 'is-open' : ''}`}
             onFocus={() => setRequestFormOpen(true)}
             onBlur={(event) => {

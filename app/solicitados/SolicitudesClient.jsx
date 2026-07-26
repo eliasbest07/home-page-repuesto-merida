@@ -1574,7 +1574,7 @@ export default function SolicitudesClient() {
                 )}
               </div>
             )}
-            <Link href="/plaza/solicitar" className="shrink-0 rounded-lg bg-yellow-400 px-3 py-2 text-xs font-bold leading-tight text-gray-950 hover:bg-yellow-300 sm:text-sm">
+            <Link href="/?crear-solicitud=1#solicitar-repuesto" className="shrink-0 rounded-lg bg-yellow-400 px-3 py-2 text-xs font-bold leading-tight text-gray-950 hover:bg-yellow-300 sm:text-sm">
               Solicitar repuesto
             </Link>
           </nav>
