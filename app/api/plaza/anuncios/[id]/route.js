@@ -21,13 +21,14 @@ function cleanTitle(value) {
 
 export async function PATCH(request, { params }) {
   try {
+    const { id } = await params
     const authorization = request.headers.get('authorization') || ''
     const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
     const payload = verifyRifaToken(token)
     if (!payload?.tel) return NextResponse.json({ error: 'Inicia sesión para administrar el anuncio.' }, { status: 401 })
 
     const { adminFieldValue, getAdminDb } = await import('@/lib/firebaseAdmin')
-    const ref = getAdminDb().collection('anuncios').doc(String(params.id || ''))
+    const ref = getAdminDb().collection('anuncios').doc(String(id || ''))
     const snapshot = await ref.get()
     if (!snapshot.exists) return NextResponse.json({ error: 'Anuncio no encontrado.' }, { status: 404 })
 

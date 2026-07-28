@@ -161,6 +161,7 @@ function serializeRepuesto(doc) {
   const source = data.fuente === 'bot_whatsapp' || data.realtime_user_uid
     ? 'bot_whatsapp'
     : 'comercio_repuestos'
+  const eliminado = Boolean(data.eliminado) || data.estado_aprobacion === 'eliminado'
   return {
     id: doc.id,
     source,
@@ -189,6 +190,7 @@ function serializeRepuesto(doc) {
     fotos: Array.isArray(data.fotos) ? data.fotos : [],
     aprobado: Boolean(data.aprobado),
     archivado: Boolean(data.archivado),
+    eliminado,
     catalogo_id: data.catalogo_id || '',
     creado_en: data.creado_en?.toMillis ? data.creado_en.toMillis() : null,
   }
@@ -463,6 +465,7 @@ export async function GET(request) {
         ...Array.from(firestoreDocsById.values()).map(serializeRepuesto),
         ...appItems,
       ]
+        .filter((item) => !item.eliminado)
         .sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
       return NextResponse.json({ ok: true, items })
     }
@@ -488,7 +491,7 @@ export async function GET(request) {
     ].filter(Boolean))
     const items = Array.from(docsById.values())
       .map(serializeRepuesto)
-      .filter((item) => targets.has(repuestoPhone(item)))
+      .filter((item) => !item.eliminado && targets.has(repuestoPhone(item)))
       .sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
 
     return NextResponse.json({ ok: true, items })
@@ -628,10 +631,78 @@ export async function PATCH(request) {
     const commerceId = cleanText(body.comercio_id, 80)
     const dia = cleanText(body.dia, 20).toLowerCase()
     const venta = cleanText(body.venta, 80)
+    const action = cleanText(body.action, 30).toLowerCase()
 
     const { getAdminDb, getAdminRealtimeDb, adminFieldValue } = await import('@/lib/firebaseAdmin')
     const db = getAdminDb()
     const rtdb = getAdminRealtimeDb()
+
+    if (action === 'unpublish') {
+      const authorized = await canManageCommerces(rtdb, session)
+      if (!authorized) {
+        return NextResponse.json({ error: 'No puedes eliminar publicaciones de otros comercios.' }, { status: 403 })
+      }
+
+      if (cleanText(body.source, 30) === APP_PENDING_SOURCE) {
+        const appUid = realtimeKey(body.app_uid)
+        const appPendingId = realtimeKey(body.app_pending_id)
+        if (!appUid || !appPendingId) {
+          return NextResponse.json({ error: 'La publicación de la app no tiene una referencia válida.' }, { status: 400 })
+        }
+
+        const pendingRef = rtdb.ref(`${APP_PENDING_PATH}/${appUid}/${appPendingId}`)
+        const pendingSnap = await pendingRef.get()
+        if (!pendingSnap.exists()) {
+          return NextResponse.json({ error: 'No existe la publicación de la app.' }, { status: 404 })
+        }
+
+        const pending = pendingSnap.val() || {}
+        const catalogId = realtimeKey(pending.catalogo_id || pending.idPublicacion, 120)
+        if (!catalogId) {
+          return NextResponse.json({ error: 'No se encontró el repuesto publicado en el catálogo.' }, { status: 404 })
+        }
+
+        await db.collection(CATALOGO_COLLECTION).doc(catalogId).delete()
+        await pendingRef.update({
+          publicado: 'eliminado',
+          estado_aprobacion: 'eliminado',
+          catalogo_id: null,
+          catalogo_id_eliminado: catalogId,
+          eliminado_en: Date.now(),
+          eliminado_por: session.tel || session.telefono,
+        })
+
+        return NextResponse.json({ ok: true, deleted: true })
+      }
+
+      const ref = db.collection(REPUESTOS_COLLECTION).doc(id)
+      const snap = await ref.get()
+      if (!snap.exists) return NextResponse.json({ error: 'No existe el repuesto.' }, { status: 404 })
+
+      const item = snap.data() || {}
+      if (!item.aprobado && !item.catalogo_id) {
+        return NextResponse.json({ error: 'El repuesto no está publicado.' }, { status: 400 })
+      }
+
+      const catalogId = realtimeKey(item.catalogo_id, 120)
+      const now = adminFieldValue.serverTimestamp()
+      const batch = db.batch()
+      if (catalogId) batch.delete(db.collection(CATALOGO_COLLECTION).doc(catalogId))
+      batch.update(ref, {
+        aprobado: false,
+        archivado: true,
+        eliminado: true,
+        estado_aprobacion: 'eliminado',
+        catalogo_id: '',
+        catalogo_id_eliminado: catalogId || '',
+        eliminado_en: now,
+        eliminado_por: session.tel || session.telefono,
+        actualizado_en: now,
+      })
+      await batch.commit()
+
+      return NextResponse.json({ ok: true, deleted: true })
+    }
 
     if (cleanText(body.source, 30) === APP_PENDING_SOURCE) {
       const appUid = realtimeKey(body.app_uid)
@@ -896,25 +967,34 @@ export async function DELETE(request) {
     const id = cleanText(new URL(request.url).searchParams.get('id'), 64)
     if (!id) return NextResponse.json({ error: 'Falta el id del repuesto.' }, { status: 400 })
 
-    const { getAdminDb } = await import('@/lib/firebaseAdmin')
+    const { getAdminDb, adminFieldValue } = await import('@/lib/firebaseAdmin')
     const db = getAdminDb()
     const ref = db.collection(REPUESTOS_COLLECTION).doc(id)
     const snap = await ref.get()
     if (!snap.exists) return NextResponse.json({ error: 'No existe el repuesto.' }, { status: 404 })
+    const item = snap.data() || {}
     const allowedPhones = new Set([canonPhone(session.telefono), canonPhone(session.tel)].filter(Boolean))
-    if (!allowedPhones.has(repuestoPhone(snap.data() || {}))) {
+    if (!allowedPhones.has(repuestoPhone(item))) {
       return NextResponse.json({ error: 'No puedes borrar este repuesto.' }, { status: 403 })
     }
     // Borrado lógico: conserva trazabilidad y evita pérdida irreversible por
-    // errores de identidad o una acción accidental desde el panel.
-    const now = (await import('@/lib/firebaseAdmin')).adminFieldValue.serverTimestamp()
-    await ref.update({
+    // errores de identidad o una acción accidental desde el panel. Si ya fue
+    // aprobado, el documento público del catálogo sí se elimina.
+    const now = adminFieldValue.serverTimestamp()
+    const catalogId = realtimeKey(item.catalogo_id, 120)
+    const batch = db.batch()
+    if (catalogId) batch.delete(db.collection(CATALOGO_COLLECTION).doc(catalogId))
+    batch.update(ref, {
+      aprobado: false,
       archivado: true,
       eliminado: true,
       estado_aprobacion: 'eliminado',
+      catalogo_id: '',
+      catalogo_id_eliminado: catalogId || '',
       eliminado_en: now,
       actualizado_en: now,
     })
+    await batch.commit()
 
     return NextResponse.json({ ok: true, deleted: 'soft' })
   } catch (error) {

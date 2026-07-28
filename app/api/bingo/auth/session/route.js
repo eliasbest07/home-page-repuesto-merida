@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 import { BINGO_SESSION_COOKIE, readBingoSession } from '@/lib/bingoSession';
 
 export async function GET() {
-  const raw = cookies().get(BINGO_SESSION_COOKIE)?.value;
+  const cookieStore = await cookies();
+  const raw = cookieStore.get(BINGO_SESSION_COOKIE)?.value;
   const session = readBingoSession(raw);
 
   if (!session?.phone) {

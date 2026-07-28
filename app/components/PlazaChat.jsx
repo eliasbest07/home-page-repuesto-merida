@@ -586,8 +586,11 @@ export default function PlazaChat({ hideMobileLauncher = false }) {
               </svg>
             </button>
           </div>
-          <p className="text-center text-gray-400 text-[10px] mt-1.5 leading-none">
-            Oso Frontino Brain · Solo respondo sobre Plaza
+          <p className="text-center text-gray-400 text-[10px] mt-1.5 leading-tight">
+            Asistente con IA de Anthropic · No envíes datos sensibles ·{' '}
+            <Link href="/politica-privacidad" className="underline hover:text-gray-600">
+              Privacidad
+            </Link>
           </p>
         </div>
       </div>

@@ -10,8 +10,9 @@ export function generateStaticParams() {
   return getAllSlugs().map((slug) => ({ slug }))
 }
 
-export function generateMetadata({ params }) {
-  const post = getPost(params.slug)
+export async function generateMetadata({ params }) {
+  const { slug } = await params
+  const post = getPost(slug)
   if (!post) return {}
   const url = `${SITE_URL}/blog/${post.slug}`
   return {
@@ -46,8 +47,9 @@ function formatDate(iso) {
   }
 }
 
-export default function ArticlePage({ params }) {
-  const post = getPost(params.slug)
+export default async function ArticlePage({ params }) {
+  const { slug } = await params
+  const post = getPost(slug)
   if (!post) notFound()
 
   // Relacionados: nunca enlazar a artículos noindex (p. ej. los del club/bingo).

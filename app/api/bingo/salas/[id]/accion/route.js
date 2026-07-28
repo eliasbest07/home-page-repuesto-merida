@@ -19,6 +19,7 @@ function unauthorized(message) {
 
 export async function POST(request, { params }) {
   try {
+    const { id } = await params;
     const { token, action, cartonId } = await request.json();
     const session = verifyRifaToken(token);
     const phone = session?.telefono || session?.tel;
@@ -26,7 +27,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
     }
     const playerId = createPlayerId(phone);
-    const targetRef = ref(rtdb, roomPath(params.id));
+    const targetRef = ref(rtdb, roomPath(id));
 
     const tx = await runTransaction(targetRef, (room) => {
       if (!room) {

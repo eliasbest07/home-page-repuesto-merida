@@ -11,6 +11,7 @@ import { auth, rtdb } from '@/lib/firebase'
 import { clearSession, ensureSession, phoneKey, saveSession } from '@/lib/rifaSession'
 import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
 import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
+import { AI_VERIFICATION_CONSENT_VERSION } from '@/lib/legalConfig'
 
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
@@ -81,6 +82,7 @@ export default function UsuarioOpcionesPage() {
   const [preparingCedulaImage, setPreparingCedulaImage] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [aiVerificationAccepted, setAiVerificationAccepted] = useState(false)
   // Cédula EN VIVO: el bot puede verificar y escribir la cédula en Realtime DB
   // mientras esta página está abierta; con onValue se refleja sin recargar.
   const [cedulaLive, setCedulaLive] = useState('')
@@ -278,12 +280,18 @@ export default function UsuarioOpcionesPage() {
       setError('Sube la foto de la cédula y una selfie con la cédula.')
       return
     }
+    if (!aiVerificationAccepted) {
+      setError('Debes autorizar expresamente el análisis de las fotos con Google Gemini.')
+      return
+    }
 
     setSending(true)
     try {
       const form = new FormData()
       form.append('cedula_foto', cedulaFoto)
       form.append('selfie_cedula', selfieCedula)
+      form.append('consent_accepted', 'true')
+      form.append('consent_version', AI_VERIFICATION_CONSENT_VERSION)
 
       const res = await fetch('/api/usuario/verificacion-cedula', {
         method: 'POST',
@@ -306,7 +314,8 @@ export default function UsuarioOpcionesPage() {
       setSession(nextSession)
       setCedulaFoto(null)
       setSelfieCedula(null)
-      setMessage(`Edad verificada. Cédula detectada: ${data.cedula}.`)
+      setAiVerificationAccepted(false)
+      setMessage(`Edad verificada. Cédula terminada en ${String(data.cedula || '').slice(-4)}.`)
     } catch (err) {
       setError(err.message || 'No se pudo verificar la cédula.')
     } finally {
@@ -501,6 +510,21 @@ export default function UsuarioOpcionesPage() {
               <p className="mt-2 text-sm leading-relaxed text-gray-600">
                 Para verificar tu edad debes tomar una foto a tu cédula y otra sosteniendo la cédula donde se vea tu cara.
               </p>
+              <p className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-relaxed text-blue-900">
+                Este proceso usa Google Gemini: las dos fotos se envían al proveedor de IA para
+                leer la cédula y comprobar que la persona aparece sosteniéndola. El resultado puede
+                aprobar o rechazar inicialmente la verificación. Puedes pedir revisión humana y
+                consultar más detalles en la{' '}
+                <Link href="/politica-privacidad" className="font-bold underline">
+                  Política de Privacidad
+                </Link>
+                .
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                Las imágenes también se conservan en Firebase Storage privado como respaldo de la
+                verificación y para revisión administrativa. No se publican ni generan una URL
+                pública.
+              </p>
             </div>
 
             <form onSubmit={submitCedula} className="grid gap-4">
@@ -519,12 +543,29 @@ export default function UsuarioOpcionesPage() {
                 />
               </div>
 
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs leading-relaxed text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={aiVerificationAccepted}
+                  onChange={(event) => setAiVerificationAccepted(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-gray-950"
+                />
+                <span>
+                  Autorizo que mis dos fotos se envíen a Google Gemini y se conserven en
+                  almacenamiento privado para verificar mi cédula y edad, según la{' '}
+                  <Link href="/politica-privacidad" target="_blank" className="font-bold underline">
+                    Política de Privacidad
+                  </Link>
+                  .
+                </span>
+              </label>
+
               {error && <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
               {message && <p className="rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">{message}</p>}
 
               <button
                 type="submit"
-                disabled={sending || preparingCedulaImage}
+                disabled={sending || preparingCedulaImage || !aiVerificationAccepted}
                 className="inline-flex h-12 items-center justify-center rounded-xl bg-gray-950 px-4 text-sm font-extrabold text-yellow-400 transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {preparingCedulaImage ? 'Preparando fotos...' : sending ? 'Verificando fotos...' : 'Enviar fotos para verificar edad'}

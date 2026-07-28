@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { verifyRifaToken } from '@/lib/rifaJwt'
+import { LEGAL_VERSION } from '@/lib/legalConfig'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -54,6 +55,11 @@ export async function POST(request) {
     }
 
     const body = await request.json().catch(() => ({}))
+    if (body.legal_accepted !== true || body.legal_version !== LEGAL_VERSION) {
+      return NextResponse.json({
+        error: 'Debes aceptar la versión vigente de los términos para publicar.',
+      }, { status: 400 })
+    }
     const tipo = cleanText(body.tipo, 40)
     const titulo = cleanTitle(body.titulo)
     const descripcion = cleanText(body.descripcion, 1000)
@@ -97,6 +103,11 @@ export async function POST(request) {
       redes: [],
       pagos: [],
       imagen_url: imageUrl,
+      aceptacion_legal: {
+        version: LEGAL_VERSION,
+        alcance: 'publicacion_usuario',
+        aceptado_en: now,
+      },
       createdAt: now,
       updatedAt: now,
     })

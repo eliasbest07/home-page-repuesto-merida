@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { ensureSession } from '@/lib/rifaSession'
+import { LEGAL_VERSION } from '@/lib/legalConfig'
 
 const PlazaChat = dynamic(() => import('../../components/PlazaChat'), { ssr: false })
 
@@ -87,6 +88,7 @@ export default function PublicarPage() {
   const [apiError,  setApiError]  = useState(null)
   const [submitted, setSubmitted] = useState(false)
   const [newId,     setNewId]     = useState(null)
+  const [legalAccepted, setLegalAccepted] = useState(false)
 
   const [form, setForm] = useState({
     tipo: '', titulo: '', descripcion: '', precio: '', categoria: '',
@@ -112,6 +114,10 @@ export default function PublicarPage() {
   // ── Submit → Firestore + Storage ────────────────────────────────────────────
   async function handleSubmit() {
     if (!session) return
+    if (!legalAccepted) {
+      setApiError('Debes confirmar que tienes derecho a publicar el contenido y aceptar las reglas.')
+      return
+    }
     setSending(true)
     setApiError(null)
 
@@ -119,7 +125,12 @@ export default function PublicarPage() {
       const response = await fetch('/api/plaza/anuncios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
-        body: JSON.stringify({ ...form, imagen: fotos[0]?.dataUrl || null }),
+        body: JSON.stringify({
+          ...form,
+          imagen: fotos[0]?.dataUrl || null,
+          legal_accepted: true,
+          legal_version: LEGAL_VERSION,
+        }),
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.error || 'No se pudo enviar el anuncio.')
@@ -178,7 +189,7 @@ export default function PublicarPage() {
                 ← Ver Plaza
               </Link>
               <button
-                onClick={() => { setSubmitted(false); setStep(1); setForm({ tipo:'', titulo:'', descripcion:'', precio:'', categoria:'' }); setFotos([]) }}
+                onClick={() => { setSubmitted(false); setStep(1); setForm({ tipo:'', titulo:'', descripcion:'', precio:'', categoria:'' }); setFotos([]); setLegalAccepted(false) }}
                 className="flex-1 border-2 border-gray-200 text-gray-700 font-semibold px-6 py-3 rounded-xl hover:bg-gray-50 transition-all text-sm"
               >
                 + Otro anuncio
@@ -364,6 +375,26 @@ export default function PublicarPage() {
                 </div>
               </div>
 
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs leading-relaxed text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={legalAccepted}
+                  onChange={(event) => setLegalAccepted(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-gray-950"
+                />
+                <span>
+                  Confirmo que tengo permiso para publicar el texto y las imágenes, y acepto los{' '}
+                  <Link href="/terminos-condiciones" target="_blank" className="font-bold underline">
+                    Términos
+                  </Link>{' '}
+                  y la{' '}
+                  <Link href="/propiedad-intelectual" target="_blank" className="font-bold underline">
+                    Política de Propiedad Intelectual
+                  </Link>
+                  . Versión {LEGAL_VERSION}.
+                </span>
+              </label>
+
               {/* Error */}
               {apiError && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
@@ -381,7 +412,7 @@ export default function PublicarPage() {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={sending}
+                disabled={sending || !legalAccepted}
                 className="flex-1 bg-yellow-400 text-gray-900 font-bold py-3 rounded-xl hover:bg-yellow-300 transition-all text-sm disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {sending

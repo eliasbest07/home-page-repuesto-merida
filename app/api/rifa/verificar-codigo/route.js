@@ -16,6 +16,9 @@ import {
   verifyClientKey,
 } from '@/lib/whatsappCapability'
 import { checkOtpVerificationRateLimit } from '@/lib/whatsappRateLimit'
+import { issueCanonicalFirebaseSession } from '@/lib/canonicalIdentity'
+
+export const runtime = 'nodejs'
 
 // El BOT compara el código contra el que tiene escrito en Firebase para ese
 // número. Si coincide, esta API emite el JWT de sesión (la web es la dueña de
@@ -29,7 +32,8 @@ export async function POST(request) {
     const body = await request.json()
     const telefono = normalizePhone(body?.telefono)
     const codigo = String(body?.codigo || '').trim()
-    const browserId = cookies().get(WA_BROWSER_COOKIE)?.value
+    const cookieStore = await cookies()
+    const browserId = cookieStore.get(WA_BROWSER_COOKIE)?.value
 
     if (!telefono || !/^\d{4}$/.test(codigo)) {
       return NextResponse.json({ error: 'Faltan datos.' }, { status: 400 })
@@ -69,8 +73,17 @@ export async function POST(request) {
       )
     }
 
-    // Código correcto → recuperar perfil (guardado u oficial) y emitir el JWT.
-    const { perfil, prefill } = await resolverPerfil({ telefono, key })
+    // Código correcto → convertir el WhatsApp verificado en una identidad
+    // Firebase estable. Esto evita crear un usuario anónimo en cada dispositivo.
+    const identity = await issueCanonicalFirebaseSession({
+      telefono,
+      source: 'whatsapp_otp_web',
+    })
+    const { perfil, prefill } = await resolverPerfil({
+      telefono,
+      key,
+      realtimeUid: identity.canonicalUid,
+    })
 
     let rifasVendedor = []
     const vendSnap = await get(ref(rtdb, `vendedor_index/${key}`))
@@ -78,7 +91,14 @@ export async function POST(request) {
       rifasVendedor = Object.keys(vendSnap.val() || {})
     }
 
-    const { token, expiresAt } = signRifaToken({ tel: key, telefono })
+    const { token, expiresAt } = signRifaToken({
+      sub: identity.canonicalUid,
+      uid: identity.canonicalUid,
+      realtime_uid: identity.canonicalUid,
+      tel: key,
+      telefono,
+      auth_provider: 'whatsapp',
+    })
 
     return NextResponse.json({
       ok: true,
@@ -88,6 +108,9 @@ export async function POST(request) {
       rifas_vendedor: rifasVendedor,
       token,
       expiresAt,
+      canonical_uid: identity.canonicalUid,
+      realtime_uid: identity.canonicalUid,
+      firebaseCustomToken: identity.firebaseCustomToken,
     })
   } catch (err) {
     return NextResponse.json({ error: err?.message || 'Error inesperado.' }, { status: 500 })

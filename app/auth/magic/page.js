@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { saveSession } from '@/lib/rifaSession'
 import { auth } from '@/lib/firebase'
+import { signInWithCustomToken } from 'firebase/auth'
 
 function safeRedirect(value) {
   if (!value || typeof value !== 'string') return '/solicitados'
@@ -29,16 +30,19 @@ function MagicInner() {
   useEffect(() => {
     if (ran.current) return
     ran.current = true
-    const token = params.get('token')
-    if (!token) { setError('Enlace inválido.'); return }
     ;(async () => {
       try {
+        const token = params.get('token')
+        if (!token) throw new Error('Enlace inválido.')
         let googleIdToken = ''
         try {
-          if (auth.currentUser) {
-            googleIdToken = await auth.currentUser.getIdToken()
-          } else {
-            const pending = JSON.parse(localStorage.getItem('login_google_pending') || '{}')
+          const pending = JSON.parse(localStorage.getItem('login_google_pending') || '{}')
+          if (
+            pending?.idToken
+            && pending?.uid
+            && Date.now() < Number(pending.expiresAt || 0)
+            && (!auth.currentUser || auth.currentUser.uid === pending.uid)
+          ) {
             googleIdToken = pending?.idToken || ''
           }
         } catch {}
@@ -50,9 +54,18 @@ function MagicInner() {
         })
         const data = await res.json()
         if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo validar el enlace.')
+        if (!data.firebaseCustomToken || !data.canonical_uid) {
+          throw new Error('El servidor no devolvió una identidad Firebase válida.')
+        }
+        const firebaseSession = await signInWithCustomToken(auth, data.firebaseCustomToken)
+        if (firebaseSession.user.uid !== data.canonical_uid) {
+          throw new Error('La identidad Firebase no coincide con la sesión de WhatsApp.')
+        }
 
         saveSession({
           telefono: data.telefono,
+          canonical_uid: data.canonical_uid,
+          realtime_uid: data.realtime_uid || data.canonical_uid,
           perfil: data.perfil,
           prefill: data.prefill || null,
           rifas_vendedor: data.rifas_vendedor || [],

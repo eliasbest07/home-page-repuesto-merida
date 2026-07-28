@@ -5,10 +5,11 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
-import { rtdb, storage } from '@/lib/firebase'
+import { auth, rtdb, storage } from '@/lib/firebase'
 import { ref as dbRef, update, serverTimestamp } from 'firebase/database'
 import { ref as stRef, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { saveSession, phoneKey, clearSession, ensureSession } from '@/lib/rifaSession'
+import { saveSession, clearSession, ensureSession } from '@/lib/rifaSession'
+import { LEGAL_VERSION } from '@/lib/legalConfig'
 
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
@@ -42,6 +43,7 @@ function RegistroInner() {
   const [error, setError]         = useState(null)
   const [coords, setCoords]       = useState(null)
   const [pickerOpen, setPicker]   = useState(false)
+  const [legalAccepted, setLegalAccepted] = useState(false)
 
   useEffect(() => {
     ensureSession().then((s) => {
@@ -71,14 +73,18 @@ function RegistroInner() {
       if (!nombre.trim()) throw new Error('Ingresa tu nombre')
       if (!coords) throw new Error('Elige tu ubicación en el mapa')
       if (!session?.telefono) throw new Error('Sesión inválida')
+      if (!legalAccepted) throw new Error('Debes aceptar los Términos y la Política de Privacidad')
 
-      const key = phoneKey(session.telefono)
+      const usersKey = session.canonical_uid || session.realtime_uid || auth.currentUser?.uid
+      if (!usersKey || auth.currentUser?.uid !== usersKey) {
+        throw new Error('La sesión Firebase no coincide. Inicia sesión nuevamente.')
+      }
       // Conserva la foto oficial/recuperada si el usuario no sube una nueva.
       let foto_url = session.prefill?.foto_url || null
 
       if (fotoFile) {
         const ext = (fotoFile.name.split('.').pop() || 'jpg').toLowerCase()
-        const stPath = `rifas_usuarios/${key}.${ext}`
+        const stPath = `fotos_usuarios/${usersKey}/perfil.${ext}`
 
         setStep('subiendo')
         const snap = await Promise.race([
@@ -90,9 +96,6 @@ function RegistroInner() {
       }
 
       setStep('guardando')
-      // Key unificada en /users: el uid oficial si el login emparejó un usuario
-      // viejo de la app Android, o el teléfono para usuarios solo-web.
-      const usersKey = session.prefill?.uid || key
       const perfil = {
         telefono: session.telefono,
         whatsapp: session.telefono,
@@ -101,8 +104,15 @@ function RegistroInner() {
         lng: coords.lng,
         foto_url,
         // Enlaza con el registro oficial de /users si el login lo encontró.
-        ...(session.prefill?.uid ? { uid: session.prefill.uid } : { uid: usersKey }),
+        uid: usersKey,
         creado_en: serverTimestamp(),
+        consentimientos: {
+          legal_version: LEGAL_VERSION,
+          terminos_version: LEGAL_VERSION,
+          privacidad_version: LEGAL_VERSION,
+          aceptado_en: serverTimestamp(),
+          fuente: 'web_registro',
+        },
       }
       // Nodo /users con las convenciones que lee el front (foto, ubicacion, id).
       const userOficial = {
@@ -115,6 +125,13 @@ function RegistroInner() {
         lng: coords.lng,
         ubicacion: `${coords.lat},${coords.lng}`,
         creado_en: serverTimestamp(),
+        consentimientos: {
+          legal_version: LEGAL_VERSION,
+          terminos_version: LEGAL_VERSION,
+          privacidad_version: LEGAL_VERSION,
+          aceptado_en: serverTimestamp(),
+          fuente: 'web_registro',
+        },
       }
       await Promise.race([
         // Fuente de verdad: /users. update (no set) para no pisar datos previos
@@ -225,7 +242,27 @@ function RegistroInner() {
               📱 {session.telefono}
             </div>
 
-            <button onClick={guardar} disabled={loading} className="btn-brand w-full justify-center gap-2">
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-xs leading-relaxed text-gray-700">
+              <input
+                type="checkbox"
+                checked={legalAccepted}
+                onChange={(event) => setLegalAccepted(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-gray-950"
+              />
+              <span>
+                Acepto los{' '}
+                <Link href="/terminos-condiciones" target="_blank" className="font-bold underline">
+                  Términos y Condiciones
+                </Link>{' '}
+                y la{' '}
+                <Link href="/politica-privacidad" target="_blank" className="font-bold underline">
+                  Política de Privacidad
+                </Link>
+                . Versión {LEGAL_VERSION}.
+              </span>
+            </label>
+
+            <button onClick={guardar} disabled={loading || !legalAccepted} className="btn-brand w-full justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50">
               {loading && <Spinner />}
               {loading ? stepLabel : 'Continuar'}
             </button>

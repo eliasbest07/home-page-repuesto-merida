@@ -85,5 +85,11 @@ export default function sitemap() {
       changeFrequency: 'monthly',
       priority: 0.4,
     },
+    {
+      url: `${SITE_URL}/propiedad-intelectual`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
   ]
 }

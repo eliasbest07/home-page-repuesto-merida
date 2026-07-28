@@ -26,6 +26,12 @@ export default function LegalPage({ title, updated, children }) {
             <Link href="/terminos-condiciones" className="hover:underline">
               Términos y Condiciones
             </Link>
+            <Link href="/propiedad-intelectual" className="hover:underline">
+              Retiro de contenido
+            </Link>
+            <Link href="/eliminar-datos" className="hover:underline">
+              Eliminar mis datos
+            </Link>
           </div>
         </nav>
       </article>

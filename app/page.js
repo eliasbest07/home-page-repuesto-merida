@@ -2273,7 +2273,7 @@ export default function Home() {
                 La application de servicios para Los Andes
               </h2>
               <p className="text-gray-600 leading-relaxed mb-4">
-                Somos <strong>Repuestos Mérida</strong>, parte del ecosistema de <strong>Gochos Group</strong>,
+                Somos <strong>Repuestos Mérida</strong>, un proyecto del futuro ecosistema <strong>Gochos Group</strong>,
                 comprometidos con llevar los mejores repuestos automotrices a cada rincón del estado Mérida
                 y la región andina venezolana.
               </p>
@@ -2316,8 +2316,8 @@ export default function Home() {
               </a>
               <div className="bg-white rounded-2xl shadow-card p-6 flex flex-col items-center gap-2 w-full max-w-xs">
                 <Image src="/gochosgroup.png" alt="Gochos Group" width={80} height={80} className="rounded-full" />
-                <p className="font-medium text-gray-700 text-sm">Parte de Gochos Group</p>
-                <p className="text-xs text-gray-400 text-center">Grupo empresarial merideño con presencia digital</p>
+                <p className="font-medium text-gray-700 text-sm">Proyecto Gochos Group</p>
+                <p className="text-xs text-gray-400 text-center">Marca merideña proyectada para registro futuro</p>
               </div>
             </div>
           </div>
@@ -2459,14 +2459,25 @@ export default function Home() {
                 <li><Link href="/aviso-legal" className="hover:text-[#FFD700] transition-colors">Aviso Legal</Link></li>
                 <li><Link href="/politica-cookies" className="hover:text-[#FFD700] transition-colors">Política de Cookies</Link></li>
                 <li><Link href="/terminos-condiciones" className="hover:text-[#FFD700] transition-colors">Términos y Condiciones</Link></li>
+                <li><Link href="/propiedad-intelectual" className="hover:text-[#FFD700] transition-colors">Propiedad intelectual</Link></li>
                 <li><Link href="/eliminar-datos" className="hover:text-[#FFD700] transition-colors">Eliminar mis datos</Link></li>
               </ul>
             </div>
           </div>
 
+          <p className="mb-6 rounded-xl border border-gray-800 bg-gray-950 px-4 py-3 text-xs leading-relaxed text-gray-400">
+            Repuestos Mérida utiliza inteligencia artificial para apoyar el desarrollo,
+            mantenimiento, monitoreo y seguridad del servicio, y en determinadas funciones de
+            asistencia, moderación y verificación. Consulta los detalles en nuestra{' '}
+            <Link href="/politica-privacidad" className="text-[#FFD700] hover:underline">
+              Política de Privacidad
+            </Link>
+            .
+          </p>
+
           {/* Bottom bar */}
           <div className="border-t border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
-            <p>© {new Date().getFullYear()} Repuestos Mérida · Gochos Group · Mérida centro, Av. 3</p>
+            <p>© {new Date().getFullYear()} Repuestos Mérida · Operado por Elias Jose Montilla Ramirez · Mérida, Venezuela</p>
             <div className="flex items-center gap-4">
               <a href={waConsulta()} target="_blank" rel="noopener noreferrer"
                 className="text-green-500 hover:text-green-400 transition-colors font-medium">

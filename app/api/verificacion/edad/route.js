@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { verifyRifaToken } from '@/lib/rifaJwt'
+import { MANUAL_VERIFICATION_CONSENT_VERSION } from '@/lib/legalConfig'
 
 export const runtime = 'nodejs'
 
@@ -102,6 +103,14 @@ export async function POST(request) {
     if (!session) return NextResponse.json({ error: 'Sesión inválida.' }, { status: 401 })
 
     const form = await request.formData()
+    if (
+      form.get('consent_accepted') !== 'true' ||
+      form.get('consent_version') !== MANUAL_VERIFICATION_CONSENT_VERSION
+    ) {
+      return NextResponse.json({
+        error: 'Falta el consentimiento vigente para la revisión manual.',
+      }, { status: 400 })
+    }
     const cedula = form.get('cedula')
     const selfie = form.get('selfie')
 
@@ -124,6 +133,11 @@ export async function POST(request) {
       },
       enviado_en: fieldValue.serverTimestamp(),
       actualizado_en: fieldValue.serverTimestamp(),
+      consentimiento: {
+        aceptado: true,
+        version: MANUAL_VERIFICATION_CONSENT_VERSION,
+        aceptado_en: fieldValue.serverTimestamp(),
+      },
       revisado_en: null,
       rechazado_motivo: '',
     }, { merge: true })

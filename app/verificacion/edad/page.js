@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ensureSession } from '@/lib/rifaSession'
 import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
+import { MANUAL_VERIFICATION_CONSENT_VERSION } from '@/lib/legalConfig'
 
 function safeRedirect(value) {
   if (!value || typeof value !== 'string') return '/'
@@ -36,6 +37,7 @@ function VerificacionEdadInner() {
   const [preparingImage, setPreparingImage] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [verificationAccepted, setVerificationAccepted] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -101,12 +103,18 @@ function VerificacionEdadInner() {
 
     if (!session?.token) { setError('Sesión inválida.'); return }
     if (!cedula || !selfie) { setError('Sube las dos fotos para enviar la verificación.'); return }
+    if (!verificationAccepted) {
+      setError('Debes autorizar el almacenamiento privado temporal y la revisión humana.')
+      return
+    }
 
     setSubmitting(true)
     try {
       const form = new FormData()
       form.append('cedula', cedula)
       form.append('selfie', selfie)
+      form.append('consent_accepted', 'true')
+      form.append('consent_version', MANUAL_VERIFICATION_CONSENT_VERSION)
 
       const res = await fetch('/api/verificacion/edad', {
         method: 'POST',
@@ -144,7 +152,8 @@ function VerificacionEdadInner() {
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-600">Verificación privada</p>
             <h1 className="mt-2 font-brand text-2xl leading-tight text-gray-950">Sube tus documentos</h1>
             <p className="mt-2 text-sm leading-relaxed text-gray-600">
-              Las fotos se guardan en una carpeta privada de Storage y no se publican como URL visible.
+              Las fotos se guardan en una carpeta privada de Firebase Storage como respaldo de la
+              verificación y no se publican como URL visible.
             </p>
           </div>
 
@@ -164,15 +173,33 @@ function VerificacionEdadInner() {
           </div>
 
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
-            Esta información se usa solo para revisión de edad. No la subas en comentarios ni publicaciones públicas.
+            Esta vía es de revisión humana y no envía las imágenes a Gemini. La información se usa
+            solo para revisar tu edad. No la subas en comentarios ni publicaciones públicas.
           </div>
+
+          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs leading-relaxed text-gray-700">
+            <input
+              type="checkbox"
+              checked={verificationAccepted}
+              onChange={(event) => setVerificationAccepted(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-gray-950"
+            />
+            <span>
+              Autorizo el almacenamiento privado de estas fotos y su revisión humana,
+              según la{' '}
+              <Link href="/politica-privacidad" target="_blank" className="font-bold underline">
+                Política de Privacidad
+              </Link>
+              .
+            </span>
+          </label>
 
           {error && <p className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
           {message && <p className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{message}</p>}
 
           <button
             type="submit"
-            disabled={submitting || preparingImage}
+            disabled={submitting || preparingImage || !verificationAccepted}
             className="mt-5 inline-flex h-12 w-full items-center justify-center rounded-xl bg-yellow-400 px-4 text-sm font-extrabold text-gray-950 transition hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {preparingImage ? 'Preparando fotos...' : submitting ? 'Enviando...' : 'Enviar verificación'}

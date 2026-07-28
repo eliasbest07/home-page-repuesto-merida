@@ -12,8 +12,10 @@
 !/scripts/audit-firebase-commerce.mjs
 !/scripts/report-firebase-ecosystem.mjs
 !/scripts/migrate-firebase-identity-v2.mjs
+!/scripts/migrate-public-profiles-v1.mjs
 !/scripts/backup-firebase-ecosystem.mjs
 !/scripts/verify-firebase-backup.mjs
+!/scripts/download-verification-files.mjs
 /output/audits/
 /backups/
 # next.js
@@ -56,5 +58,4 @@ docs/bestpoint-sistema.md
 !/docs/informe-mercado-sentimiento-necesidades-repuestos-merida.md
 !/docs/prompts-diagramas-y-dashboard-repuestos-merida.md
 !/docs/migracion-identidad-y-contrato-v2.md
-
-/scripts/
+!/docs/legal-launch-checklist.md

@@ -34,7 +34,8 @@ export async function POST(request) {
     const telefono = normalizePhone(body?.telefono)
     const intent = String(body?.intent || '')
     const rifaId = body?.rifa_id || null
-    const browserId = cookies().get(WA_BROWSER_COOKIE)?.value
+    const cookieStore = await cookies()
+    const browserId = cookieStore.get(WA_BROWSER_COOKIE)?.value
     const capability = verifyClientKey(body?.clientKey, browserId, intent)
 
     if (!telefono) {

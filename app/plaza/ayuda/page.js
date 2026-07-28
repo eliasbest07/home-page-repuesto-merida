@@ -301,7 +301,7 @@ export default function PlazaAyudaPage() {
                   Toda acción emprendida a partir de la información mostrada —incluidas conversaciones, entrevistas, compras, ventas, contrataciones, pagos, reservas, encuentros o entregas— es una decisión voluntaria y queda bajo la exclusiva responsabilidad de las personas que participan.
                 </p>
                 <p>
-                  Repuestos Mérida y Gochos&apos; Group no son vendedores, compradores, empleadores, representantes, intermediarios ni garantes en los acuerdos entre anunciantes e interesados. En la medida permitida por la ley aplicable, no asumen responsabilidad por identidades falsas, fraude, pérdidas, pagos, incumplimientos, calidad, disponibilidad, garantías, daños o conflictos derivados del uso de los anuncios o del contacto entre terceros.
+                  Repuestos Mérida y su operador no son vendedores, compradores, empleadores, representantes, intermediarios ni garantes en los acuerdos entre anunciantes e interesados. En la medida permitida por la ley aplicable, no asumen responsabilidad por identidades falsas, fraude, pérdidas, pagos, incumplimientos, calidad, disponibilidad, garantías, daños o conflictos derivados del uso de los anuncios o del contacto entre terceros.
                 </p>
                 <p className="font-bold text-amber-950">
                   Antes de continuar, verifica por tu cuenta la identidad de la persona, la autenticidad de la oferta o solicitud y todas sus condiciones.

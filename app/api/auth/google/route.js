@@ -4,6 +4,7 @@ import { ref, get } from 'firebase/database'
 import { phoneKey } from '@/lib/whatsappAuth'
 import { signRifaToken } from '@/lib/rifaJwt'
 import { resolverPerfil, construirPerfil, canonPhone } from '@/lib/perfilUsuario'
+import { issueCanonicalFirebaseSession } from '@/lib/canonicalIdentity'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -137,16 +138,31 @@ export async function POST(request) {
     }
 
     const { telefono, key } = linked
+    const identity = await issueCanonicalFirebaseSession({
+      telefono,
+      preferredAuthUid: google.uid,
+      source: 'google',
+      profilePatch: {
+        google_uid: google.uid,
+        google_email: google.email,
+        google_verificado_en: Date.now(),
+      },
+    })
+    linked.realtimeUid = identity.canonicalUid
+    linked.user = identity.canonicalProfile
+    linked.source = 'users'
     const [{ perfil, prefill }, vendSnap] = await Promise.all([
       resolveLinkedProfile(linked, google.uid),
       get(ref(rtdb, `vendedor_index/${key}`)),
     ])
     const rifas_vendedor = vendSnap.exists() ? Object.keys(vendSnap.val() || {}) : []
     const { token, expiresAt } = signRifaToken({
+      sub: identity.canonicalUid,
       tel: key,
       telefono,
-      uid: google.uid,
-      ...(linked.realtimeUid ? { realtime_uid: linked.realtimeUid } : {}),
+      uid: identity.canonicalUid,
+      google_uid: google.uid,
+      realtime_uid: identity.canonicalUid,
       auth_provider: 'google',
     })
 
@@ -154,7 +170,9 @@ export async function POST(request) {
       ok: true,
       linked: true,
       google_uid: google.uid,
-      realtime_uid: linked.realtimeUid || '',
+      canonical_uid: identity.canonicalUid,
+      realtime_uid: identity.canonicalUid,
+      firebaseCustomToken: identity.firebaseCustomToken,
       telefono,
       perfil,
       prefill,

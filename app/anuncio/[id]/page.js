@@ -188,6 +188,12 @@ export default function AnuncioDetallePage() {
             >
               {disponible ? 'Escribir por WhatsApp' : 'No disponible'}
             </a>
+            <Link
+              href={`/propiedad-intelectual?contenido=${encodeURIComponent(`/anuncio/${id}`)}`}
+              className="flex h-11 items-center justify-center rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50"
+            >
+              Denunciar contenido o infracción
+            </Link>
           </div>
         </article>
 

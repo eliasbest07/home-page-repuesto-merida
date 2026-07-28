@@ -208,6 +208,18 @@ function SoftButton({ children, active = false, className = '', ...props }) {
   )
 }
 
+function DangerButton({ children, className = '', ...props }) {
+  return (
+    <button
+      type="button"
+      className={`inline-flex min-h-11 items-center justify-center rounded-lg border border-red-200 bg-red-50 px-4 text-sm font-extrabold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  )
+}
+
 // Fotos del repuesto: lista con scroll horizontal (2 a la vista) + agregar (máx 4).
 function RepuestoFotos({ fotos = [], uploading = false, removingUrl = '', onPick, onRemove }) {
   return (
@@ -392,6 +404,7 @@ export default function ComercioAutorizacionPage() {
   const [editingRepuestoSaving, setEditingRepuestoSaving] = useState(false)
   const [archivingRepuestoId, setArchivingRepuestoId] = useState('')
   const [restoringRepuestoId, setRestoringRepuestoId] = useState('')
+  const [deletingRepuestoId, setDeletingRepuestoId] = useState('')
   const [pendingRepuestoPhotos, setPendingRepuestoPhotos] = useState([])
   const [homeAnalytics, setHomeAnalytics] = useState([])
   const [homeAnalyticsLoading, setHomeAnalyticsLoading] = useState(false)
@@ -1279,6 +1292,42 @@ export default function ComercioAutorizacionPage() {
     }
   }
 
+  async function deletePublishedRepuesto(item) {
+    const confirmed = window.confirm(
+      `¿Eliminar "${item.nombre || 'este repuesto'}" del catálogo? Esta acción quitará la publicación.`,
+    )
+    if (!confirmed) return
+
+    setDeletingRepuestoId(item.id)
+    setError('')
+    setMessage('')
+    try {
+      const res = await fetch('/api/usuario/comercio/repuestos', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({
+          action: 'unpublish',
+          id: item.id,
+          source: item.source || '',
+          app_uid: item.app_uid || '',
+          app_pending_id: item.app_pending_id || '',
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo eliminar la publicación.')
+      setRepuestos((items) => items.filter((current) => current.id !== item.id))
+      if (editingRepuestoId === item.id) setEditingRepuestoId('')
+      setMessage('Repuesto eliminado y quitado del catálogo.')
+    } catch (err) {
+      setError(err.message || 'No se pudo eliminar la publicación.')
+    } finally {
+      setDeletingRepuestoId('')
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
@@ -1581,9 +1630,19 @@ export default function ComercioAutorizacionPage() {
                         <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
                           {formatPrecio(item.precio)}
                         </span>
-                        <PrimaryButton onClick={() => approveRepuesto(item)} disabled={item.aprobado || item.archivado} className="flex-1 sm:flex-none">
-                          {item.aprobado ? 'Aprobado' : item.archivado ? 'Archivado' : 'Aprobar publicacion'}
-                        </PrimaryButton>
+                        {item.aprobado ? (
+                          <DangerButton
+                            onClick={() => deletePublishedRepuesto(item)}
+                            disabled={deletingRepuestoId === item.id}
+                            className="flex-1 sm:flex-none"
+                          >
+                            {deletingRepuestoId === item.id ? 'Eliminando...' : 'Quitar de publicado'}
+                          </DangerButton>
+                        ) : (
+                          <PrimaryButton onClick={() => approveRepuesto(item)} disabled={item.archivado} className="flex-1 sm:flex-none">
+                            {item.archivado ? 'Archivado' : 'Aprobar publicacion'}
+                          </PrimaryButton>
+                        )}
                       </div>
                     </div>
                     )}
@@ -2142,9 +2201,19 @@ export default function ComercioAutorizacionPage() {
                         <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
                           {formatPrecio(item.precio)}
                         </span>
-                        <PrimaryButton onClick={() => approveRepuesto(item)} disabled={item.aprobado} className="flex-1 sm:flex-none">
-                          {item.aprobado ? 'Aprobado' : 'Aprobar publicacion'}
-                        </PrimaryButton>
+                        {item.aprobado ? (
+                          <DangerButton
+                            onClick={() => deletePublishedRepuesto(item)}
+                            disabled={deletingRepuestoId === item.id}
+                            className="flex-1 sm:flex-none"
+                          >
+                            {deletingRepuestoId === item.id ? 'Eliminando...' : 'Quitar de publicado'}
+                          </DangerButton>
+                        ) : (
+                          <PrimaryButton onClick={() => approveRepuesto(item)} className="flex-1 sm:flex-none">
+                            Aprobar publicacion
+                          </PrimaryButton>
+                        )}
                       </div>
                     </div>
 

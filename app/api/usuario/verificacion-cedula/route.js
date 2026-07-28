@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import crypto from 'crypto'
 import { verifyRifaToken } from '@/lib/rifaJwt'
+import { AI_VERIFICATION_CONSENT_VERSION } from '@/lib/legalConfig'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -8,11 +8,6 @@ export const dynamic = 'force-dynamic'
 const STORAGE_PREFIX = 'verificaciones-cedula'
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
-const EXTENSIONS = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-}
 
 function cleanPhone(value) {
   return String(value || '').replace(/\D/g, '')
@@ -55,9 +50,8 @@ async function fileToBuffer(file) {
   return Buffer.from(await file.arrayBuffer())
 }
 
-async function uploadPrivateImage({ bucket, file, buffer, telefono, kind, batchId }) {
-  const ext = EXTENSIONS[file.type] || 'jpg'
-  const storagePath = `${STORAGE_PREFIX}/${telefono}/${batchId}-${kind}.${ext}`
+async function uploadPrivateImage({ bucket, file, buffer, telefono, kind }) {
+  const storagePath = `${STORAGE_PREFIX}/${telefono}/${kind}`
 
   await bucket.file(storagePath).save(buffer, {
     resumable: false,
@@ -227,6 +221,14 @@ export async function POST(request) {
     if (!session) return NextResponse.json({ error: 'Sesión inválida.' }, { status: 401 })
 
     const form = await request.formData()
+    if (
+      form.get('consent_accepted') !== 'true' ||
+      form.get('consent_version') !== AI_VERIFICATION_CONSENT_VERSION
+    ) {
+      return NextResponse.json({
+        error: 'Falta el consentimiento vigente para el análisis con inteligencia artificial.',
+      }, { status: 400 })
+    }
     const cedulaFoto = form.get('cedula_foto')
     const selfie = form.get('selfie_cedula')
 
@@ -254,10 +256,21 @@ export async function POST(request) {
     const bucket = getAdminBucket()
     const db = getAdminDb()
     const rtdb = getAdminRealtimeDb()
-    const batchId = `${Date.now()}-${crypto.randomUUID()}`
     const [cedulaFile, selfieFile] = await Promise.all([
-      uploadPrivateImage({ bucket, file: cedulaFoto, buffer: cedulaBuffer, telefono: session.telefono, kind: 'cedula', batchId }),
-      uploadPrivateImage({ bucket, file: selfie, buffer: selfieBuffer, telefono: session.telefono, kind: 'selfie-cedula', batchId }),
+      uploadPrivateImage({
+        bucket,
+        file: cedulaFoto,
+        buffer: cedulaBuffer,
+        telefono: session.telefono,
+        kind: 'cedula',
+      }),
+      uploadPrivateImage({
+        bucket,
+        file: selfie,
+        buffer: selfieBuffer,
+        telefono: session.telefono,
+        kind: 'selfie-cedula',
+      }),
     ])
 
     const official = await findRealtimeUserByPhone(rtdb, session.telefono)
@@ -266,12 +279,27 @@ export async function POST(request) {
 
     const verificationData = {
       telefono: session.telefono,
-      cedula: cedulaNumero,
+      cedula_ultimos4: cedulaNumero.slice(-4),
       estado: 'aprobado',
-      gemini,
+      metodo: 'google_gemini',
+      proveedor_ia: 'Google Gemini',
+      controles: {
+        es_cedula_venezolana: Boolean(gemini.cedula.es_cedula_venezolana),
+        datos_legibles: Boolean(gemini.cedula.datos_legibles),
+        se_ve_persona: Boolean(gemini.selfie.se_ve_persona),
+        sostiene_cedula: Boolean(gemini.selfie.sostiene_cedula),
+        cedula_parece_la_misma: Boolean(gemini.selfie.cedula_parece_la_misma),
+        cara_visible: Boolean(gemini.selfie.cara_visible),
+      },
+      imagenes_conservadas: true,
       archivos: {
         cedula: cedulaFile,
         selfie_cedula: selfieFile,
+      },
+      consentimiento: {
+        aceptado: true,
+        version: AI_VERIFICATION_CONSENT_VERSION,
+        aceptado_en: now,
       },
       enviado_en: now,
       actualizado_en: now,
@@ -302,7 +330,6 @@ export async function POST(request) {
       ok: true,
       estado: 'aprobado',
       cedula: cedulaNumero,
-      datos: gemini.cedula,
       realtime_user_uid: official?.uid || session.telefono,
     })
   } catch (error) {

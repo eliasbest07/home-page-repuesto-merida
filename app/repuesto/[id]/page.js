@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { doc, getDoc } from 'firebase/firestore'
 import { get, ref } from 'firebase/database'
@@ -139,8 +140,9 @@ function sellerMapEmbedUrl(seller = {}) {
   return `https://maps.google.com/maps?q=${coordinates.lat},${coordinates.lng}&z=17&output=embed`
 }
 
-export default function RepuestoDetailPage({ params }) {
-  const productId = decodeURIComponent(params.id)
+export default function RepuestoDetailPage() {
+  const params = useParams()
+  const productId = decodeURIComponent(String(params?.id || ''))
   const [product, setProduct] = useState(null)
   const [seller, setSeller] = useState(null)
   const [status, setStatus] = useState('loading')
@@ -365,6 +367,12 @@ export default function RepuestoDetailPage({ params }) {
                 >
                   Consultar por WhatsApp
                 </a>
+                <Link
+                  href={`/propiedad-intelectual?contenido=${encodeURIComponent(`/repuesto/${product.id}`)}`}
+                  className="mt-3 flex w-full items-center justify-center rounded-xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-600 hover:bg-gray-50"
+                >
+                  Denunciar contenido o infracción
+                </Link>
                 {saved && (
                   <Link
                     href="/directorio"

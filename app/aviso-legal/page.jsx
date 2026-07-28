@@ -1,4 +1,10 @@
 import LegalPage from '@/app/components/LegalPage'
+import {
+  LEGAL_CONTACT_EMAIL,
+  LEGAL_OPERATOR_NAME,
+  LEGAL_TRADE_NAME,
+  LEGAL_UPDATED_LABEL,
+} from '@/lib/legalConfig'
 
 export const metadata = {
   title: 'Aviso Legal | Repuestos Mérida',
@@ -8,19 +14,24 @@ export const metadata = {
 
 export default function AvisoLegal() {
   return (
-    <LegalPage title="Aviso Legal" updated="10 de junio de 2026">
+    <LegalPage title="Aviso Legal" updated={LEGAL_UPDATED_LABEL}>
       <section>
         <h2>1. Titular del sitio</h2>
         <p className="mt-2">
-          Este sitio web, disponible en repuestosmerida.com, es operado por Gochos&apos; Group bajo
-          el nombre Repuestos Mérida, con domicilio de actividad en Mérida centro, Av. 3,
-          Mérida, Venezuela.
+          Este sitio web, disponible en repuestosmerida.com, es operado por{' '}
+          <strong>{LEGAL_OPERATOR_NAME}</strong>, persona natural, bajo el nombre Repuestos Mérida,
+          con domicilio de actividad en Mérida centro, Av. 3, Mérida, Venezuela.
+        </p>
+        <p className="mt-2">
+          {LEGAL_TRADE_NAME} es el nombre comercial proyectado para un registro futuro en
+          Venezuela. Actualmente no se presenta como una sociedad mercantil constituida ni como una
+          persona jurídica independiente.
         </p>
         <p className="mt-2">
           Horario de atención: todos los días de 8:00 a. m. a 8:00 p. m.
         </p>
         <p className="mt-2">
-          Contacto: <a href="mailto:ahoraesbest@gmail.com">ahoraesbest@gmail.com</a>.
+          Contacto: <a href={`mailto:${LEGAL_CONTACT_EMAIL}`}>{LEGAL_CONTACT_EMAIL}</a>.
         </p>
       </section>
 
@@ -55,8 +66,10 @@ export default function AvisoLegal() {
       <section>
         <h2>5. Propiedad intelectual</h2>
         <p className="mt-2">
-          La marca, el diseño, el software y los contenidos propios del sitio pertenecen a
-          Gochos&apos; Group o se utilizan con autorización. Las marcas, fotografías y contenidos de
+          El diseño, el software y los contenidos propios del sitio pertenecen a{' '}
+          {LEGAL_OPERATOR_NAME} o se utilizan con autorización. Repuestos Mérida y{' '}
+          {LEGAL_TRADE_NAME} son nombres comerciales utilizados por el operador, sin que esta
+          declaración sustituya un registro de marca. Las marcas, fotografías y contenidos de
           terceros pertenecen a sus respectivos titulares.
         </p>
       </section>

@@ -303,6 +303,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /verificaciones_cedula/{telefono} {
+      allow read, write: if false;
+    }
+
     // Imágenes y datos de verificación — solo admin
     match /usuarios_plaza/{telefono} {
       allow read, write: if request.auth != null;

@@ -96,16 +96,25 @@ function LoginInner() {
         throw new Error(data.error || 'No se pudo validar la cuenta de Google.')
       }
       if (!data.linked || !data.token) {
+        try {
+          localStorage.setItem('login_google_pending', JSON.stringify({
+            uid: user.uid,
+            idToken,
+            expiresAt: Date.now() + 15 * 60 * 1000,
+          }))
+        } catch {}
         const message = data.reason === 'missing_phone'
-          ? 'Tu usuario existe en Firebase, pero no tiene un número guardado en su perfil.'
-          : 'Esta cuenta de Google no está registrada en Repuestos Mérida.'
+          ? 'Falta vincular un número. Continúa con WhatsApp para unirlo a esta cuenta de Google.'
+          : 'Continúa con WhatsApp para verificar el número y unirlo a esta cuenta de Google.'
         throw new Error(message)
       }
 
+      try { localStorage.removeItem('login_google_pending') } catch {}
       saveSession({
         telefono: data.telefono,
         google_uid: data.google_uid || user.uid,
-        realtime_uid: data.realtime_uid || user.uid,
+        canonical_uid: data.canonical_uid || user.uid,
+        realtime_uid: data.realtime_uid || data.canonical_uid || user.uid,
         perfil: data.perfil,
         prefill: data.prefill || null,
         rifas_vendedor: data.rifas_vendedor || [],

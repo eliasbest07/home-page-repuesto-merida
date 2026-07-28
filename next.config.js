@@ -34,13 +34,7 @@ const SECURITY_HEADERS = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
-  experimental: {
-    serverComponentsExternalPackages: ['firebase-admin'],
-  },
-  webpack(config, { dev }) {
-    if (dev) config.cache = false
-    return config
-  },
+  serverExternalPackages: ['firebase-admin'],
   images: {
     unoptimized: true,
     remotePatterns: [

@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 import { BINGO_SESSION_COOKIE, getBingoCookieOptions } from '@/lib/bingoSession';
 
 export async function POST() {
-  cookies().set(BINGO_SESSION_COOKIE, '', {
+  const cookieStore = await cookies();
+  cookieStore.set(BINGO_SESSION_COOKIE, '', {
     ...getBingoCookieOptions(),
     maxAge: 0,
   });

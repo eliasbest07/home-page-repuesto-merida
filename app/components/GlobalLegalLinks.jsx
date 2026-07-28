@@ -23,6 +23,12 @@ export default function GlobalLegalLinks() {
         <Link href="/terminos-condiciones" className="hover:text-gray-950 hover:underline">
           Términos y Condiciones
         </Link>
+        <Link href="/propiedad-intelectual" className="hover:text-gray-950 hover:underline">
+          Retiro de contenido
+        </Link>
+        <Link href="/eliminar-datos" className="hover:text-gray-950 hover:underline">
+          Eliminar mis datos
+        </Link>
       </nav>
     </footer>
   )

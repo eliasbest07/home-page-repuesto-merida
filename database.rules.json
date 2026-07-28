@@ -3,11 +3,29 @@
     "anuncios":        { ".read": true, ".write": true },
     "users": {
       ".read": true,
+      ".indexOn": ["whatsapp", "telefono"],
       "$uid": {
         ".write": "auth != null && auth.uid === $uid"
       }
     },
-    "verificarCedula": { ".read": true, ".write": true },
+    "verificarCedula": {
+      ".read": false,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        "fotocedula": {
+          ".validate": "!newData.exists() || (newData.isString() && newData.val() === 'fotocedula/' + auth.uid)"
+        },
+        "fotocaracedula": {
+          ".validate": "!newData.exists() || (newData.isString() && newData.val() === 'fotofacecedula/' + auth.uid)"
+        },
+        "storage_schema_version": {
+          ".validate": "!newData.exists() || newData.val() === 2"
+        },
+        "$other": {
+          ".validate": "$other === 'fotocedula' || $other === 'fotocaracedula' || $other === 'storage_schema_version'"
+        }
+      }
+    },
 
     "identity_index": {
       ".read": false,

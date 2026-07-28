@@ -1,4 +1,9 @@
 import LegalPage from '@/app/components/LegalPage'
+import {
+  LEGAL_CONTACT_EMAIL,
+  LEGAL_OPERATOR_NAME,
+  LEGAL_UPDATED_LABEL,
+} from '@/lib/legalConfig'
 
 export const metadata = {
   title: 'Política de Cookies | Repuestos Mérida',
@@ -8,7 +13,12 @@ export const metadata = {
 
 export default function PoliticaCookies() {
   return (
-    <LegalPage title="Política de Cookies" updated="10 de junio de 2026">
+    <LegalPage title="Política de Cookies" updated={LEGAL_UPDATED_LABEL}>
+      <section>
+        <p>
+          Esta política corresponde al sitio operado por <strong>{LEGAL_OPERATOR_NAME}</strong>.
+        </p>
+      </section>
       <section>
         <h2>1. Qué son las cookies</h2>
         <p className="mt-2">
@@ -26,12 +36,12 @@ export default function PoliticaCookies() {
             y conservación de la preferencia de cookies.
           </li>
           <li>
-            <strong>Publicitarias:</strong> si se activan anuncios, el proveedor publicitario puede
-            utilizarlas para mostrar, limitar y medir anuncios conforme al consentimiento del usuario.
+            <strong>Medición y analítica:</strong> Vercel Analytics y las mediciones internas solo
+            se activan después de aceptar las tecnologías opcionales.
           </li>
           <li>
-            <strong>De terceros:</strong> determinadas funciones de Google, Firebase, mapas o
-            servicios enlazados pueden aplicar sus propias tecnologías y políticas.
+            <strong>Publicitarias:</strong> Google AdSense solo se carga después de aceptar las
+            tecnologías opcionales y cuando la publicidad está habilitada.
           </li>
         </ul>
       </section>
@@ -51,7 +61,8 @@ export default function PoliticaCookies() {
       <section>
         <h2>4. Cómo gestionar tu decisión</h2>
         <p className="mt-2">
-          Al entrar al sitio puedes aceptar o rechazar las cookies opcionales. Después puedes pulsar
+          Las tecnologías necesarias se usan para prestar las funciones solicitadas y mantener la
+          seguridad. Al entrar al sitio puedes aceptar o rechazar las opcionales. Después puedes pulsar
           el botón “Cookies”, visible en la parte inferior de la pantalla, para cambiar tu elección.
           También puedes bloquear o borrar cookies desde la configuración de tu navegador.
         </p>
@@ -69,7 +80,7 @@ export default function PoliticaCookies() {
         <h2>6. Contacto</h2>
         <p className="mt-2">
           Para consultas sobre esta política, escribe a{' '}
-          <a href="mailto:ahoraesbest@gmail.com">ahoraesbest@gmail.com</a>.
+          <a href={`mailto:${LEGAL_CONTACT_EMAIL}`}>{LEGAL_CONTACT_EMAIL}</a>.
         </p>
       </section>
     </LegalPage>

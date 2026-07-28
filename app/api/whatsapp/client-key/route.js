@@ -15,7 +15,8 @@ export async function GET(request) {
     return NextResponse.json({ error: 'Origen no permitido.' }, { status: 403 })
   }
 
-  let browserId = cookies().get(WA_BROWSER_COOKIE)?.value
+  const cookieStore = await cookies()
+  let browserId = cookieStore.get(WA_BROWSER_COOKIE)?.value
   if (!browserId) browserId = createBrowserId()
 
   const credential = issueClientKey(browserId)

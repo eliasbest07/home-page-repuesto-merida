@@ -4,7 +4,10 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { ref, get } from 'firebase/database'
 import { phoneKey } from '@/lib/whatsappAuth'
 import { signRifaToken } from '@/lib/rifaJwt'
-import { resolverPerfil, canonPhone } from '@/lib/perfilUsuario'
+import { resolverPerfil } from '@/lib/perfilUsuario'
+import { issueCanonicalFirebaseSession } from '@/lib/canonicalIdentity'
+
+export const runtime = 'nodejs'
 
 function cleanText(value, max = 180) {
   return String(value || '').trim().slice(0, max)
@@ -63,36 +66,25 @@ export async function POST(request) {
     await updateDoc(linkRef, { usado: true, usado_en: Date.now() })
 
     const googleUser = await resolveGoogleUser(googleIdToken)
-    if (googleUser?.uid) {
-      try {
-        const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
-        const adminRtdb = getAdminRealtimeDb()
-        const googlePatch = {
-          google_uid: googleUser.uid,
-          google_email: googleUser.email,
-          google_nombre: googleUser.nombre,
-          google_foto: googleUser.foto_url,
-          google_verificado_en: Date.now(),
-        }
-        // Fuente de verdad: /users. Si el teléfono ya está en /users (app Android
-        // o web previo) se actualiza ese nodo; si no, se crea /users/<telefono>.
-        const target = canonPhone(telefono)
-        let usersKey = key
-        const allUsers = await adminRtdb.ref('users').get()
-        if (allUsers.exists()) {
-          for (const [uid, u] of Object.entries(allUsers.val() || {})) {
-            if (u && typeof u === 'object' && canonPhone(u.whatsapp) === target) { usersKey = uid; break }
-          }
-        }
-        const seed = usersKey === key ? { whatsapp: telefono, telefono, id: key } : {}
-        await adminRtdb.ref(`users/${usersKey}`).update({ ...seed, ...googlePatch })
-      } catch {
-        // La sesión válida sigue siendo la de WhatsApp; Google solo enriquece/vincula.
-      }
-    }
+    const identity = await issueCanonicalFirebaseSession({
+      telefono,
+      preferredAuthUid: googleUser?.uid || '',
+      source: googleUser?.uid ? 'whatsapp_magic_google' : 'whatsapp_magic',
+      profilePatch: googleUser?.uid ? {
+        google_uid: googleUser.uid,
+        google_email: googleUser.email,
+        google_nombre: googleUser.nombre,
+        google_foto: googleUser.foto_url,
+        google_verificado_en: Date.now(),
+      } : null,
+    })
 
     // Recupera el perfil: ya guardado (rifas_usuarios) o el oficial (/users).
-    let { perfil, prefill } = await resolverPerfil({ telefono, key })
+    let { perfil, prefill } = await resolverPerfil({
+      telefono,
+      key,
+      realtimeUid: identity.canonicalUid,
+    })
     if (googleUser?.uid) {
       const googlePrefill = {
         uid: googleUser.uid,
@@ -109,7 +101,15 @@ export async function POST(request) {
     const vendSnap = await get(ref(rtdb, `vendedor_index/${key}`))
     if (vendSnap.exists()) rifasVendedor = Object.keys(vendSnap.val() || {})
 
-    const { token: jwt, expiresAt } = signRifaToken({ tel: key, telefono })
+    const { token: jwt, expiresAt } = signRifaToken({
+      sub: identity.canonicalUid,
+      uid: identity.canonicalUid,
+      realtime_uid: identity.canonicalUid,
+      ...(googleUser?.uid ? { google_uid: googleUser.uid } : {}),
+      tel: key,
+      telefono,
+      auth_provider: googleUser?.uid ? 'google' : 'whatsapp',
+    })
 
     return NextResponse.json({
       ok: true,
@@ -119,6 +119,9 @@ export async function POST(request) {
       rifas_vendedor: rifasVendedor,
       token: jwt,
       expiresAt,
+      canonical_uid: identity.canonicalUid,
+      realtime_uid: identity.canonicalUid,
+      firebaseCustomToken: identity.firebaseCustomToken,
       google: googleUser,
       redirect: data.redirect || '/',
     })
