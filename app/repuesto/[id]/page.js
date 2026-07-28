@@ -69,9 +69,8 @@ function whatsappUrl(number, product) {
 }
 
 function sellerCoordinates(seller = {}) {
-  const rawLat = seller.latitud ?? seller.latitude ?? seller.lat ?? seller.coords?.lat ?? seller.coordenadas?.lat
-  const rawLng = seller.longitud ?? seller.longitude ?? seller.lng ?? seller.lon ??
-    seller.coords?.lng ?? seller.coordenadas?.lng
+  const rawLat = seller.comercio_lat
+  const rawLng = seller.comercio_lng
   const lat = rawLat === '' || rawLat === null || rawLat === undefined ? NaN : Number(rawLat)
   const lng = rawLng === '' || rawLng === null || rawLng === undefined ? NaN : Number(rawLng)
 
@@ -79,26 +78,7 @@ function sellerCoordinates(seller = {}) {
     return { lat, lng }
   }
 
-  const locationText = [seller.ubicacion, seller.zona, seller.ciudad].filter(Boolean).join(', ')
-  const match = locationText.match(/(-?\d{1,2}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)/)
-  if (!match) return null
-
-  const parsedLat = Number(match[1])
-  const parsedLng = Number(match[2])
-  return Number.isFinite(parsedLat) && Number.isFinite(parsedLng)
-    && Math.abs(parsedLat) <= 90 && Math.abs(parsedLng) <= 180
-    ? { lat: parsedLat, lng: parsedLng }
-    : null
-}
-
-function isCoordinateText(value) {
-  if (typeof value !== 'string') return false
-  const match = value.trim().match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)$/)
-  if (!match) return false
-  const lat = Number(match[1])
-  const lng = Number(match[2])
-  return Number.isFinite(lat) && Number.isFinite(lng)
-    && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+  return null
 }
 
 // El nombre visible es el del comercio: primero el guardado en el catálogo,
@@ -116,8 +96,7 @@ function sellerDisplayName(seller = {}, product = {}) {
 
 function sellerDisplayLocation(seller = {}) {
   return [
-    isCoordinateText(seller.ubicacion) ? '' : seller.ubicacion,
-    seller.zona,
+    seller.comercio_direccion,
     seller.ciudad,
   ].filter((value) => typeof value === 'string' && value.trim()).join(', ')
 }
@@ -164,7 +143,7 @@ export default function RepuestoDetailPage() {
 
         if (nextProduct.sellerId) {
           try {
-            const sellerSnapshot = await get(ref(rtdb, `users/${nextProduct.sellerId}`))
+            const sellerSnapshot = await get(ref(rtdb, `public_profiles/${nextProduct.sellerId}`))
             if (!cancelled && sellerSnapshot.exists()) setSeller(sellerSnapshot.val())
           } catch {}
         }
@@ -358,7 +337,7 @@ export default function RepuestoDetailPage() {
                   {saved ? 'Guardado en mi directorio' : 'Guardar en mi directorio'}
                 </button>
                 <a
-                  href={whatsappUrl(product.whatsapp || seller?.whatsapp || seller?.telefono, product)}
+                  href={whatsappUrl(product.whatsapp || seller?.whatsapp_public, product)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`flex w-full items-center justify-center rounded-xl px-5 py-3.5 font-bold text-white ${

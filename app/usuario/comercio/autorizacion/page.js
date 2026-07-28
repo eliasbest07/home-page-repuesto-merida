@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { onValue, ref as dbRef } from 'firebase/database'
 import { rtdb } from '@/lib/firebase'
-import { ensureSession, phoneKey } from '@/lib/rifaSession'
+import { ensureSession } from '@/lib/rifaSession'
 import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
 
@@ -368,8 +368,6 @@ export default function ComercioAutorizacionPage() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [realtimeProfile, setRealtimeProfile] = useState(null)
-  const [identityByPhone, setIdentityByPhone] = useState({})
-  const [legacyIdentityByPhone, setLegacyIdentityByPhone] = useState({})
   const [globalComerciosPorDia, setGlobalComerciosPorDia] = useState({})
   const [selectedDay, setSelectedDay] = useState('lunes')
   const [selectedCommerceId, setSelectedCommerceId] = useState('')
@@ -426,12 +424,11 @@ export default function ComercioAutorizacionPage() {
   }, [router])
 
   useEffect(() => {
-    const tel = session?.telefono
-    if (!tel) return undefined
-
-    const key = phoneKey(tel)
-    const targetPhone = canonPhone(tel)
-    const uid = session?.perfil?.uid || session?.prefill?.uid
+    const uid = session?.canonical_uid
+      || session?.realtime_uid
+      || session?.perfil?.uid
+      || session?.prefill?.uid
+    if (!uid) return undefined
     const offs = []
     const mergeProfile = (value) => {
       if (!value || typeof value !== 'object') return
@@ -442,67 +439,10 @@ export default function ComercioAutorizacionPage() {
       offs.push(off)
     }
 
-    if (key) watch(`rifas_usuarios/${key}`)
-    if (uid) watch(`users/${uid}`)
-    const usersOff = onValue(dbRef(rtdb, 'users'), (snap) => {
-      const data = snap.val() || {}
-      const nextIdentity = {}
-      for (const value of Object.values(data)) {
-        if (!value || typeof value !== 'object') continue
-
-        const phones = [
-          value.whatsapp,
-          value.telefono,
-          value.phone,
-          value.id,
-        ].map(canonPhone).filter(Boolean)
-
-        for (const phone of phones) {
-          nextIdentity[phone] = {
-            cedula: String(value.cedula || '').trim(),
-            cedula_estado: String(value.cedula_estado || '').trim(),
-            cedula_actualizada_en: value.cedula_actualizada_en || null,
-          }
-        }
-
-        if (phones.includes(targetPhone)) {
-          mergeProfile(value)
-        }
-      }
-      setIdentityByPhone(nextIdentity)
-    })
-    offs.push(usersOff)
-
-    const legacyUsersOff = onValue(dbRef(rtdb, 'rifas_usuarios'), (snap) => {
-      const data = snap.val() || {}
-      const nextIdentity = {}
-      for (const [key, value] of Object.entries(data)) {
-        if (!value || typeof value !== 'object') continue
-
-        const phones = [
-          key,
-          value.whatsapp,
-          value.telefono,
-          value.phone,
-          value.id,
-        ].map(canonPhone).filter(Boolean)
-
-        for (const phone of phones) {
-          nextIdentity[phone] = {
-            cedula: String(value.cedula || '').trim(),
-            cedula_estado: String(value.cedula_estado || '').trim(),
-            cedula_actualizada_en: value.cedula_actualizada_en || null,
-          }
-        }
-      }
-      setLegacyIdentityByPhone(nextIdentity)
-    }, () => {
-      setLegacyIdentityByPhone({})
-    })
-    offs.push(legacyUsersOff)
+    watch(`users/${uid}`)
 
     return () => offs.forEach((off) => { try { off() } catch { } })
-  }, [session?.telefono, session?.perfil?.uid, session?.prefill?.uid])
+  }, [session])
 
   const profile = useMemo(
     () => ({ ...(session?.perfil || session?.prefill || {}), ...(realtimeProfile || {}) }),
@@ -566,10 +506,9 @@ export default function ComercioAutorizacionPage() {
   const dayLabel = DAYS.find((day) => day.key === selectedDay)?.label || 'Lunes'
   const photoSrc = photoPreview || form.comercio_foto_url
   const locationReady = form.comercio_lat != null && form.comercio_lng != null
-  const commercePhoneKey = canonPhone(form.whatsapp)
-  const commerceIdentity = identityByPhone[commercePhoneKey] || legacyIdentityByPhone[commercePhoneKey] || {}
-  const commerceCedulaVerified = Boolean(commerceIdentity.cedula) || commerceIdentity.cedula_estado === 'aprobado'
-  const commerceCedulaPending = commerceIdentity.cedula_estado === 'pendiente'
+  const commerceIdentity = form.identity_verification || {}
+  const commerceCedulaVerified = commerceIdentity.verified === true
+  const commerceCedulaPending = commerceIdentity.status === 'pendiente'
   const currentVenta = selectedVenta || form.lista_ventas_repuestos[0] || ''
   const commerceRepuestos = repuestos.filter((item) => {
     if (repuestoBelongsToCommerce(item, form)) return true

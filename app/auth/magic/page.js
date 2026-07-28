@@ -31,6 +31,7 @@ function MagicInner() {
     if (ran.current) return
     ran.current = true
     ;(async () => {
+      let pendingClaim = null
       try {
         const token = params.get('token')
         if (!token) throw new Error('Enlace inválido.')
@@ -57,10 +58,27 @@ function MagicInner() {
         if (!data.firebaseCustomToken || !data.canonical_uid) {
           throw new Error('El servidor no devolvió una identidad Firebase válida.')
         }
+        pendingClaim = { token, claim: data.magic_claim }
         const firebaseSession = await signInWithCustomToken(auth, data.firebaseCustomToken)
         if (firebaseSession.user.uid !== data.canonical_uid) {
           throw new Error('La identidad Firebase no coincide con la sesión de WhatsApp.')
         }
+        const firebaseIdToken = await firebaseSession.user.getIdToken()
+        const completeResponse = await fetch('/api/auth/magic/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            claim: data.magic_claim,
+            firebaseIdToken,
+            canonicalUid: data.canonical_uid,
+          }),
+        })
+        const completeData = await completeResponse.json().catch(() => ({}))
+        if (!completeResponse.ok || !completeData.ok) {
+          throw new Error(completeData.error || 'No se pudo confirmar la sesión.')
+        }
+        pendingClaim = null
 
         saveSession({
           telefono: data.telefono,
@@ -89,7 +107,21 @@ function MagicInner() {
           router.replace(dest)
         }
       } catch (e) {
-        setError(e.message)
+        if (pendingClaim?.token && pendingClaim?.claim) {
+          fetch('/api/auth/magic', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pendingClaim),
+          }).catch(() => {})
+        }
+        const code = String(e?.code || e?.message || '')
+        if (code.includes('auth/requests-from-referer-')) {
+          setError('Este dominio de prueba no está autorizado en Firebase. El enlace no se consumió; inténtalo desde el sitio oficial.')
+        } else if (code.includes('auth/')) {
+          setError('Firebase no pudo completar la sesión. El enlace no se consumió; intenta nuevamente.')
+        } else {
+          setError(e?.message || 'No se pudo iniciar sesión.')
+        }
       }
     })()
   }, [params, router])

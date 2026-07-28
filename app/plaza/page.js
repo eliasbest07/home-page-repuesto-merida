@@ -5,12 +5,13 @@ import Link from 'next/link'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { collection, getDocs } from 'firebase/firestore'
-import { get, onValue, ref as dbRef, serverTimestamp, update } from 'firebase/database'
+import { onValue, ref as dbRef, serverTimestamp, update } from 'firebase/database'
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
 import { firestore, rtdb, storage } from '../../lib/firebase'
-import { phoneKey, saveSession } from '@/lib/rifaSession'
+import { saveSession } from '@/lib/rifaSession'
 import { matchesPlazaSearch } from '@/lib/plazaSearch'
 import { isPlazaAdApproved } from '@/lib/plazaApproval'
+import { sanitizePublicProfile } from '@/lib/publicProfileContract'
 import AdSenseBlock from '@/app/components/AdSenseBlock'
 
 const PlazaChat = dynamic(() => import('../components/PlazaChat'), { ssr: false })
@@ -148,12 +149,6 @@ const hasRealName = (s) => !!s && !isPhone(s)
 
 const initials = (name) =>
   name ? name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'
-
-function canonPhone(raw) {
-  let d = String(raw || '').replace(/\D/g, '')
-  if (d.startsWith('58') && d.length >= 12) d = d.slice(2)
-  return d.replace(/^0+/, '')
-}
 
 function chunk(arr, size) {
   return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
@@ -863,9 +858,10 @@ function UserMenu({ session, onClose, onLogout }) {
   useEffect(() => {
     const tel = session?.telefono || session?.whatsapp
     if (!tel) return undefined
-    const key = phoneKey(tel)
-    const uid = session?.perfil?.uid || session?.prefill?.uid
-    const targetPhone = canonPhone(tel)
+    const uid = session?.canonical_uid
+      || session?.realtime_uid
+      || session?.perfil?.uid
+      || session?.prefill?.uid
     const offs = []
 
     const mergeProfile = (data) => {
@@ -888,18 +884,7 @@ function UserMenu({ session, onClose, onLogout }) {
       offs.push(off)
     }
 
-    if (key) watch(`rifas_usuarios/${key}`)
     if (uid) watch(`users/${uid}`)
-    const rootOff = onValue(dbRef(rtdb, '/'), (snap) => {
-      const data = snap.val() || {}
-      for (const value of Object.values(data)) {
-        if (value && typeof value === 'object' && canonPhone(value.whatsapp) === targetPhone) {
-          mergeProfile(value)
-          break
-        }
-      }
-    })
-    offs.push(rootOff)
 
     return () => offs.forEach((off) => { try { off() } catch {} })
   }, [session])
@@ -907,29 +892,22 @@ function UserMenu({ session, onClose, onLogout }) {
   async function updateProfileEverywhere(patch) {
     const tel = session?.telefono || session?.whatsapp
     if (!tel) throw new Error('Sesión inválida')
-    const key = phoneKey(tel)
-    const uid = session?.perfil?.uid || session?.prefill?.uid || perfil?.uid
-    const targetPhone = canonPhone(tel)
-    const updates = {}
-
-    // Fuente de verdad: /users (key = uid oficial o teléfono). rifas_usuarios
-    // ya no guarda el perfil: es exclusivo del flujo de rifas.
-    const usersKey = uid || key
-    updates[`users/${usersKey}`] = patch
-
-    try {
-      const snap = await get(dbRef(rtdb, '/'))
-      const data = snap.val() || {}
-      for (const [rootKey, value] of Object.entries(data)) {
-        if (value && typeof value === 'object' && canonPhone(value.whatsapp) === targetPhone) {
-          updates[rootKey] = patch
-          break
-        }
-      }
-    } catch {}
-
-    await update(dbRef(rtdb), updates)
+    const usersKey = session?.canonical_uid
+      || session?.realtime_uid
+      || session?.perfil?.uid
+      || session?.prefill?.uid
+      || perfil?.uid
+    if (!usersKey || /^[+\d\s().-]+$/.test(String(usersKey))) {
+      throw new Error('Tu sesión necesita renovarse antes de actualizar el perfil.')
+    }
     const nextPerfil = { ...(session.perfil || session.prefill || {}), ...(perfil || {}), ...patch }
+    const publicProfile = sanitizePublicProfile(usersKey, nextPerfil, {
+      canonicalUid: usersKey,
+    })
+    await Promise.all([
+      update(dbRef(rtdb, `users/${usersKey}`), patch),
+      update(dbRef(rtdb, `public_profiles/${usersKey}`), publicProfile),
+    ])
     saveSession({ ...session, prefill: null, perfil: nextPerfil })
     setPerfil(nextPerfil)
   }
@@ -1003,10 +981,15 @@ function UserMenu({ session, onClose, onLogout }) {
     if (!file) return
     setFotoSaving(true)
     try {
-      const tel = session.telefono || session.whatsapp
-      const key = phoneKey(tel)
+      const usersKey = session?.canonical_uid
+        || session?.realtime_uid
+        || session?.perfil?.uid
+        || session?.prefill?.uid
+      if (!usersKey || /^[+\d\s().-]+$/.test(String(usersKey))) {
+        throw new Error('Tu sesión necesita renovarse antes de actualizar la foto.')
+      }
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
-      const snap = await uploadBytes(storageRef(storage, `rifas_usuarios/${key}.${ext}`), file)
+      const snap = await uploadBytes(storageRef(storage, `fotos_usuarios/${usersKey}/perfil.${ext}`), file)
       const foto_url = await getDownloadURL(snap.ref)
       await updateProfileEverywhere({ foto_url, foto: foto_url, actualizado_en: serverTimestamp() })
     } catch (_) {}

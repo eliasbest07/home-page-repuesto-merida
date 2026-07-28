@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { verifyRifaToken } from '@/lib/rifaJwt'
+import { syncPublicProfilesFromUsers } from '@/lib/publicProfileAdmin'
 import { canManageCommerces } from '@/lib/comercioAuthorization'
 
 export const runtime = 'nodejs'
@@ -70,6 +71,22 @@ function cleanJsonList(value, maxItems = 80) {
     return list.map((item) => cleanText(item, 80)).filter(Boolean).slice(0, maxItems)
   } catch {
     return []
+  }
+}
+
+function identityVerification(primary = {}, legacy = {}) {
+  const primaryStatus = cleanText(primary?.cedula_estado, 30).toLowerCase()
+  const legacyStatus = cleanText(legacy?.cedula_estado, 30).toLowerCase()
+  const verified = Boolean(
+    cleanText(primary?.cedula, 40)
+    || primaryStatus === 'aprobado'
+    || cleanText(legacy?.cedula, 40)
+    || legacyStatus === 'aprobado',
+  )
+  return {
+    verified,
+    status: primaryStatus || legacyStatus || '',
+    updated_at: primary?.cedula_actualizada_en || legacy?.cedula_actualizada_en || null,
   }
 }
 
@@ -178,8 +195,24 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Tu solicitud aún está en espera de autorización.' }, { status: 403 })
     }
 
-    const snap = await rtdb.ref('users').get()
+    const [snap, legacySnap] = await Promise.all([
+      rtdb.ref('users').get(),
+      rtdb.ref('rifas_usuarios').get(),
+    ])
     const users = snap.exists() ? snap.val() || {} : {}
+    const legacyUsers = legacySnap.exists() ? legacySnap.val() || {} : {}
+    const legacyByPhone = {}
+    for (const [legacyKey, legacyUser] of Object.entries(legacyUsers)) {
+      if (!legacyUser || typeof legacyUser !== 'object') continue
+      const phones = [
+        legacyKey,
+        legacyUser.whatsapp,
+        legacyUser.telefono,
+        legacyUser.phone,
+        legacyUser.id,
+      ].map(canonPhone).filter(Boolean)
+      for (const phone of phones) legacyByPhone[phone] = legacyUser
+    }
     const comerciosPorDia = {}
 
     for (const [uid, user] of Object.entries(users)) {
@@ -187,7 +220,12 @@ export async function GET(request) {
       const byDay = collectCommerceByDay(user, uid)
       for (const [day, value] of Object.entries(byDay)) {
         comerciosPorDia[day] = comerciosPorDia[day] || { dia: day, comercios: {} }
-        for (const [commerceId, commerce] of Object.entries(value.comercios || {})) {
+        for (const [commerceId, rawCommerce] of Object.entries(value.comercios || {})) {
+          const commercePhone = canonPhone(rawCommerce?.whatsapp)
+          const commerce = {
+            ...rawCommerce,
+            identity_verification: identityVerification(user, legacyByPhone[commercePhone]),
+          }
           const current = comerciosPorDia[day].comercios[commerceId]
           const currentUpdatedAt = Number(current?.actualizado_en || 0)
           const nextUpdatedAt = Number(commerce?.actualizado_en || 0)
@@ -308,27 +346,23 @@ export async function POST(request) {
       comercio_autorizado: commerce,
     }
 
-    // Fuente de verdad: /users. rifas_usuarios NO se escribe (exclusivo de rifas).
-    // - Con WhatsApp válido: nodo del dueño existente o users/<telefono>.
-    // - Sin WhatsApp válido: nodo sintético users/<commerceId>, con SOLO la
-    //   estructura del comercio. Nunca se adjunta a la cuenta del admin ni de otro
-    //   usuario, ni se escribe un perfil/vender en él.
+    // Fuente de verdad: /users. Si el teléfono pertenece a una cuenta canónica,
+    // se actualiza esa cuenta. De lo contrario se usa un id sintético del
+    // comercio; nunca se crea un UID basado en el número telefónico.
     let usersPath
     let usersPatch
-    if (hasValidPhone) {
-      usersPath = owner?.uid
-        ? `${owner.path ? `${owner.path}/` : ''}${owner.uid}`
-        : `users/${commercePhone}`
-      usersPatch = owner?.uid
-        ? { ...profilePatch, ...dayPatch }
-        : { id: commercePhone, ...profilePatch, ...dayPatch }
+    if (hasValidPhone && owner?.uid) {
+      usersPath = `${owner.path ? `${owner.path}/` : ''}${owner.uid}`
+      usersPatch = { ...profilePatch, ...dayPatch }
     } else {
       usersPath = `users/${commerceId}`
-      usersPatch = { id: commerceId, sin_telefono: true, ...dayPatch }
+      usersPatch = hasValidPhone
+        ? { id: commerceId, sin_cuenta_vinculada: true, ...profilePatch, ...dayPatch }
+        : { id: commerceId, sin_telefono: true, ...dayPatch }
     }
 
     const phoneKey = cleanPhone(commercePhone) || commerceId
-    const realtimeUid = owner?.uid || (hasValidPhone ? commercePhone : commerceId)
+    const realtimeUid = owner?.uid || commerceId
     const firestoreDocId = `${phoneKey}_${day}_${commerceId}`
 
     const [commerceLocations, firestoreMatches] = await Promise.all([
@@ -393,12 +427,21 @@ export async function POST(request) {
       }, { merge: true }),
       ...staleFirestoreDocs.map((doc) => doc.ref.delete()),
     ])
+    await syncPublicProfilesFromUsers([
+      realtimeUid,
+      originalRealtimeUid,
+      ...commerceLocations.map((location) => location.uid),
+    ], { rtdb })
 
     return NextResponse.json({
       ok: true,
       dia: day,
       comercio_id: commerceId,
-      comercio: { ...commerce, realtime_user_uid: realtimeUid },
+      comercio: {
+        ...commerce,
+        realtime_user_uid: realtimeUid,
+        identity_verification: identityVerification(owner?.user),
+      },
       realtime_user_uid: realtimeUid,
     })
   } catch (error) {

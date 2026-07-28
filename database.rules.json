@@ -8,6 +8,76 @@
         ".write": "auth != null && auth.uid === $uid"
       }
     },
+    "public_profiles": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "!newData.exists() || (newData.hasChildren(['schema_version','record_type','uid','canonical_uid','nombre','foto','foto_url','ciudad','tipovender','vender','actualizado_en']) && newData.child('schema_version').val() === 1 && newData.child('record_type').val() === 'public_profile' && newData.child('uid').val() === $uid)",
+        "schema_version": {
+          ".validate": "newData.val() === 1"
+        },
+        "record_type": {
+          ".validate": "newData.val() === 'public_profile'"
+        },
+        "uid": {
+          ".validate": "newData.isString() && newData.val() === $uid && newData.val().length > 0 && newData.val().length <= 128"
+        },
+        "canonical_uid": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128"
+        },
+        "nombre": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120"
+        },
+        "foto": {
+          ".validate": "newData.isString() && newData.val().length <= 1000"
+        },
+        "foto_url": {
+          ".validate": "newData.isString() && newData.val().length <= 1000"
+        },
+        "ciudad": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "tipovender": {
+          ".validate": "newData.val() === 'individuo' || newData.val() === 'tienda'"
+        },
+        "vender": {
+          ".validate": "newData.isBoolean()"
+        },
+        "actualizado_en": {
+          ".validate": "newData.isNumber() && newData.val() > 0"
+        },
+        "comercio_id": {
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
+        "nombre_comercio": {
+          ".validate": "newData.isString() && newData.val().length <= 120"
+        },
+        "comercio_foto_url": {
+          ".validate": "newData.isString() && newData.val().length <= 1000"
+        },
+        "comercio_direccion": {
+          ".validate": "newData.isString() && newData.val().length <= 240"
+        },
+        "comercio_lat": {
+          ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+        },
+        "comercio_lng": {
+          ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+        },
+        "tipo_vehiculo": {
+          ".validate": "newData.val() === 'carro' || newData.val() === 'moto'"
+        },
+        "whatsapp_public": {
+          ".validate": "newData.isString() && ((newData.val() === '' && newData.parent().child('public_contact_enabled').val() === false) || (newData.val().matches(/^\\+[0-9]{12,15}$/) && newData.parent().child('vender').val() === true))"
+        },
+        "public_contact_enabled": {
+          ".validate": "newData.isBoolean() && (!newData.val() || (newData.parent().child('vender').val() === true && newData.parent().child('whatsapp_public').isString()))"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
     "verificarCedula": {
       ".read": false,
       "$uid": {

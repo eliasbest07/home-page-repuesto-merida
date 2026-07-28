@@ -13,6 +13,8 @@
 !/scripts/report-firebase-ecosystem.mjs
 !/scripts/migrate-firebase-identity-v2.mjs
 !/scripts/migrate-public-profiles-v1.mjs
+!/scripts/test-public-profile-contract.mjs
+!/scripts/manage-rtdb-rules.mjs
 !/scripts/backup-firebase-ecosystem.mjs
 !/scripts/verify-firebase-backup.mjs
 !/scripts/download-verification-files.mjs

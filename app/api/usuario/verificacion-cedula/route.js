@@ -34,6 +34,12 @@ function authPayload(request) {
   return { ...payload, telefono, key }
 }
 
+function safeUid(value) {
+  const uid = String(value || '').trim()
+  if (!uid || uid.length > 128 || /[.#$\[\]/]/.test(uid)) return ''
+  return uid
+}
+
 function validateImage(file, label) {
   if (!file || typeof file.arrayBuffer !== 'function') {
     throw new Error(`Falta la foto ${label}.`)
@@ -273,7 +279,12 @@ export async function POST(request) {
       }),
     ])
 
-    const official = await findRealtimeUserByPhone(rtdb, session.telefono)
+    const signedUid = safeUid(session.realtime_uid || session.canonical_uid)
+    const official = signedUid ? null : await findRealtimeUserByPhone(rtdb, session.telefono)
+    const targetUid = signedUid || safeUid(official?.uid)
+    if (!targetUid) {
+      return NextResponse.json({ error: 'Renueva tu sesión para completar la verificación.' }, { status: 409 })
+    }
     const now = adminFieldValue.serverTimestamp()
     const realtimeNow = Date.now()
 
@@ -303,23 +314,24 @@ export async function POST(request) {
       },
       enviado_en: now,
       actualizado_en: now,
-      realtime_user_uid: official?.uid || session.telefono,
+      realtime_user_uid: targetUid,
     }
 
-    // Unificado: la cédula también queda en /users. Si el teléfono ya estaba en
-    // /users (app Android) se actualiza ese nodo; si no, se crea /users/<telefono>
-    // sembrando identidad. Así el front siempre ve cedula_estado en /users.
+    // La cédula queda en el perfil privado canónico; nunca se crea un nodo
+    // cuyo identificador sea el teléfono.
     const cedulaPatch = {
       cedula: cedulaNumero,
       cedula_estado: 'aprobado',
       cedula_actualizada_en: realtimeNow,
     }
-    const usersPath = official?.uid
-      ? `${official.path ? `${official.path}/` : ''}${official.uid}`
-      : `users/${session.telefono}`
-    const usersPatch = official?.uid
-      ? cedulaPatch
-      : { whatsapp: session.telefono, telefono: session.telefono, id: session.telefono, ...cedulaPatch }
+    const usersPath = `users/${targetUid}`
+    const usersPatch = {
+      whatsapp: session.telefono,
+      telefono: session.telefono,
+      id: targetUid,
+      canonical_uid: targetUid,
+      ...cedulaPatch,
+    }
 
     await Promise.all([
       db.collection('verificaciones_cedula').doc(session.telefono).set(verificationData, { merge: true }),
@@ -330,7 +342,7 @@ export async function POST(request) {
       ok: true,
       estado: 'aprobado',
       cedula: cedulaNumero,
-      realtime_user_uid: official?.uid || session.telefono,
+      realtime_user_uid: targetUid,
     })
   } catch (error) {
     return NextResponse.json({ error: error?.message || 'No se pudo verificar la cédula.' }, { status: 400 })

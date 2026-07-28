@@ -355,9 +355,8 @@ function readFileAsDataUrl(file) {
 }
 
 function getSellerCoordinates(user = {}) {
-  const rawLat = user.latitud ?? user.latitude ?? user.lat ?? user.coords?.lat ?? user.coordenadas?.lat
-  const rawLng = user.longitud ?? user.longitude ?? user.lng ?? user.lon ??
-    user.coords?.lng ?? user.coordenadas?.lng
+  const rawLat = user.comercio_lat
+  const rawLng = user.comercio_lng
   const lat = rawLat === '' || rawLat === null || rawLat === undefined ? NaN : Number(rawLat)
   const lng = rawLng === '' || rawLng === null || rawLng === undefined ? NaN : Number(rawLng)
 
@@ -365,26 +364,7 @@ function getSellerCoordinates(user = {}) {
     return { lat, lng }
   }
 
-  const locationText = [user.ubicacion, user.zona, user.ciudad].filter(Boolean).join(', ')
-  const match = locationText.match(/(-?\d{1,2}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)/)
-  if (!match) return null
-
-  const parsedLat = Number(match[1])
-  const parsedLng = Number(match[2])
-  return Number.isFinite(parsedLat) && Number.isFinite(parsedLng)
-    && Math.abs(parsedLat) <= 90 && Math.abs(parsedLng) <= 180
-    ? { lat: parsedLat, lng: parsedLng }
-    : null
-}
-
-function isCoordinateText(value) {
-  if (typeof value !== 'string') return false
-  const match = value.trim().match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)$/)
-  if (!match) return false
-  const lat = Number(match[1])
-  const lng = Number(match[2])
-  return Number.isFinite(lat) && Number.isFinite(lng)
-    && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+  return null
 }
 
 // El nombre visible es el del comercio: primero el guardado en el catálogo,
@@ -402,8 +382,7 @@ function sellerDisplayName(user = {}, producto = {}) {
 
 function sellerDisplayLocation(user = {}) {
   return [
-    isCoordinateText(user.ubicacion) ? '' : user.ubicacion,
-    user.zona,
+    user.comercio_direccion,
     user.ciudad,
   ].filter((value) => typeof value === 'string' && value.trim()).join(', ')
 }
@@ -775,7 +754,7 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false
 
-    get(ref(rtdb, 'users'))
+    get(ref(rtdb, 'public_profiles'))
       .then((snapshot) => {
         if (cancelled) return
         setUsersById(snapshot.exists() ? snapshot.val() : {})

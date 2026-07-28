@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { onValue, ref as dbRef } from 'firebase/database'
 import { rtdb } from '@/lib/firebase'
-import { ensureSession, phoneKey, saveSession } from '@/lib/rifaSession'
+import { ensureSession, saveSession } from '@/lib/rifaSession'
 import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
 import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 
@@ -19,12 +19,6 @@ function normalize(value) {
 
 // Valor especial: el repuesto sirve para cualquier marca.
 const ALL_BRANDS = 'Todas las marcas'
-
-function canonPhone(raw) {
-  let d = String(raw || '').replace(/\D/g, '')
-  if (d.startsWith('58') && d.length >= 12) d = d.slice(2)
-  return d.replace(/^0+/, '')
-}
 
 const EMPTY_REPUESTO = {
   tipo_vehiculo: 'carro',
@@ -132,13 +126,13 @@ export default function UsuarioComercioPage() {
   }, [session?.token])
 
   // EN VIVO: escucha el nodo del usuario en Realtime DB para saber si la cédula
-  // ya fue verificada (rifas_usuarios/{key} primario, users/{uid} respaldo).
+  // ya fue verificada. Solo escucha el perfil privado del UID canónico.
   useEffect(() => {
-    const tel = session?.telefono
-    if (!tel) return undefined
-    const key = phoneKey(tel)
-    const targetPhone = canonPhone(tel)
-    const uid = session?.perfil?.uid || session?.prefill?.uid
+    const uid = session?.canonical_uid
+      || session?.realtime_uid
+      || session?.perfil?.uid
+      || session?.prefill?.uid
+    if (!uid) return undefined
     const offs = []
     const watch = (path) => {
       const off = onValue(dbRef(rtdb, path), (snap) => {
@@ -149,21 +143,9 @@ export default function UsuarioComercioPage() {
       })
       offs.push(off)
     }
-    if (key) watch(`rifas_usuarios/${key}`)
-    if (uid) watch(`users/${uid}`)
-    const usersOff = onValue(dbRef(rtdb, 'users'), (snap) => {
-      const data = snap.val() || {}
-      for (const value of Object.values(data)) {
-        if (value && typeof value === 'object' && canonPhone(value.whatsapp) === targetPhone) {
-          setRealtimeProfile((current) => ({ ...(current || {}), ...value }))
-          if (value.cedula) setCedulaLive(String(value.cedula).trim())
-          break
-        }
-      }
-    })
-    offs.push(usersOff)
+    watch(`users/${uid}`)
     return () => offs.forEach((off) => { try { off() } catch { } })
-  }, [session?.telefono, session?.perfil?.uid, session?.prefill?.uid])
+  }, [session])
 
   // Autocompletado: al elegir marca, traer modelos guardados.
   useEffect(() => {

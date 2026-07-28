@@ -10,6 +10,7 @@ import { ref as dbRef, update, serverTimestamp } from 'firebase/database'
 import { ref as stRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { saveSession, clearSession, ensureSession } from '@/lib/rifaSession'
 import { LEGAL_VERSION } from '@/lib/legalConfig'
+import { sanitizePublicProfile } from '@/lib/publicProfileContract'
 
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
@@ -133,10 +134,16 @@ function RegistroInner() {
           fuente: 'web_registro',
         },
       }
+      const publicProfile = sanitizePublicProfile(usersKey, userOficial, {
+        canonicalUid: usersKey,
+      })
       await Promise.race([
         // Fuente de verdad: /users. update (no set) para no pisar datos previos
-        // del usuario Android. rifas_usuarios queda solo para el flujo de rifas.
-        update(dbRef(rtdb, `users/${usersKey}`), userOficial),
+        // del usuario Android. El perfil público se limita al contrato sanitizado.
+        Promise.all([
+          update(dbRef(rtdb, `users/${usersKey}`), userOficial),
+          update(dbRef(rtdb, `public_profiles/${usersKey}`), publicProfile),
+        ]),
         new Promise((_, rej) => setTimeout(() => rej(new Error('Tiempo agotado guardando perfil.')), 15000)),
       ])
 

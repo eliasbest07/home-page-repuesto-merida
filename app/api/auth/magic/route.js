@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server'
-import { firestore, rtdb } from '@/lib/firebase'
-import { doc, getDoc, updateDoc } from 'firebase/firestore'
-import { ref, get } from 'firebase/database'
 import { phoneKey } from '@/lib/whatsappAuth'
 import { signRifaToken } from '@/lib/rifaJwt'
 import { resolverPerfil } from '@/lib/perfilUsuario'
 import { issueCanonicalFirebaseSession } from '@/lib/canonicalIdentity'
+import {
+  MagicLinkError,
+  bindMagicLinkClaim,
+  claimMagicLink,
+  releaseMagicLinkClaim,
+} from '@/lib/magicLinkClaim'
 
 export const runtime = 'nodejs'
 
@@ -31,39 +34,21 @@ async function resolveGoogleUser(idToken) {
   }
 }
 
-// Consume el enlace mágico leyendo Firebase DIRECTAMENTE (no llama al bot).
-// El bot ya escribió en Firestore (magic_links/{token}) la autorización para
-// ese número. Aquí la web comprueba esa autorización, marca el token como
-// usado (un solo uso) y emite el JWT de sesión.
+// El bot ya escribió magic_links/{token}. Esta primera fase reserva el enlace
+// sin consumirlo; /complete lo marca usado únicamente tras comprobar que el
+// navegador sí logró iniciar Firebase Auth.
 export async function POST(request) {
+  let claimed = null
   try {
     const { token, googleIdToken } = await request.json()
-    if (!token || typeof token !== 'string') {
-      return NextResponse.json({ error: 'Enlace inválido.' }, { status: 400 })
-    }
-
-    const linkRef = doc(firestore, 'magic_links', token)
-    const snap = await getDoc(linkRef)
-    if (!snap.exists()) {
-      return NextResponse.json({ error: 'Enlace inválido.' }, { status: 404 })
-    }
-    const data = snap.data() || {}
-
-    if (data.usado) {
-      return NextResponse.json({ error: 'Este enlace ya fue usado.' }, { status: 410 })
-    }
-    if (Date.now() > Number(data.expira_en || 0)) {
-      return NextResponse.json({ error: 'El enlace expiró. Pide uno nuevo por WhatsApp.' }, { status: 410 })
-    }
+    claimed = await claimMagicLink(token)
+    const data = claimed.data
 
     const telefono = data.telefono || data.numero || ''
     const key = phoneKey(telefono)
     if (!key) {
       return NextResponse.json({ error: 'Enlace inválido.' }, { status: 400 })
     }
-
-    // Un solo uso: marcar usado (la regla solo permite tocar usado/usado_en).
-    await updateDoc(linkRef, { usado: true, usado_en: Date.now() })
 
     const googleUser = await resolveGoogleUser(googleIdToken)
     const identity = await issueCanonicalFirebaseSession({
@@ -77,6 +62,11 @@ export async function POST(request) {
         google_foto: googleUser.foto_url,
         google_verificado_en: Date.now(),
       } : null,
+    })
+    await bindMagicLinkClaim({
+      token: claimed.token,
+      claimId: claimed.claimId,
+      canonicalUid: identity.canonicalUid,
     })
 
     // Recupera el perfil: ya guardado (rifas_usuarios) o el oficial (/users).
@@ -98,7 +88,8 @@ export async function POST(request) {
     }
 
     let rifasVendedor = []
-    const vendSnap = await get(ref(rtdb, `vendedor_index/${key}`))
+    const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
+    const vendSnap = await getAdminRealtimeDb().ref(`vendedor_index/${key}`).get()
     if (vendSnap.exists()) rifasVendedor = Object.keys(vendSnap.val() || {})
 
     const { token: jwt, expiresAt } = signRifaToken({
@@ -122,10 +113,26 @@ export async function POST(request) {
       canonical_uid: identity.canonicalUid,
       realtime_uid: identity.canonicalUid,
       firebaseCustomToken: identity.firebaseCustomToken,
+      magic_claim: claimed.claimId,
       google: googleUser,
       redirect: data.redirect || '/',
     })
   } catch (err) {
-    return NextResponse.json({ error: err?.message || 'Error inesperado.' }, { status: 500 })
+    if (claimed) await releaseMagicLinkClaim(claimed).catch(() => {})
+    if (err instanceof MagicLinkError) {
+      return NextResponse.json({ error: err.message }, { status: err.status })
+    }
+    console.error('[api/auth/magic] No se pudo preparar la sesión:', err)
+    return NextResponse.json({ error: 'No se pudo iniciar sesión. Intenta nuevamente.' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const { token, claim } = await request.json().catch(() => ({}))
+    await releaseMagicLinkClaim({ token, claimId: claim })
+    return NextResponse.json({ ok: true })
+  } catch {
+    return NextResponse.json({ ok: true })
   }
 }

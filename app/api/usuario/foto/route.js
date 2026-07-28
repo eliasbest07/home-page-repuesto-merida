@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { verifyRifaToken } from '@/lib/rifaJwt'
+import { syncPublicProfileFromUser } from '@/lib/publicProfileAdmin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -37,6 +38,12 @@ function authPayload(request) {
   const key = cleanPhone(payload?.tel || payload?.telefono)
   if (!payload || telefono.length < 10 || key.length < 10) return null
   return { ...payload, telefono, key }
+}
+
+function safeUid(value) {
+  const uid = String(value || '').trim()
+  if (!uid || uid.length > 128 || /[.#$\[\]/]/.test(uid)) return ''
+  return uid
 }
 
 async function findRealtimeUserByPhone(rtdb, telefono) {
@@ -80,9 +87,15 @@ export async function POST(request) {
     const { getAdminRealtimeDb, getAdminBucket, STORAGE_BUCKET } = await import('@/lib/firebaseAdmin')
     const rtdb = getAdminRealtimeDb()
     const bucket = getAdminBucket()
+    const signedUid = safeUid(session.realtime_uid || session.canonical_uid)
+    const official = signedUid ? null : await findRealtimeUserByPhone(rtdb, session.telefono)
+    const targetUid = signedUid || safeUid(official?.uid)
+    if (!targetUid) {
+      return NextResponse.json({ error: 'Renueva tu sesión para actualizar la foto.' }, { status: 409 })
+    }
 
     const ext = EXTENSIONS[foto.type] || 'jpg'
-    const storagePath = `${STORAGE_PREFIX}/${session.key}.${ext}`
+    const storagePath = `${STORAGE_PREFIX}/${targetUid}.${ext}`
     const buffer = Buffer.from(await foto.arrayBuffer())
     // Token de descarga (igual que getDownloadURL): sirve la imagen sin que el
     // bucket sea público; cambia en cada subida, así rompe el caché.
@@ -98,19 +111,19 @@ export async function POST(request) {
     const encodedPath = encodeURIComponent(storagePath)
     const fotoUrl = `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodedPath}?alt=media&token=${downloadToken}`
 
-    const official = await findRealtimeUserByPhone(rtdb, session.telefono)
     const patch = { foto_url: fotoUrl, foto: fotoUrl, foto_actualizada_en: Date.now() }
 
-    // Fuente de verdad: /users (nodo existente o /users/<telefono> con identidad).
-    // rifas_usuarios NO se escribe: es exclusivo del flujo de rifas.
-    const usersPath = official?.uid
-      ? `${official.path ? `${official.path}/` : ''}${official.uid}`
-      : `users/${session.telefono}`
-    const usersPatch = official?.uid
-      ? patch
-      : { whatsapp: session.telefono, telefono: session.telefono, id: session.telefono, ...patch }
+    const usersPath = `users/${targetUid}`
+    const usersPatch = {
+      whatsapp: session.telefono,
+      telefono: session.telefono,
+      id: targetUid,
+      canonical_uid: targetUid,
+      ...patch,
+    }
 
     await rtdb.ref(usersPath).update(usersPatch)
+    await syncPublicProfileFromUser(targetUid, { rtdb })
 
     return NextResponse.json({ ok: true, foto_url: fotoUrl })
   } catch (error) {

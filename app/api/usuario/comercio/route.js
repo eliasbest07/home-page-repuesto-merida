@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { verifyRifaToken } from '@/lib/rifaJwt'
+import { syncPublicProfileFromUser } from '@/lib/publicProfileAdmin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -43,6 +44,12 @@ function cleanText(value, max = 120) {
   return String(value || '').trim().slice(0, max)
 }
 
+function safeUid(value) {
+  const uid = String(value || '').trim()
+  if (!uid || uid.length > 128 || /[.#$\[\]/]/.test(uid)) return ''
+  return uid
+}
+
 async function findRealtimeUserByPhone(rtdb, telefono) {
   const target = canonPhone(telefono)
   const paths = ['users', '']
@@ -82,6 +89,12 @@ export async function POST(request) {
 
     const { getAdminRealtimeDb, getAdminBucket, STORAGE_BUCKET } = await import('@/lib/firebaseAdmin')
     const rtdb = getAdminRealtimeDb()
+    const signedUid = safeUid(session.realtime_uid || session.canonical_uid)
+    const official = signedUid ? null : await findRealtimeUserByPhone(rtdb, session.telefono)
+    const targetUid = signedUid || safeUid(official?.uid)
+    if (!targetUid) {
+      return NextResponse.json({ error: 'Renueva tu sesión para actualizar el comercio.' }, { status: 409 })
+    }
 
     // Si llega un archivo nuevo lo subimos; si no, conservamos la URL existente.
     let fotoUrl = cleanText(form.get('foto_url'), 500)
@@ -95,7 +108,7 @@ export async function POST(request) {
       }
       const bucket = getAdminBucket()
       const ext = EXTENSIONS[foto.type] || 'jpg'
-      const storagePath = `${STORAGE_PREFIX}/${session.key}.${ext}`
+      const storagePath = `${STORAGE_PREFIX}/${targetUid}.${ext}`
       const buffer = Buffer.from(await foto.arrayBuffer())
       // Token de descarga (igual que getDownloadURL del cliente): la URL con
       // token sirve la imagen sin necesidad de que el bucket sea público.
@@ -113,7 +126,6 @@ export async function POST(request) {
       fotoUrl = `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodedPath}?alt=media&token=${downloadToken}`
     }
 
-    const official = await findRealtimeUserByPhone(rtdb, session.telefono)
     const updatedAt = Date.now()
 
     const patch = {
@@ -126,18 +138,19 @@ export async function POST(request) {
       comercio_actualizado_en: updatedAt,
     }
 
-    // Fuente de verdad: /users (nodo existente de la app Android o /users/<telefono>
-    // sembrando identidad). rifas_usuarios NO se escribe: es exclusivo de rifas.
-    const usersPath = official?.uid
-      ? `${official.path ? `${official.path}/` : ''}${official.uid}`
-      : `users/${session.telefono}`
-    const usersPatch = official?.uid
-      ? patch
-      : { whatsapp: session.telefono, telefono: session.telefono, id: session.telefono, ...patch }
+    const usersPath = `users/${targetUid}`
+    const usersPatch = {
+      whatsapp: session.telefono,
+      telefono: session.telefono,
+      id: targetUid,
+      canonical_uid: targetUid,
+      ...patch,
+    }
 
     await rtdb.ref(usersPath).update(usersPatch)
+    await syncPublicProfileFromUser(targetUid, { rtdb })
 
-    return NextResponse.json({ ok: true, comercio: patch, realtime_user_uid: official?.uid || session.telefono })
+    return NextResponse.json({ ok: true, comercio: patch, realtime_user_uid: targetUid })
   } catch (error) {
     return NextResponse.json({ error: error?.message || 'No se pudo guardar el comercio.' }, { status: 400 })
   }
