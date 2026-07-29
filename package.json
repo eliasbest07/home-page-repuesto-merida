@@ -12,6 +12,7 @@
     "migrate:firebase-identity-v2": "node --env-file-if-exists=.env.local scripts/migrate-firebase-identity-v2.mjs",
     "migrate:public-profiles": "node --env-file-if-exists=.env.local scripts/migrate-public-profiles-v1.mjs",
     "test:public-profiles": "node scripts/test-public-profile-contract.mjs",
+    "test:identity-verification": "node scripts/test-identity-verification-policy.mjs",
     "rules:rtdb": "node --env-file-if-exists=.env.local scripts/manage-rtdb-rules.mjs",
     "backup:firebase": "node --env-file-if-exists=.env.local scripts/backup-firebase-ecosystem.mjs",
     "verify:firebase-backup": "node scripts/verify-firebase-backup.mjs",

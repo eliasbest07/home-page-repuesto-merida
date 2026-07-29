@@ -71,7 +71,7 @@
           ".validate": "newData.isString() && ((newData.val() === '' && newData.parent().child('public_contact_enabled').val() === false) || (newData.val().matches(/^\\+[0-9]{12,15}$/) && newData.parent().child('vender').val() === true))"
         },
         "public_contact_enabled": {
-          ".validate": "newData.isBoolean() && (!newData.val() || (newData.parent().child('vender').val() === true && newData.parent().child('whatsapp_public').isString()))"
+          ".validate": "newData.isBoolean() && (newData.val() === false || (newData.parent().child('vender').val() === true && newData.parent().child('whatsapp_public').isString()))"
         },
         "$other": {
           ".validate": false

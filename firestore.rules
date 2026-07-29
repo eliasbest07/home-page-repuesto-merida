@@ -307,6 +307,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Contadores HMAC de verificación — solo servidor/Admin SDK.
+    match /verificacion_cedula_limites/{id} {
+      allow read, write: if false;
+    }
+
     // Imágenes y datos de verificación — solo admin
     match /usuarios_plaza/{telefono} {
       allow read, write: if request.auth != null;
