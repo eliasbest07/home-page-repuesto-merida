@@ -975,6 +975,12 @@ function RequestCard({
   const vehiclePhotos = Array.isArray(request.fotos_vehiculo)
     ? request.fotos_vehiculo.filter((url) => typeof url === 'string' && url)
     : []
+  // Fotos de la PIEZA que el cliente adjuntó por WhatsApp. Distintas de las del
+  // vehículo, que son referenciales del modelo: estas son la pieza concreta que
+  // busca, y para el vendedor suelen ser lo más útil de la solicitud.
+  const partPhotos = Array.isArray(request.fotos_repuesto)
+    ? request.fotos_repuesto.filter((url) => typeof url === 'string' && url)
+    : []
   const [debateOpen, setDebateOpen] = useState(Boolean(autoOpen))
   const [zoomPhoto, setZoomPhoto] = useState(null)
 
@@ -1079,6 +1085,36 @@ function RequestCard({
               ))}
             </div>
             <p className="mt-1 text-[10px] text-gray-400">Foto referencial del modelo, no de la pieza.</p>
+          </div>
+        )}
+
+        {partPhotos.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600">
+              Foto de la pieza
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {partPhotos.map((url, index) => (
+                <div key={`${url}-${index}`} className="flex-none">
+                  <button
+                    type="button"
+                    onClick={() => setZoomPhoto({ url, index })}
+                    className="relative block h-24 w-32 cursor-zoom-in overflow-hidden rounded-lg border-2 border-emerald-200 bg-gray-100"
+                    aria-label={`Ampliar foto ${index + 1} de la pieza`}
+                  >
+                    <Image
+                      src={url}
+                      alt={`${titleCase(request.repuesto) || 'Pieza'} — foto ${index + 1}`}
+                      fill
+                      unoptimized
+                      sizes="128px"
+                      className="object-cover"
+                    />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="mt-1 text-[10px] text-gray-400">La envió el cliente: es la pieza que busca.</p>
           </div>
         )}
 

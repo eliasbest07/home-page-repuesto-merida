@@ -200,6 +200,7 @@ async function verifyWithGemini({ cedulaFile, cedulaBuffer, selfieFile, selfieBu
   }
 
   const model = process.env.GEMINI_VERIFICATION_MODEL || 'gemini-3.5-flash'
+  const THINKING_BUDGET = Number(process.env.GEMINI_THINKING_BUDGET ?? 0)
   let response
   try {
     response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
@@ -239,6 +240,13 @@ async function verifyWithGemini({ cedulaFile, cedulaBuffer, selfieFile, selfieBu
         generationConfig: {
           response_mime_type: 'application/json',
           response_schema: geminiSchema(),
+          // Gemini 3.x razona por defecto y esos "thinking tokens" salen del
+          // presupuesto de salida Y SE FACTURAN COMO SALIDA. En una extracción
+          // con schema fijo no aportan nada: acá solo hay que leer los campos de
+          // una cédula. En el bot, la misma medida bajó una imagen de ~1490 a
+          // 406 tokens de salida. Poner un número > 0 lo reactiva; -1 lo deja a
+          // criterio del modelo.
+          thinkingConfig: { thinkingBudget: THINKING_BUDGET },
         },
       }),
     })
