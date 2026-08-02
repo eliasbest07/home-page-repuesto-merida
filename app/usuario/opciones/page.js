@@ -10,7 +10,7 @@ import { signOut } from 'firebase/auth'
 import { auth, rtdb } from '@/lib/firebase'
 import { clearSession, ensureSession, saveSession } from '@/lib/rifaSession'
 import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
-import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
+import { formatFileSize, MAX_SOURCE_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 import { AI_VERIFICATION_CONSENT_VERSION } from '@/lib/legalConfig'
 
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
@@ -176,15 +176,17 @@ export default function UsuarioOpcionesPage() {
     setFotoError('')
     if (!file) return
     if (!file.type.startsWith('image/') || file.size > MAX_SOURCE_IMAGE_SIZE) {
-      setFotoError('Selecciona una imagen válida de hasta 20 MB.')
+      setFotoError(`Selecciona una imagen válida de hasta ${formatFileSize(MAX_SOURCE_IMAGE_SIZE)}.`)
       return
     }
     if (!session?.token) { setFotoError('Sesión inválida.'); return }
 
     setFotoUploading(true)
     try {
+      // Igual que en la verificación de cédula: el peso se prioriza, no se
+      // exige. Rechazar acá dejaba al usuario sin poder cambiar su foto y sin
+      // nada que pudiera hacer al respecto.
       const prepared = await prepareImageForUpload(file)
-      if (prepared.size > MAX_UPLOADED_IMAGE_SIZE) throw new Error('La foto no pudo reducirse lo suficiente.')
       const form = new FormData()
       form.append('foto', prepared, 'perfil.jpg')
       const res = await fetch('/api/usuario/foto', {
@@ -314,16 +316,18 @@ export default function UsuarioOpcionesPage() {
       return
     }
     if (!file.type.startsWith('image/') || file.size > MAX_SOURCE_IMAGE_SIZE) {
-      setError('Selecciona una imagen válida de hasta 20 MB.')
+      setError(`Selecciona una imagen válida de hasta ${formatFileSize(MAX_SOURCE_IMAGE_SIZE)}.`)
       return
     }
 
     setPreparingCedulaImage(true)
     try {
+      // El peso se PRIORIZA, no se exige: prepareImageForUpload deja la foto lo
+      // más liviana que puede y acá se sube igual. Antes se rechazaba pasado el
+      // límite y una foto de 3,5 MB de la cámara de un teléfono dejaba al
+      // usuario sin poder verificarse, sin nada que pudiera hacer al respecto
+      // (1-ago-2026). La cota real la pone el servidor, que rechaza >5 MB.
       const prepared = await prepareImageForUpload(file)
-      if (prepared.size > MAX_UPLOADED_IMAGE_SIZE) {
-        throw new Error('La foto no pudo reducirse por debajo de 550 KB.')
-      }
       setter(prepared)
     } catch (compressionError) {
       setError(compressionError?.message || 'No se pudo preparar la imagen.')
