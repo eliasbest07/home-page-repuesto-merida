@@ -301,7 +301,7 @@ strong { font-weight: 760; }
   .site-header { width: calc(100% - 1rem); top: 4.15rem; }
   .site-header.scrolled { top: 4.05rem; }
   .brand small { display: none; }
-  .hero-content { padding-top: 8rem; }
+  .hero-content { padding-top: 10.25rem; }
   .hero-shade { background: linear-gradient(0deg, rgba(7,31,26,.96), rgba(7,31,26,.45)); }
   .hero-caption { display: none; }
   .place-list { gap: .55rem .8rem; }
