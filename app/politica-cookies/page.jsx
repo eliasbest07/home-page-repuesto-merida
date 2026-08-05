@@ -63,7 +63,8 @@ export default function PoliticaCookies() {
         <p className="mt-2">
           Las tecnologías necesarias se usan para prestar las funciones solicitadas y mantener la
           seguridad. Al entrar al sitio puedes aceptar o rechazar las opcionales. Después puedes pulsar
-          el botón “Cookies”, visible en la parte inferior de la pantalla, para cambiar tu elección.
+          el botón “Cookies”, visible en la parte inferior mientras las cookies opcionales estén
+          rechazadas, para cambiar tu elección.
           También puedes bloquear o borrar cookies desde la configuración de tu navegador.
         </p>
       </section>

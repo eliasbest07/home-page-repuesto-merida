@@ -76,7 +76,7 @@ export default function CookieConsent() {
         </section>
       )}
 
-      {!showDialog && consent && (
+      {!showDialog && consent === 'rejected' && (
         <button
           type="button"
           onClick={() => setShowDialog(true)}

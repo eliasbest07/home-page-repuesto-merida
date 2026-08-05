@@ -2436,7 +2436,6 @@ export default function Home() {
               <ul className="space-y-2 text-sm">
                 <li><Link href="/politica-privacidad" className="hover:text-[#FFD700] transition-colors">Política de Privacidad</Link></li>
                 <li><Link href="/aviso-legal" className="hover:text-[#FFD700] transition-colors">Aviso Legal</Link></li>
-                <li><Link href="/politica-cookies" className="hover:text-[#FFD700] transition-colors">Política de Cookies</Link></li>
                 <li><Link href="/terminos-condiciones" className="hover:text-[#FFD700] transition-colors">Términos y Condiciones</Link></li>
                 <li><Link href="/propiedad-intelectual" className="hover:text-[#FFD700] transition-colors">Propiedad intelectual</Link></li>
                 <li><Link href="/eliminar-datos" className="hover:text-[#FFD700] transition-colors">Eliminar mis datos</Link></li>

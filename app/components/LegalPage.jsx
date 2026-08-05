@@ -20,9 +20,6 @@ export default function LegalPage({ title, updated, children }) {
             <Link href="/aviso-legal" className="hover:underline">
               Aviso Legal
             </Link>
-            <Link href="/politica-cookies" className="hover:underline">
-              Política de Cookies
-            </Link>
             <Link href="/terminos-condiciones" className="hover:underline">
               Términos y Condiciones
             </Link>

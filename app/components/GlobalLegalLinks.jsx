@@ -17,9 +17,6 @@ export default function GlobalLegalLinks() {
         <Link href="/aviso-legal" className="hover:text-gray-950 hover:underline">
           Aviso Legal
         </Link>
-        <Link href="/politica-cookies" className="hover:text-gray-950 hover:underline">
-          Política de Cookies
-        </Link>
         <Link href="/terminos-condiciones" className="hover:text-gray-950 hover:underline">
           Términos y Condiciones
         </Link>
