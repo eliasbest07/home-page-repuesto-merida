@@ -1,6 +1,8 @@
 const header = document.querySelector("[data-header]");
 const menuButton = document.querySelector(".nav-toggle");
 const menu = document.querySelector(".site-nav");
+const surveyButton = document.querySelector("[data-survey-trigger]");
+const surveyStatus = document.querySelector("#survey-status");
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function updateHeader() {
@@ -18,6 +20,10 @@ menu?.querySelectorAll("a").forEach((link) => {
     menuButton?.setAttribute("aria-expanded", "false");
     menu?.classList.remove("open");
   });
+});
+
+surveyButton?.addEventListener("click", () => {
+  surveyStatus?.removeAttribute("hidden");
 });
 
 window.addEventListener("scroll", updateHeader, { passive: true });
