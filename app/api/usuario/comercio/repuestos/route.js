@@ -15,6 +15,7 @@ const MODELOS_COLLECTION = 'modelos_vehiculos'
 const CATALOGO_COLLECTION = 'merida'
 const APP_PENDING_PATH = 'aprobarPublicacion'
 const APP_PENDING_SOURCE = 'app_realtime'
+const CATALOG_SOURCE = 'catalogo'
 const FIREBASE_PUSH_CHARS = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
 
 function cleanPhone(value) {
@@ -192,7 +193,75 @@ function serializeRepuesto(doc) {
     archivado: Boolean(data.archivado),
     eliminado,
     catalogo_id: data.catalogo_id || '',
+    catalogo_oculto: Boolean(data.catalogo_oculto),
     creado_en: data.creado_en?.toMillis ? data.creado_en.toMillis() : null,
+  }
+}
+
+function serializeCatalogRepuesto(doc) {
+  const data = doc.data() || {}
+  const modelos = cleanText(data.gestion_modelo || data.modelos, 160)
+  const nombre = cleanText(data.gestion_nombre || data.marca || data.categoria, 120) || 'Repuesto'
+  const marcaVehiculo = cleanText(data.gestion_marca_vehiculo, 60)
+  const fotos = parseFotos(data.img)
+  const publicado = cleanText(data.publicado, 30).toLowerCase()
+
+  return {
+    id: `catalog:${doc.id}`,
+    source: CATALOG_SOURCE,
+    schema_version: data.schema_version || 1,
+    operation_id: data.operation_id || `catalog:${doc.id}`,
+    estado_aprobacion: 'aprobado',
+    owner_uid: data.owner_uid || data.userID || data.propietario_id || '',
+    owner_uids: Array.isArray(data.owner_uids) ? data.owner_uids : [],
+    identity_id: data.identity_id || '',
+    telefono: data.whatsapp || '',
+    telefono_normalizado: internationalPhone(data.whatsapp),
+    comercio_whatsapp: data.whatsapp || '',
+    comercio_nombre: data.comercio || '',
+    creado_por: data.aprobado_por || '',
+    realtime_user_uid: data.owner_uid || data.userID || '',
+    comercio_id: data.comercio_id || '',
+    dia: data.dia || '',
+    venta: cleanText(data.gestion_venta || data.categoria, 80),
+    tipo_vehiculo: cleanText(data.gestion_tipo_vehiculo || data.vehiculo, 20).toLowerCase() === 'moto' ? 'moto' : 'carro',
+    marca: marcaVehiculo || cleanText(data.marca, 60),
+    modelo: modelos,
+    anio: cleanYear(data.gestion_anio || data.anio),
+    nombre,
+    nota: cleanText(data.gestion_nota ?? data.descripcion, 500),
+    precio: cleanText(data.precio, 40),
+    fotos,
+    aprobado: true,
+    archivado: false,
+    eliminado: false,
+    catalogo_id: doc.id,
+    catalogo_oculto: publicado === 'oculto',
+    creado_en: data.creado_en?.toMillis ? data.creado_en.toMillis() : null,
+  }
+}
+
+function catalogUpdateData({ marca, modelo, anio, nombre, nota, precio, tipoVehiculo, venta }, current = {}, now) {
+  const categoria = cleanText(venta || current.gestion_venta || current.categoria, 80) || 'Repuestos'
+  const modelos = [marca, modelo, anio].filter(Boolean).join(' ')
+  return {
+    // En el contrato público de `merida`, `marca` funciona como título del
+    // producto y `modelos` contiene la compatibilidad del vehículo.
+    marca: nombre,
+    categoria,
+    modelos,
+    descripcion: nota,
+    vehiculo: tipoVehiculo,
+    precio: priceLabel(precio),
+    buscar: searchTokens(nombre, marca, modelo, anio, nota, categoria),
+    gestion_nombre: nombre,
+    gestion_marca_vehiculo: marca,
+    gestion_modelo: modelo,
+    gestion_anio: anio,
+    gestion_nota: nota,
+    gestion_tipo_vehiculo: tipoVehiculo,
+    gestion_venta: categoria,
+    actualizado_en: now,
   }
 }
 
@@ -435,10 +504,12 @@ export async function GET(request) {
       const authorized = await canManageCommerces(rtdb, session)
       if (!authorized) return NextResponse.json({ error: 'No puedes ver repuestos de otros comercios.' }, { status: 403 })
 
-      const [recentSnap, firestorePendingSnap, appPendingSnap, usersSnap] = await Promise.all([
+      const [recentSnap, firestorePendingSnap, catalogSnap, appPendingSnap, usersSnap] = await Promise.all([
         db.collection(REPUESTOS_COLLECTION).orderBy('creado_en', 'desc').limit(500).get()
           .catch(() => db.collection(REPUESTOS_COLLECTION).limit(500).get()),
         db.collection(REPUESTOS_COLLECTION).where('aprobado', '==', false).limit(1000).get()
+          .catch(() => ({ docs: [] })),
+        db.collection(CATALOGO_COLLECTION).limit(1500).get()
           .catch(() => ({ docs: [] })),
         rtdb.ref(APP_PENDING_PATH).get(),
         rtdb.ref('users').get(),
@@ -461,8 +532,40 @@ export async function GET(request) {
       const firestoreDocsById = new Map()
       recentSnap.docs.forEach((doc) => firestoreDocsById.set(doc.id, doc))
       firestorePendingSnap.docs.forEach((doc) => firestoreDocsById.set(doc.id, doc))
+
+      const catalogDocsById = new Map(catalogSnap.docs.map((doc) => [doc.id, doc]))
+      const catalogDocsByRepuestoId = new Map()
+      catalogSnap.docs.forEach((doc) => {
+        const sourceId = cleanText(doc.data()?.comercio_repuesto_id, 64)
+        if (sourceId) catalogDocsByRepuestoId.set(sourceId, doc)
+      })
+      const sourceItems = Array.from(firestoreDocsById.values()).map(serializeRepuesto)
+      const sourceItemIds = new Set(sourceItems.map((item) => item.id))
+      const linkedCatalogIds = new Set()
+      const synchronizedSourceItems = sourceItems.map((item) => {
+        const catalogDoc = (item.catalogo_id ? catalogDocsById.get(item.catalogo_id) : null)
+          || catalogDocsByRepuestoId.get(item.id)
+        if (!catalogDoc) return item
+        const catalogItem = serializeCatalogRepuesto(catalogDoc)
+        linkedCatalogIds.add(catalogDoc.id)
+        return {
+          ...item,
+          catalogo_id: catalogDoc.id,
+          catalogo_oculto: catalogItem.catalogo_oculto,
+          fotos: item.fotos.length ? item.fotos : catalogItem.fotos,
+        }
+      })
+
+      const catalogItems = catalogSnap.docs
+        .filter((doc) => {
+          if (linkedCatalogIds.has(doc.id)) return false
+          const sourceId = cleanText(doc.data()?.comercio_repuesto_id, 64)
+          return !sourceId || !sourceItemIds.has(sourceId)
+        })
+        .map(serializeCatalogRepuesto)
       const items = [
-        ...Array.from(firestoreDocsById.values()).map(serializeRepuesto),
+        ...synchronizedSourceItems,
+        ...catalogItems,
         ...appItems,
       ]
         .filter((item) => !item.eliminado)
@@ -636,6 +739,43 @@ export async function PATCH(request) {
     const { getAdminDb, getAdminRealtimeDb, adminFieldValue } = await import('@/lib/firebaseAdmin')
     const db = getAdminDb()
     const rtdb = getAdminRealtimeDb()
+    const source = cleanText(body.source, 30).toLowerCase()
+    const requestedCatalogId = realtimeKey(
+      body.catalogo_id || (source === CATALOG_SOURCE ? id.replace(/^catalog:/, '') : ''),
+      120,
+    )
+
+    if (action === 'visibility') {
+      const authorized = await canManageCommerces(rtdb, session)
+      if (!authorized) {
+        return NextResponse.json({ error: 'No puedes cambiar la visibilidad de este repuesto.' }, { status: 403 })
+      }
+      if (!requestedCatalogId) {
+        return NextResponse.json({ error: 'No se encontró la publicación en el catálogo.' }, { status: 404 })
+      }
+
+      const catalogRef = db.collection(CATALOGO_COLLECTION).doc(requestedCatalogId)
+      const catalogSnap = await catalogRef.get()
+      if (!catalogSnap.exists) {
+        return NextResponse.json({ error: 'La publicación ya no existe en el catálogo.' }, { status: 404 })
+      }
+
+      const oculto = body.oculto === true
+      const now = adminFieldValue.serverTimestamp()
+      const writes = [catalogRef.update({ publicado: oculto ? 'oculto' : 'publicado', actualizado_en: now })]
+      const sourceId = source === CATALOG_SOURCE
+        ? cleanText(catalogSnap.data()?.comercio_repuesto_id, 64)
+        : id
+      if (sourceId) {
+        const sourceRef = db.collection(REPUESTOS_COLLECTION).doc(sourceId)
+        const sourceSnap = await sourceRef.get()
+        if (sourceSnap.exists) {
+          writes.push(sourceRef.update({ catalogo_oculto: oculto, actualizado_en: now }))
+        }
+      }
+      await Promise.all(writes)
+      return NextResponse.json({ ok: true, catalogo_oculto: oculto })
+    }
 
     if (action === 'unpublish') {
       const authorized = await canManageCommerces(rtdb, session)
@@ -643,7 +783,7 @@ export async function PATCH(request) {
         return NextResponse.json({ error: 'No puedes eliminar publicaciones de otros comercios.' }, { status: 403 })
       }
 
-      if (cleanText(body.source, 30) === APP_PENDING_SOURCE) {
+      if (source === APP_PENDING_SOURCE) {
         const appUid = realtimeKey(body.app_uid)
         const appPendingId = realtimeKey(body.app_pending_id)
         if (!appUid || !appPendingId) {
@@ -704,7 +844,61 @@ export async function PATCH(request) {
       return NextResponse.json({ ok: true, deleted: true })
     }
 
-    if (cleanText(body.source, 30) === APP_PENDING_SOURCE) {
+    if (action === 'update' && source === CATALOG_SOURCE) {
+      const authorized = await canManageCommerces(rtdb, session)
+      if (!authorized) {
+        return NextResponse.json({ error: 'No puedes editar publicaciones de otros comercios.' }, { status: 403 })
+      }
+      if (!requestedCatalogId) {
+        return NextResponse.json({ error: 'No se encontró la publicación en el catálogo.' }, { status: 404 })
+      }
+
+      const marca = cleanText(body.marca, 60)
+      const modelo = cleanText(body.modelo, 160)
+      const anio = cleanYear(body.anio)
+      const nombre = cleanText(body.nombre, 120)
+      const nota = cleanText(body.nota, 500)
+      const precio = cleanText(body.precio, 40)
+      const tipoVehiculo = cleanText(body.tipo_vehiculo, 20) === 'moto' ? 'moto' : 'carro'
+      if (!marca || !modelo || !nombre) {
+        return NextResponse.json({ error: 'Completa marca, modelo y nombre del repuesto.' }, { status: 400 })
+      }
+
+      const catalogRef = db.collection(CATALOGO_COLLECTION).doc(requestedCatalogId)
+      const catalogSnap = await catalogRef.get()
+      if (!catalogSnap.exists) {
+        return NextResponse.json({ error: 'La publicación ya no existe en el catálogo.' }, { status: 404 })
+      }
+      const current = catalogSnap.data() || {}
+      const now = adminFieldValue.serverTimestamp()
+      await catalogRef.update(catalogUpdateData({
+        marca,
+        modelo,
+        anio,
+        nombre,
+        nota,
+        precio,
+        tipoVehiculo,
+        venta: cleanText(body.venta, 80),
+      }, current, now))
+      return NextResponse.json({
+        ok: true,
+        item: {
+          id,
+          marca,
+          modelo,
+          anio,
+          nombre,
+          nota,
+          precio,
+          tipo_vehiculo: tipoVehiculo,
+          catalogo_id: requestedCatalogId,
+          catalogo_oculto: cleanText(current.publicado, 30).toLowerCase() === 'oculto',
+        },
+      })
+    }
+
+    if (source === APP_PENDING_SOURCE) {
       const appUid = realtimeKey(body.app_uid)
       const appPendingId = realtimeKey(body.app_pending_id)
       if (!appUid || !appPendingId) {
@@ -780,6 +974,13 @@ export async function PATCH(request) {
           descripcion,
           vehiculo,
           precio,
+          gestion_nombre: marca,
+          gestion_marca_vehiculo: '',
+          gestion_modelo: modelos,
+          gestion_anio: '',
+          gestion_nota: descripcion,
+          gestion_tipo_vehiculo: vehiculo,
+          gestion_venta: categoria,
           img,
           buscar: searchTokens(marca, categoria, modelos, descripcion),
           relevancia: '0',
@@ -838,7 +1039,6 @@ export async function PATCH(request) {
       return NextResponse.json({ ok: true, archivado: false })
     }
     if (body.action === 'update') {
-      if (item.aprobado) return NextResponse.json({ error: 'Un repuesto publicado ya no se puede editar aquí.' }, { status: 400 })
       const marca = cleanText(body.marca, 60)
       const modelo = cleanText(body.modelo, 80)
       const anio = cleanYear(body.anio)
@@ -849,7 +1049,8 @@ export async function PATCH(request) {
       if (!marca || !modelo || !nombre) {
         return NextResponse.json({ error: 'Completa marca, modelo y nombre del repuesto.' }, { status: 400 })
       }
-      await ref.update({
+      const now = adminFieldValue.serverTimestamp()
+      const sourceUpdate = {
         marca,
         modelo,
         anio,
@@ -857,11 +1058,43 @@ export async function PATCH(request) {
         nota,
         precio,
         tipo_vehiculo: tipoVehiculo,
-        actualizado_en: adminFieldValue.serverTimestamp(),
-      })
+        actualizado_en: now,
+      }
+      const batch = db.batch()
+      batch.update(ref, sourceUpdate)
+      const catalogId = realtimeKey(item.catalogo_id || requestedCatalogId, 120)
+      if (item.aprobado && catalogId) {
+        const catalogRef = db.collection(CATALOGO_COLLECTION).doc(catalogId)
+        const catalogSnap = await catalogRef.get()
+        if (!catalogSnap.exists) {
+          return NextResponse.json({ error: 'La publicación ya no existe en el catálogo.' }, { status: 404 })
+        }
+        batch.update(catalogRef, catalogUpdateData({
+          marca,
+          modelo,
+          anio,
+          nombre,
+          nota,
+          precio,
+          tipoVehiculo,
+          venta: item.venta || venta,
+        }, catalogSnap.data() || {}, now))
+      }
+      await batch.commit()
       return NextResponse.json({
         ok: true,
-        item: { id, marca, modelo, anio, nombre, nota, precio, tipo_vehiculo: tipoVehiculo },
+        item: {
+          id,
+          marca,
+          modelo,
+          anio,
+          nombre,
+          nota,
+          precio,
+          tipo_vehiculo: tipoVehiculo,
+          catalogo_id: catalogId || item.catalogo_id || '',
+          catalogo_oculto: Boolean(item.catalogo_oculto),
+        },
       })
     }
     if (item.catalogo_id) {
@@ -897,11 +1130,8 @@ export async function PATCH(request) {
       120,
     )
     const commerceOwnerId = owner?.uid || cleanPhone(ownerPhone)
-    const catalogDescription = [item.nombre, item.nota]
-      .map((value) => cleanText(value, 500))
-      .filter(Boolean)
-      .join(' — ')
-      .slice(0, 500)
+    const catalogName = cleanText(item.nombre || item.marca, 120) || 'Repuesto'
+    const catalogDescription = cleanText(item.nota, 500)
 
     await Promise.all([
       catalogRef.set({
@@ -918,13 +1148,21 @@ export async function PATCH(request) {
         // La app ordena el catálogo por idPublicacion: sin este campo el
         // documento queda excluido de los resultados.
         idPublicacion: catalogRef.id,
-        marca: item.marca || 'Repuesto',
+        marca: catalogName,
         categoria: effectiveVenta || 'Repuestos',
         modelos: [item.marca, item.modelo, item.anio].filter(Boolean).join(' '),
         descripcion: catalogDescription,
         vehiculo: item.tipo_vehiculo || 'carro',
         precio: priceLabel(item.precio),
+        gestion_nombre: catalogName,
+        gestion_marca_vehiculo: item.marca || '',
+        gestion_modelo: item.modelo || '',
+        gestion_anio: item.anio || '',
+        gestion_nota: item.nota || '',
+        gestion_tipo_vehiculo: item.tipo_vehiculo || 'carro',
+        gestion_venta: effectiveVenta || 'Repuestos',
         img,
+        buscar: searchTokens(catalogName, item.marca, item.modelo, item.anio, catalogDescription, effectiveVenta),
         relevancia: '0',
         publicado: 'publicado',
         estado: 'disponible',
@@ -948,6 +1186,7 @@ export async function PATCH(request) {
         dia: effectiveDia || item.dia || '',
         venta: effectiveVenta || item.venta || '',
         catalogo_id: catalogRef.id,
+        catalogo_oculto: false,
         aprobado_en: now,
         actualizado_en: now,
       }),

@@ -110,7 +110,7 @@ async function searchMarketplace(message) {
 
   const parts = partsSnapshot.docs
     .map(doc => ({ id: doc.id, ...doc.data() }))
-    .filter(item => item.publicado !== 'agotado' && item.estado !== 'agotado')
+    .filter(item => item.publicado !== 'agotado' && item.publicado !== 'oculto' && item.estado !== 'agotado')
     .filter(item => matchesPlazaSearch({
       titulo: item.marca || item.categoria,
       descripcion: [item.descripcion, item.modelos, item.vehiculo].filter(Boolean).join(' '),

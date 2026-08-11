@@ -94,6 +94,10 @@ function isBotPending(item) {
   return item?.source === 'bot_whatsapp'
 }
 
+function isCatalogItem(item) {
+  return item?.source === 'catalogo'
+}
+
 function isAuthorized(value) {
   return value === true || value === 'true' || value === 1 || value === '1'
 }
@@ -364,6 +368,7 @@ export default function ComercioAutorizacionPage() {
   const router = useRouter()
   const repuestoFormRef = useRef(null)
   const pendingRepuestosRef = useRef(null)
+  const publishedRepuestosRef = useRef(null)
   const commerceInfoRef = useRef(null)
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -402,7 +407,7 @@ export default function ComercioAutorizacionPage() {
   const [editingRepuestoSaving, setEditingRepuestoSaving] = useState(false)
   const [archivingRepuestoId, setArchivingRepuestoId] = useState('')
   const [restoringRepuestoId, setRestoringRepuestoId] = useState('')
-  const [deletingRepuestoId, setDeletingRepuestoId] = useState('')
+  const [visibilityRepuestoId, setVisibilityRepuestoId] = useState('')
   const [pendingRepuestoPhotos, setPendingRepuestoPhotos] = useState([])
   const [homeAnalytics, setHomeAnalytics] = useState([])
   const [homeAnalyticsLoading, setHomeAnalyticsLoading] = useState(false)
@@ -536,6 +541,7 @@ export default function ComercioAutorizacionPage() {
     return true
   })
   const repuestosPendientes = commerceRepuestos.filter((item) => !item.aprobado && !item.archivado)
+  const repuestosPublicados = commerceRepuestos.filter((item) => item.aprobado && !item.archivado)
   const repuestosArchivados = commerceRepuestos.filter((item) => item.archivado)
   const commerceNameByPhone = useMemo(() => {
     const map = {}
@@ -1081,16 +1087,30 @@ export default function ComercioAutorizacionPage() {
     })
     setError('')
     setActivePanel('repuestos')
+    if (item.aprobado) {
+      window.setTimeout(() => {
+        publishedRepuestosRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 50)
+    }
   }
 
   async function saveRepuestoEdition() {
     setEditingRepuestoSaving(true)
     setError('')
     try {
+      const target = repuestos.find((item) => item.id === editingRepuestoId)
+      if (!target) throw new Error('El repuesto ya no está disponible para editar.')
       const res = await fetch('/api/usuario/comercio/repuestos', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
-        body: JSON.stringify({ action: 'update', id: editingRepuestoId, ...editingRepuestoForm }),
+        body: JSON.stringify({
+          action: 'update',
+          id: editingRepuestoId,
+          source: target.source || '',
+          catalogo_id: target.catalogo_id || '',
+          venta: target.venta || '',
+          ...editingRepuestoForm,
+        }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo editar el repuesto.')
@@ -1231,13 +1251,9 @@ export default function ComercioAutorizacionPage() {
     }
   }
 
-  async function deletePublishedRepuesto(item) {
-    const confirmed = window.confirm(
-      `¿Eliminar "${item.nombre || 'este repuesto'}" del catálogo? Esta acción quitará la publicación.`,
-    )
-    if (!confirmed) return
-
-    setDeletingRepuestoId(item.id)
+  async function toggleCatalogVisibility(item) {
+    const oculto = !item.catalogo_oculto
+    setVisibilityRepuestoId(item.id)
     setError('')
     setMessage('')
     try {
@@ -1248,22 +1264,25 @@ export default function ComercioAutorizacionPage() {
           Authorization: `Bearer ${session.token}`,
         },
         body: JSON.stringify({
-          action: 'unpublish',
+          action: 'visibility',
           id: item.id,
           source: item.source || '',
-          app_uid: item.app_uid || '',
-          app_pending_id: item.app_pending_id || '',
+          catalogo_id: item.catalogo_id || '',
+          oculto,
         }),
       })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo eliminar la publicación.')
-      setRepuestos((items) => items.filter((current) => current.id !== item.id))
-      if (editingRepuestoId === item.id) setEditingRepuestoId('')
-      setMessage('Repuesto eliminado y quitado del catálogo.')
+      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo cambiar la visibilidad del repuesto.')
+      setRepuestos((items) => items.map((current) => (
+        current.id === item.id ? { ...current, catalogo_oculto: oculto } : current
+      )))
+      setMessage(oculto
+        ? 'Repuesto ocultado. Ya no aparece en el catálogo público.'
+        : 'Repuesto visible nuevamente en el catálogo público.')
     } catch (err) {
-      setError(err.message || 'No se pudo eliminar la publicación.')
+      setError(err.message || 'No se pudo cambiar la visibilidad del repuesto.')
     } finally {
-      setDeletingRepuestoId('')
+      setVisibilityRepuestoId('')
     }
   }
 
@@ -1523,7 +1542,7 @@ export default function ComercioAutorizacionPage() {
                   </p>
                 ) : allRepuestosFiltered.map((item) => (
                   <article key={item.id} className="relative rounded-lg border border-slate-200 p-3">
-                    {!isAppPending(item) && !item.aprobado && !item.archivado && editingRepuestoId !== item.id && (
+                    {!isAppPending(item) && !item.archivado && editingRepuestoId !== item.id && (
                       <button type="button" onClick={() => startEditingRepuesto(item)} className="absolute right-2 top-2 z-10 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm hover:border-amber-300">
                         Editar
                       </button>
@@ -1550,7 +1569,9 @@ export default function ComercioAutorizacionPage() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
-                          <StatusPill tone={item.aprobado ? 'good' : 'warn'}>{item.aprobado ? 'Publicado' : item.archivado ? 'Archivado' : 'Pendiente'}</StatusPill>
+                          <StatusPill tone={item.catalogo_oculto ? 'warn' : item.aprobado ? 'good' : 'warn'}>
+                            {item.catalogo_oculto ? 'Oculto' : item.aprobado ? 'Publicado' : item.archivado ? 'Archivado' : 'Pendiente'}
+                          </StatusPill>
                           {isAppPending(item) && <StatusPill>App móvil</StatusPill>}
                           {isAppPending(item) && item.app_association_status === 'sin_comercio' && (
                             <StatusPill tone="warn">Sin comercio vinculado</StatusPill>
@@ -1571,11 +1592,13 @@ export default function ComercioAutorizacionPage() {
                         </span>
                         {item.aprobado ? (
                           <DangerButton
-                            onClick={() => deletePublishedRepuesto(item)}
-                            disabled={deletingRepuestoId === item.id}
+                            onClick={() => toggleCatalogVisibility(item)}
+                            disabled={visibilityRepuestoId === item.id}
                             className="flex-1 sm:flex-none"
                           >
-                            {deletingRepuestoId === item.id ? 'Eliminando...' : 'Quitar de publicado'}
+                            {visibilityRepuestoId === item.id
+                              ? 'Guardando...'
+                              : item.catalogo_oculto ? 'Mostrar en catálogo' : 'Ocultar del catálogo'}
                           </DangerButton>
                         ) : (
                           <PrimaryButton onClick={() => approveRepuesto(item)} disabled={item.archivado} className="flex-1 sm:flex-none">
@@ -1590,8 +1613,8 @@ export default function ComercioAutorizacionPage() {
                       fotos={item.fotos || []}
                       uploading={uploadingPhotoId === item.id}
                       removingUrl={removingPhotoUrl}
-                      onPick={isAppPending(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
-                      onRemove={!isAppPending(item) && !item.aprobado && !item.archivado ? (url) => removeRepuestoPhoto(item, url) : undefined}
+                      onPick={isAppPending(item) || isCatalogItem(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
+                      onRemove={!isAppPending(item) && !isCatalogItem(item) && !item.archivado ? (url) => removeRepuestoPhoto(item, url) : undefined}
                     />
                   </article>
                 ))}
@@ -1761,6 +1784,99 @@ export default function ComercioAutorizacionPage() {
               <PrimaryButton onClick={saveCommerce} disabled={saving || preparingPhoto} className="w-full sm:w-auto sm:min-w-64">
                 {preparingPhoto ? 'Preparando foto...' : saving ? 'Guardando...' : `Guardar comercio para ${dayLabel}`}
               </PrimaryButton>
+            </div>
+          </section>
+
+          <section ref={publishedRepuestosRef} className="scroll-mt-24 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-extrabold uppercase text-emerald-700">Catálogo del comercio</p>
+                <h2 className="text-xl font-extrabold">Repuestos publicados</h2>
+                <p className="mt-1 text-sm text-slate-500">Edita la publicación o escóndela temporalmente sin borrarla.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusPill tone="good">
+                  {repuestosPublicados.filter((item) => !item.catalogo_oculto).length} visibles
+                </StatusPill>
+                {repuestosPublicados.some((item) => item.catalogo_oculto) && (
+                  <StatusPill tone="warn">
+                    {repuestosPublicados.filter((item) => item.catalogo_oculto).length} ocultos
+                  </StatusPill>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              {repuestosPublicados.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+                  Este comercio todavía no tiene repuestos publicados en el catálogo.
+                </p>
+              ) : repuestosPublicados.map((item) => (
+                <article key={item.id} className={`rounded-lg border p-3 ${item.catalogo_oculto ? 'border-amber-200 bg-amber-50/50' : 'border-slate-200'}`}>
+                  {editingRepuestoId === item.id ? (
+                    <div className="grid gap-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-extrabold uppercase tracking-wide text-amber-700">Editar publicación</p>
+                        <StatusPill tone={item.catalogo_oculto ? 'warn' : 'good'}>
+                          {item.catalogo_oculto ? 'Oculto' : 'Visible'}
+                        </StatusPill>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <input value={editingRepuestoForm.marca} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, marca: event.target.value.slice(0, 60) }))} placeholder="Marca del vehículo" className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                        <input value={editingRepuestoForm.modelo} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, modelo: event.target.value.slice(0, 160) }))} placeholder="Modelo" className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <input value={editingRepuestoForm.anio} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, anio: event.target.value.replace(/\D/g, '').slice(0, 4) }))} placeholder="Año" inputMode="numeric" className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                        <input value={editingRepuestoForm.precio} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, precio: event.target.value.slice(0, 40) }))} placeholder="Precio" className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                      </div>
+                      <input value={editingRepuestoForm.nombre} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, nombre: event.target.value.slice(0, 120) }))} placeholder="Nombre del repuesto" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                      <textarea value={editingRepuestoForm.nota} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, nota: event.target.value.slice(0, 500) }))} placeholder="Referencia, estado, compatibilidad o garantía" rows={2} className="resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <SoftButton onClick={() => setEditingRepuestoId('')} disabled={editingRepuestoSaving} className="flex-1">Cancelar</SoftButton>
+                        <PrimaryButton onClick={saveRepuestoEdition} disabled={editingRepuestoSaving} className="flex-1">
+                          {editingRepuestoSaving ? 'Guardando...' : 'Guardar cambios'}
+                        </PrimaryButton>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
+                          <StatusPill tone={item.catalogo_oculto ? 'warn' : 'good'}>
+                            {item.catalogo_oculto ? 'Oculto' : 'Publicado'}
+                          </StatusPill>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {[item.marca, item.modelo, item.anio].filter(Boolean).join(' · ') || 'Sin compatibilidad'}
+                        </p>
+                        {item.nota && <p className="mt-1 text-sm text-slate-500">{item.nota}</p>}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+                        <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
+                          {formatPrecio(item.precio)}
+                        </span>
+                        <SoftButton onClick={() => startEditingRepuesto(item)}>Editar</SoftButton>
+                        <DangerButton
+                          onClick={() => toggleCatalogVisibility(item)}
+                          disabled={visibilityRepuestoId === item.id}
+                        >
+                          {visibilityRepuestoId === item.id
+                            ? 'Guardando...'
+                            : item.catalogo_oculto ? 'Mostrar en catálogo' : 'Ocultar del catálogo'}
+                        </DangerButton>
+                      </div>
+                    </div>
+                  )}
+                  <RepuestoFotos
+                    fotos={item.fotos || []}
+                    uploading={uploadingPhotoId === item.id}
+                    removingUrl={removingPhotoUrl}
+                    onPick={isCatalogItem(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
+                    onRemove={isCatalogItem(item) ? undefined : (url) => removeRepuestoPhoto(item, url)}
+                  />
+                </article>
+              ))}
             </div>
           </section>
 
@@ -2124,7 +2240,9 @@ export default function ComercioAutorizacionPage() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
-                          <StatusPill tone={item.aprobado ? 'good' : 'warn'}>{item.aprobado ? 'Publicado' : 'Pendiente'}</StatusPill>
+                          <StatusPill tone={item.catalogo_oculto ? 'warn' : item.aprobado ? 'good' : 'warn'}>
+                            {item.catalogo_oculto ? 'Oculto' : item.aprobado ? 'Publicado' : 'Pendiente'}
+                          </StatusPill>
                           {isAppPending(item) && <StatusPill>App móvil</StatusPill>}
                           {isAppPending(item) && item.app_association_status === 'sin_comercio' && (
                             <StatusPill tone="warn">Sin comercio vinculado</StatusPill>
@@ -2141,13 +2259,20 @@ export default function ComercioAutorizacionPage() {
                           {formatPrecio(item.precio)}
                         </span>
                         {item.aprobado ? (
-                          <DangerButton
-                            onClick={() => deletePublishedRepuesto(item)}
-                            disabled={deletingRepuestoId === item.id}
-                            className="flex-1 sm:flex-none"
-                          >
-                            {deletingRepuestoId === item.id ? 'Eliminando...' : 'Quitar de publicado'}
-                          </DangerButton>
+                          <div className="flex flex-1 gap-2 sm:flex-none">
+                            <SoftButton onClick={() => startEditingRepuesto(item)} className="flex-1 sm:flex-none">
+                              Editar
+                            </SoftButton>
+                            <DangerButton
+                              onClick={() => toggleCatalogVisibility(item)}
+                              disabled={visibilityRepuestoId === item.id}
+                              className="flex-1 sm:flex-none"
+                            >
+                              {visibilityRepuestoId === item.id
+                                ? 'Guardando...'
+                                : item.catalogo_oculto ? 'Mostrar' : 'Ocultar'}
+                            </DangerButton>
+                          </div>
                         ) : (
                           <PrimaryButton onClick={() => approveRepuesto(item)} className="flex-1 sm:flex-none">
                             Aprobar publicacion
@@ -2159,7 +2284,7 @@ export default function ComercioAutorizacionPage() {
                     <RepuestoFotos
                       fotos={item.fotos || []}
                       uploading={uploadingPhotoId === item.id}
-                      onPick={isAppPending(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
+                      onPick={isAppPending(item) || isCatalogItem(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
                     />
                   </article>
                 ))}

@@ -678,6 +678,7 @@ export default function Home() {
         if (cancelled) return
 
         const items = snap.docs
+          .filter((doc) => String(doc.data()?.publicado || '').toLowerCase() !== 'oculto')
           .map((doc) => normalizeHomeProduct(doc.data(), doc.id))
           .filter((item) => item.imagen)
 

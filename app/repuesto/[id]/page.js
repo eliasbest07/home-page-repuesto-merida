@@ -133,7 +133,7 @@ export default function RepuestoDetailPage() {
     getDoc(doc(firestore, 'merida', productId))
       .then(async (snapshot) => {
         if (cancelled) return
-        if (!snapshot.exists()) {
+        if (!snapshot.exists() || String(snapshot.data()?.publicado || '').toLowerCase() === 'oculto') {
           setStatus('not-found')
           return
         }
