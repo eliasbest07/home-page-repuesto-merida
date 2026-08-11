@@ -94,10 +94,6 @@ function isBotPending(item) {
   return item?.source === 'bot_whatsapp'
 }
 
-function isCatalogItem(item) {
-  return item?.source === 'catalogo'
-}
-
 function isAuthorized(value) {
   return value === true || value === 'true' || value === 1 || value === '1'
 }
@@ -1057,6 +1053,10 @@ export default function ComercioAutorizacionPage() {
       if (prepared.size > MAX_UPLOADED_IMAGE_SIZE) throw new Error('La foto no pudo reducirse lo suficiente.')
       const data = new FormData()
       data.append('id', item.id)
+      data.append('source', item.source || '')
+      data.append('app_uid', item.app_uid || '')
+      data.append('app_pending_id', item.app_pending_id || '')
+      data.append('catalogo_id', item.catalogo_id || '')
       data.append('foto', prepared, 'repuesto.jpg')
       const res = await fetch('/api/usuario/comercio/repuestos/foto', {
         method: 'POST',
@@ -1133,7 +1133,14 @@ export default function ComercioAutorizacionPage() {
       const res = await fetch('/api/usuario/comercio/repuestos/foto', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
-        body: JSON.stringify({ id: item.id, url }),
+        body: JSON.stringify({
+          id: item.id,
+          url,
+          source: item.source || '',
+          app_uid: item.app_uid || '',
+          app_pending_id: item.app_pending_id || '',
+          catalogo_id: item.catalogo_id || '',
+        }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo quitar la foto.')
@@ -1542,7 +1549,7 @@ export default function ComercioAutorizacionPage() {
                   </p>
                 ) : allRepuestosFiltered.map((item) => (
                   <article key={item.id} className="relative rounded-lg border border-slate-200 p-3">
-                    {!isAppPending(item) && !item.archivado && editingRepuestoId !== item.id && (
+                    {!item.archivado && editingRepuestoId !== item.id && (
                       <button type="button" onClick={() => startEditingRepuesto(item)} className="absolute right-2 top-2 z-10 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm hover:border-amber-300">
                         Editar
                       </button>
@@ -1613,8 +1620,8 @@ export default function ComercioAutorizacionPage() {
                       fotos={item.fotos || []}
                       uploading={uploadingPhotoId === item.id}
                       removingUrl={removingPhotoUrl}
-                      onPick={isAppPending(item) || isCatalogItem(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
-                      onRemove={!isAppPending(item) && !isCatalogItem(item) && !item.archivado ? (url) => removeRepuestoPhoto(item, url) : undefined}
+                      onPick={!item.archivado ? (file) => uploadRepuestoPhoto(item, file) : undefined}
+                      onRemove={!item.archivado ? (url) => removeRepuestoPhoto(item, url) : undefined}
                     />
                   </article>
                 ))}
@@ -1872,8 +1879,8 @@ export default function ComercioAutorizacionPage() {
                     fotos={item.fotos || []}
                     uploading={uploadingPhotoId === item.id}
                     removingUrl={removingPhotoUrl}
-                    onPick={isCatalogItem(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
-                    onRemove={isCatalogItem(item) ? undefined : (url) => removeRepuestoPhoto(item, url)}
+                    onPick={(file) => uploadRepuestoPhoto(item, file)}
+                    onRemove={(url) => removeRepuestoPhoto(item, url)}
                   />
                 </article>
               ))}
@@ -1967,15 +1974,13 @@ export default function ComercioAutorizacionPage() {
                             Aprobar publicacion
                           </PrimaryButton>
                           {!isAppPending(item) && (
-                            <>
-                              <SoftButton onClick={() => archiveRepuesto(item)} disabled={archivingRepuestoId === item.id} className="flex-1 sm:flex-none">
-                                {archivingRepuestoId === item.id ? 'Archivando...' : 'Archivar'}
-                              </SoftButton>
-                              <button type="button" onClick={() => startEditingRepuesto(item)} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm transition hover:border-amber-300">
-                                Editar
-                              </button>
-                            </>
+                            <SoftButton onClick={() => archiveRepuesto(item)} disabled={archivingRepuestoId === item.id} className="flex-1 sm:flex-none">
+                              {archivingRepuestoId === item.id ? 'Archivando...' : 'Archivar'}
+                            </SoftButton>
                           )}
+                          <button type="button" onClick={() => startEditingRepuesto(item)} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm transition hover:border-amber-300">
+                            Editar
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1984,8 +1989,8 @@ export default function ComercioAutorizacionPage() {
                     fotos={item.fotos || []}
                     uploading={uploadingPhotoId === item.id}
                     removingUrl={removingPhotoUrl}
-                    onPick={isAppPending(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
-                    onRemove={isAppPending(item) ? undefined : (url) => removeRepuestoPhoto(item, url)}
+                    onPick={(file) => uploadRepuestoPhoto(item, file)}
+                    onRemove={(url) => removeRepuestoPhoto(item, url)}
                   />
                 </article>
               ))}
@@ -2284,7 +2289,7 @@ export default function ComercioAutorizacionPage() {
                     <RepuestoFotos
                       fotos={item.fotos || []}
                       uploading={uploadingPhotoId === item.id}
-                      onPick={isAppPending(item) || isCatalogItem(item) ? undefined : (file) => uploadRepuestoPhoto(item, file)}
+                      onPick={(file) => uploadRepuestoPhoto(item, file)}
                     />
                   </article>
                 ))}

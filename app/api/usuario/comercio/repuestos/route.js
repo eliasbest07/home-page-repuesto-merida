@@ -305,12 +305,12 @@ function serializeAppPending(uid, pendingId, data = {}, user = {}, resolved = {}
     comercio_id: commerce.comercio_id || cleanText(data.comercio_id, 80),
     dia: commerce.dia || dia,
     venta: categoria,
-    tipo_vehiculo: cleanText(data.vehiculo, 20).toLowerCase() === 'moto' ? 'moto' : 'carro',
-    marca: cleanText(data.marca, 60),
-    modelo: cleanText(data.modelos, 160),
-    anio: '',
-    nombre: categoria || 'Repuesto desde la app',
-    nota: cleanText(data.descripcion, 500),
+    tipo_vehiculo: cleanText(data.gestion_tipo_vehiculo || data.vehiculo, 20).toLowerCase() === 'moto' ? 'moto' : 'carro',
+    marca: cleanText(data.gestion_marca_vehiculo || data.marca, 60),
+    modelo: cleanText(data.gestion_modelo || data.modelos, 160),
+    anio: cleanYear(data.gestion_anio),
+    nombre: cleanText(data.gestion_nombre || categoria, 120) || 'Repuesto desde la app',
+    nota: cleanText(data.gestion_nota ?? data.descripcion, 500),
     precio: cleanText(data.precio, 40),
     fotos: parseFotos(data.fotos),
     aprobado: false,
@@ -898,6 +898,62 @@ export async function PATCH(request) {
       })
     }
 
+    if (action === 'update' && source === APP_PENDING_SOURCE) {
+      const authorized = await canManageCommerces(rtdb, session)
+      if (!authorized) {
+        return NextResponse.json({ error: 'No puedes editar repuestos pendientes de la app.' }, { status: 403 })
+      }
+      const appUid = realtimeKey(body.app_uid)
+      const appPendingId = realtimeKey(body.app_pending_id)
+      if (!appUid || !appPendingId) {
+        return NextResponse.json({ error: 'El repuesto de la app no tiene una referencia válida.' }, { status: 400 })
+      }
+
+      const marca = cleanText(body.marca, 60)
+      const modelo = cleanText(body.modelo, 160)
+      const anio = cleanYear(body.anio)
+      const nombre = cleanText(body.nombre, 120)
+      const nota = cleanText(body.nota, 500)
+      const precio = cleanText(body.precio, 40)
+      const tipoVehiculo = cleanText(body.tipo_vehiculo, 20) === 'moto' ? 'moto' : 'carro'
+      if (!marca || !modelo || !nombre) {
+        return NextResponse.json({ error: 'Completa marca, modelo y nombre del repuesto.' }, { status: 400 })
+      }
+
+      const pendingRef = rtdb.ref(`${APP_PENDING_PATH}/${appUid}/${appPendingId}`)
+      const pendingSnap = await pendingRef.get()
+      if (!pendingSnap.exists()) {
+        return NextResponse.json({ error: 'El repuesto ya no está en espera.' }, { status: 404 })
+      }
+      const pending = pendingSnap.val() || {}
+      if (cleanText(pending.publicado, 30).toLowerCase() !== 'espera') {
+        return NextResponse.json({ error: 'Solo se pueden editar aquí las publicaciones pendientes.' }, { status: 400 })
+      }
+
+      await pendingRef.update({
+        // Mantiene el contrato original de la app y agrega campos de gestión
+        // para no perder la separación marca/modelo/año en futuras ediciones.
+        marca,
+        modelos: [modelo, anio].filter(Boolean).join(' '),
+        categoria: nombre,
+        descripcion: nota,
+        precio,
+        vehiculo: tipoVehiculo,
+        gestion_nombre: nombre,
+        gestion_marca_vehiculo: marca,
+        gestion_modelo: modelo,
+        gestion_anio: anio,
+        gestion_nota: nota,
+        gestion_tipo_vehiculo: tipoVehiculo,
+        actualizado_en: Date.now(),
+        editado_por: session.tel || session.telefono,
+      })
+      return NextResponse.json({
+        ok: true,
+        item: { id, marca, modelo, anio, nombre, nota, precio, tipo_vehiculo: tipoVehiculo },
+      })
+    }
+
     if (source === APP_PENDING_SOURCE) {
       const appUid = realtimeKey(body.app_uid)
       const appPendingId = realtimeKey(body.app_pending_id)
@@ -940,6 +996,12 @@ export async function PATCH(request) {
       const modelos = cleanText(pending.modelos, 160)
       const descripcion = cleanText(pending.descripcion, 500)
       const vehiculo = cleanText(pending.vehiculo, 20).toLowerCase() === 'moto' ? 'moto' : 'carro'
+      const catalogName = cleanText(pending.gestion_nombre || categoria || marca, 120) || 'Repuesto'
+      const vehicleBrand = cleanText(pending.gestion_marca_vehiculo || marca, 60)
+      const vehicleModel = cleanText(pending.gestion_modelo || modelos, 160)
+      const vehicleYear = cleanYear(pending.gestion_anio)
+      const catalogModels = [vehicleBrand, vehicleModel, vehicleYear].filter(Boolean).join(' ')
+      const catalogDescription = cleanText(pending.gestion_nota ?? descripcion, 500)
       const estado = cleanText(pending.estado, 40) || 'disponible'
       const precio = cleanText(pending.precio, 40) || 'Consultar'
       const img = parseFotos(pending.fotos)
@@ -968,21 +1030,21 @@ export async function PATCH(request) {
           ].filter(Boolean))),
           identity_id: pending.identity_id || identityIdForPhone(ownerPhone),
           idPublicacion: catalogRef.id,
-          marca,
+          marca: catalogName,
           categoria,
-          modelos,
-          descripcion,
+          modelos: catalogModels,
+          descripcion: catalogDescription,
           vehiculo,
           precio,
-          gestion_nombre: marca,
-          gestion_marca_vehiculo: '',
-          gestion_modelo: modelos,
-          gestion_anio: '',
-          gestion_nota: descripcion,
+          gestion_nombre: catalogName,
+          gestion_marca_vehiculo: vehicleBrand,
+          gestion_modelo: vehicleModel,
+          gestion_anio: vehicleYear,
+          gestion_nota: catalogDescription,
           gestion_tipo_vehiculo: vehiculo,
           gestion_venta: categoria,
           img,
-          buscar: searchTokens(marca, categoria, modelos, descripcion),
+          buscar: searchTokens(catalogName, categoria, catalogModels, catalogDescription),
           relevancia: '0',
           publicado: 'publicado',
           estado,
