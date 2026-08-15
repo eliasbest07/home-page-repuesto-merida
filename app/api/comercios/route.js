@@ -56,6 +56,7 @@ function serializeRepuesto(doc) {
     tipo_vehiculo: data.tipo_vehiculo === 'moto' ? 'moto' : 'carro',
     comercio_id: cleanText(data.comercio_id, 80),
     _phone: canonPhone(data.telefono || data.comercio_whatsapp),
+    _visible: data.aprobado === true && !data.archivado && !data.eliminado && !data.catalogo_oculto,
   }
 }
 
@@ -116,12 +117,13 @@ export async function GET() {
     // 2) Repuestos -> se enlazan por comercio_id; si no, por teléfono.
     const repuestos = repuestosSnap.docs.map(serializeRepuesto)
     for (const rep of repuestos) {
+      if (!rep._visible) continue
       const comercio =
         (rep.comercio_id && byCommerceId.get(rep.comercio_id)) ||
         (rep._phone && byPhone.get(rep._phone)) ||
         null
       if (!comercio) continue
-      const { comercio_id, _phone, ...card } = rep
+      const { comercio_id, _phone, _visible, ...card } = rep
       comercio.repuestos.push(card)
     }
 
