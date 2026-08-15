@@ -71,6 +71,57 @@ function authPayload(request) {
   return { ...payload, telefono, key }
 }
 
+/// Sesión de la app móvil, que se autentica con Firebase Auth y no con el JWT
+/// de teléfono de la web.
+///
+/// La identidad es el uid, así que no hace falta buscar al usuario por su
+/// número. El teléfono se lee de `users/{uid}` solo para que la app y la web
+/// compartan el mismo documento de verificación cuando el usuario ya verificó
+/// su WhatsApp; quien entró con Apple o Google todavía puede no tener número, y
+/// en ese caso el uid hace de clave.
+async function firebaseAuthPayload(request) {
+  const token = bearerToken(request)
+  if (!token) return null
+
+  const { getAdminAuth, getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
+
+  let decoded
+  try {
+    const auth = await getAdminAuth()
+    // checkRevoked: una sesión cerrada o un usuario deshabilitado no sirve.
+    decoded = await auth.verifyIdToken(token, true)
+  } catch {
+    return null
+  }
+
+  const uid = safeUid(decoded?.uid)
+  if (!uid) return null
+
+  let telefono = cleanPhone(decoded?.phone_number)
+  if (telefono.length < 10) {
+    try {
+      const snap = await getAdminRealtimeDb().ref(`users/${uid}/whatsapp`).get()
+      telefono = cleanPhone(snap.exists() ? snap.val() : '')
+    } catch {
+      telefono = ''
+    }
+  }
+
+  const conNumero = telefono.length >= 10
+  return {
+    origen: 'firebase',
+    realtime_uid: uid,
+    canonical_uid: uid,
+    // Número real, o vacío si el usuario todavía no verificó su WhatsApp. No
+    // se debe escribir en el perfil si está vacío.
+    telefonoReal: conNumero ? telefono : '',
+    // Clave del guard y de la ruta en Storage: el número si se conoce, y si no
+    // el uid, que siempre existe.
+    telefono: conNumero ? telefono : uid,
+    key: conNumero ? telefono : uid,
+  }
+}
+
 function safeUid(value) {
   const uid = String(value || '').trim()
   if (!uid || uid.length > 128 || /[.#$\[\]/]/.test(uid)) return ''
@@ -336,7 +387,10 @@ export async function POST(request) {
   let verificationPhone = ''
 
   try {
-    const session = authPayload(request)
+    // La web manda su JWT de teléfono; la app móvil manda el ID token de
+    // Firebase Auth. De ahí en adelante el flujo es exactamente el mismo, para
+    // que ambas plataformas usen el mismo evaluador y las mismas reglas.
+    const session = authPayload(request) || (await firebaseAuthPayload(request))
     if (!session) return NextResponse.json({ error: 'Sesión inválida.' }, { status: 401 })
 
     const contentLength = Number(request.headers.get('content-length') || 0)
@@ -442,7 +496,7 @@ export async function POST(request) {
     const realtimeNow = Date.now()
 
     const verificationData = {
-      telefono: session.telefono,
+      telefono: session.telefonoReal ?? session.telefono,
       cedula_ultimos4: cedulaNumero.slice(-4),
       estado: 'aprobado',
       metodo: 'google_gemini',
@@ -479,11 +533,17 @@ export async function POST(request) {
     }
     const usersPath = `users/${targetUid}`
     const usersPatch = {
-      whatsapp: session.telefono,
-      telefono: session.telefono,
       id: targetUid,
       canonical_uid: targetUid,
       ...cedulaPatch,
+    }
+    // El teléfono solo se escribe si de verdad se conoce. Quien entró por Apple
+    // o Google sin verificar WhatsApp usa su uid como clave, y guardarlo aquí
+    // dejaría un uid metido en el campo del número.
+    const telefonoConocido = session.telefonoReal ?? session.telefono
+    if (cleanPhone(telefonoConocido).length >= 10) {
+      usersPatch.whatsapp = telefonoConocido
+      usersPatch.telefono = telefonoConocido
     }
 
     await Promise.all([
