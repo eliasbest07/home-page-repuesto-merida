@@ -1438,11 +1438,17 @@ export default function Home() {
 
                 <div className="home-request-submit">
                   <div>
-                    <p>
-                      {selectedBrand
-                        ? `Marca seleccionada: ${selectedBrand}`
-                        : 'Selecciona una marca arriba para publicar.'}
-                    </p>
+                    {selectedBrand ? (
+                      <div className="home-selected-brand" role="status" aria-live="polite">
+                        <span className="home-selected-brand-check" aria-hidden="true">✓</span>
+                        <span className="home-selected-brand-copy">
+                          <span>Marca seleccionada</span>
+                          <strong>{selectedBrand}</strong>
+                        </span>
+                      </div>
+                    ) : (
+                      <p>Selecciona una marca arriba para publicar.</p>
+                    )}
                     {requestSession?.telefono && (
                       <p className="home-request-session">
                         WhatsApp verificado: {requestSession.telefono}

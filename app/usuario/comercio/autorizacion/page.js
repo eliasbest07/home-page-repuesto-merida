@@ -46,6 +46,8 @@ const EMPTY_REPUESTO = {
   precio: '',
 }
 
+const ALL_REPUESTOS_PAGE_SIZE = 10
+
 function canonPhone(raw) {
   let d = String(raw || '').replace(/\D/g, '')
   if (d.startsWith('58') && d.length >= 12) d = d.slice(2)
@@ -381,6 +383,7 @@ export default function ComercioAutorizacionPage() {
   const [showHomeAnalytics, setShowHomeAnalytics] = useState(false)
   const [showSalesInventory, setShowSalesInventory] = useState(true)
   const [allRepuestosFilter, setAllRepuestosFilter] = useState('todos')
+  const [allRepuestosPage, setAllRepuestosPage] = useState(1)
   const [activePanel, setActivePanel] = useState('comercios')
   const [selectedVenta, setSelectedVenta] = useState('')
   const [form, setForm] = useState(EMPTY_DAY)
@@ -556,6 +559,13 @@ export default function ComercioAutorizacionPage() {
     if (allRepuestosFilter === 'archivado') return item.archivado
     return true
   })
+  const allRepuestosTotalPages = Math.max(1, Math.ceil(allRepuestosFiltered.length / ALL_REPUESTOS_PAGE_SIZE))
+  const allRepuestosCurrentPage = Math.min(allRepuestosPage, allRepuestosTotalPages)
+  const allRepuestosPageStart = (allRepuestosCurrentPage - 1) * ALL_REPUESTOS_PAGE_SIZE
+  const allRepuestosPageItems = allRepuestosFiltered.slice(
+    allRepuestosPageStart,
+    allRepuestosPageStart + ALL_REPUESTOS_PAGE_SIZE,
+  )
   // La lista de marcas del repuesto sigue al toggle Carro/Moto (form.tipo_vehiculo):
   // muestra las marcas que atiende el comercio para ese tipo y, si no eligio ninguna,
   // cae al catalogo completo del tipo seleccionado.
@@ -846,6 +856,7 @@ export default function ComercioAutorizacionPage() {
       const body = await res.json().catch(() => ({}))
       if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudieron cargar los repuestos.')
       setRepuestos(body.items || [])
+      setAllRepuestosPage(1)
     } catch (err) {
       setError(err.message || 'No se pudieron cargar los repuestos.')
     } finally {
@@ -1074,7 +1085,7 @@ export default function ComercioAutorizacionPage() {
     }
   }
 
-  function startEditingRepuesto(item) {
+  function startEditingRepuesto(item, { keepListPosition = false } = {}) {
     setEditingRepuestoId(item.id)
     setEditingRepuestoForm({
       marca: item.marca || '',
@@ -1086,8 +1097,8 @@ export default function ComercioAutorizacionPage() {
       tipo_vehiculo: item.tipo_vehiculo || 'carro',
     })
     setError('')
-    setActivePanel('repuestos')
-    if (item.aprobado) {
+    if (!keepListPosition) setActivePanel('repuestos')
+    if (!keepListPosition && item.aprobado) {
       window.setTimeout(() => {
         publishedRepuestosRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 50)
@@ -1107,6 +1118,8 @@ export default function ComercioAutorizacionPage() {
           action: 'update',
           id: editingRepuestoId,
           source: target.source || '',
+          app_uid: target.app_uid || '',
+          app_pending_id: target.app_pending_id || '',
           catalogo_id: target.catalogo_id || '',
           venta: target.venta || '',
           ...editingRepuestoForm,
@@ -1534,7 +1547,10 @@ export default function ComercioAutorizacionPage() {
                   <button
                     key={key}
                     type="button"
-                    onClick={() => setAllRepuestosFilter(key)}
+                    onClick={() => {
+                      setAllRepuestosFilter(key)
+                      setAllRepuestosPage(1)
+                    }}
                     className={`h-9 rounded-md px-4 text-sm font-extrabold ${allRepuestosFilter === key ? 'bg-[#20263a] text-white' : 'text-slate-600'}`}
                   >
                     {label}
@@ -1547,15 +1563,20 @@ export default function ComercioAutorizacionPage() {
                   <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
                     No hay repuestos para mostrar.
                   </p>
-                ) : allRepuestosFiltered.map((item) => (
-                  <article key={item.id} className="relative rounded-lg border border-slate-200 p-3">
-                    {!item.archivado && editingRepuestoId !== item.id && (
-                      <button type="button" onClick={() => startEditingRepuesto(item)} className="absolute right-2 top-2 z-10 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm hover:border-amber-300">
-                        Editar
-                      </button>
-                    )}
+                ) : allRepuestosPageItems.map((item) => (
+                  <article key={item.id} className="rounded-lg border border-slate-200 p-3">
                     {editingRepuestoId === item.id ? (
                       <div className="grid gap-2">
+                        <div>
+                          <p className="text-xs font-extrabold uppercase tracking-wide text-amber-700">
+                            {item.aprobado ? 'Editar publicación' : 'Editar antes de aprobar'}
+                          </p>
+                          {!item.aprobado && (
+                            <p className="mt-1 text-xs text-slate-500">
+                              Revisa estos datos: serán los que aparecerán en el catálogo al aprobar.
+                            </p>
+                          )}
+                        </div>
                         <div className="grid grid-cols-2 gap-2">
                           <input value={editingRepuestoForm.marca} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, marca: event.target.value.slice(0, 60) }))} placeholder="Marca" className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
                           <input value={editingRepuestoForm.modelo} onChange={(event) => setEditingRepuestoForm((current) => ({ ...current, modelo: event.target.value.slice(0, 80) }))} placeholder="Modelo" className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm" />
@@ -1572,7 +1593,7 @@ export default function ComercioAutorizacionPage() {
                         </div>
                       </div>
                     ) : (
-                    <div className="flex flex-col gap-3 pr-16 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-extrabold text-slate-900">{item.nombre}</h3>
@@ -1593,10 +1614,15 @@ export default function ComercioAutorizacionPage() {
                         </p>
                         {item.nota && <p className="mt-1 text-sm text-slate-500">{item.nota}</p>}
                       </div>
-                      <div className="flex items-center gap-2 sm:shrink-0">
+                      <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                         <span className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-extrabold text-slate-800">
                           {formatPrecio(item.precio)}
                         </span>
+                        {!item.archivado && (
+                          <SoftButton onClick={() => startEditingRepuesto(item, { keepListPosition: true })} className="flex-1 sm:flex-none">
+                            {item.aprobado ? 'Editar publicación' : 'Editar antes de aprobar'}
+                          </SoftButton>
+                        )}
                         {item.aprobado ? (
                           <DangerButton
                             onClick={() => toggleCatalogVisibility(item)}
@@ -1626,6 +1652,31 @@ export default function ComercioAutorizacionPage() {
                   </article>
                 ))}
               </div>
+
+              {allRepuestosFiltered.length > 0 && (
+                <nav className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between" aria-label="Paginación de repuestos">
+                  <p className="text-sm font-semibold text-slate-500">
+                    Mostrando {allRepuestosPageStart + 1}–{Math.min(allRepuestosPageStart + ALL_REPUESTOS_PAGE_SIZE, allRepuestosFiltered.length)} de {allRepuestosFiltered.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <SoftButton
+                      onClick={() => setAllRepuestosPage(Math.max(1, allRepuestosCurrentPage - 1))}
+                      disabled={allRepuestosCurrentPage === 1}
+                    >
+                      Anterior
+                    </SoftButton>
+                    <span className="min-w-24 text-center text-sm font-extrabold text-slate-700" aria-current="page">
+                      Página {allRepuestosCurrentPage} de {allRepuestosTotalPages}
+                    </span>
+                    <SoftButton
+                      onClick={() => setAllRepuestosPage(Math.min(allRepuestosTotalPages, allRepuestosCurrentPage + 1))}
+                      disabled={allRepuestosCurrentPage === allRepuestosTotalPages}
+                    >
+                      Siguiente
+                    </SoftButton>
+                  </div>
+                </nav>
+              )}
             </section>
           )}
 
