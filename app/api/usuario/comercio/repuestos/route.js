@@ -509,7 +509,10 @@ export async function GET(request) {
           .catch(() => db.collection(REPUESTOS_COLLECTION).limit(500).get()),
         db.collection(REPUESTOS_COLLECTION).where('aprobado', '==', false).limit(1000).get()
           .catch(() => ({ docs: [] })),
-        db.collection(CATALOGO_COLLECTION).limit(1500).get()
+        // El total de la paginación se calcula con el catálogo completo. Un
+        // límite fijo aquí hacía que la interfaz informara 1.513 aunque ya
+        // existieran más de 2.000 publicaciones.
+        db.collection(CATALOGO_COLLECTION).get()
           .catch(() => ({ docs: [] })),
         rtdb.ref(APP_PENDING_PATH).get(),
         rtdb.ref('users').get(),

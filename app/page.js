@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
-import { collection, getDocs, query, where, limit } from 'firebase/firestore'
+import { collection, documentId, getDocs, orderBy, query, startAfter, where, limit } from 'firebase/firestore'
 import { get, ref } from 'firebase/database'
 import { firestore, rtdb } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
@@ -286,6 +286,32 @@ function formatPrice(value) {
   return `$${number}`
 }
 
+// Documentos por página al bajar el catálogo. La colección `merida` ya pesa
+// ~15 MB (3.358 repuestos, y subiendo con cada catálogo importado): pedirla de
+// un solo `getDocs` dejaba la página con los productos de ejemplo hasta que
+// terminara la descarga entera, y en conexiones flojas no terminaba nunca.
+const PAGINA_CATALOGO = 120
+
+// Tarjetas que se pintan de una vez en la grilla (y cuántas agrega "Ver más").
+const PASO_CATALOGO = 24
+
+/// Baja `merida` por páginas ordenadas por id de documento —el único campo que
+/// tienen todos, así que no se pierde ninguno— y entrega cada página apenas
+/// llega. `seguir()` permite cortar cuando el componente se desmonta.
+async function recorrerCatalogo(onPagina, seguir) {
+  let cursor = null
+  for (;;) {
+    const partes = [collection(firestore, 'merida'), orderBy(documentId()), limit(PAGINA_CATALOGO)]
+    if (cursor) partes.splice(2, 0, startAfter(cursor))
+    const snap = await getDocs(query(...partes))
+    if (snap.empty) return
+    onPagina(snap.docs)
+    if (snap.docs.length < PAGINA_CATALOGO) return
+    if (!seguir()) return
+    cursor = snap.docs[snap.docs.length - 1]
+  }
+}
+
 function normalizeHomeProduct(item, id) {
   const img = Array.isArray(item.img) ? item.img[0] : item.img
   const nombre =
@@ -538,6 +564,10 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [catalogo, setCatalogo] = useState([...PRODUCTOS, ...MOTO_PRODUCTS])
   const [catalogoError, setCatalogoError] = useState('')
+  // El catálogo entra por páginas: esto marca que todavía faltan por llegar.
+  const [catalogoCargando, setCatalogoCargando] = useState(true)
+  // Cuántas tarjetas se pintan. Pintar las 3.000 de golpe congela el navegador.
+  const [visiblesCatalogo, setVisiblesCatalogo] = useState(PASO_CATALOGO)
   const [usersById, setUsersById] = useState({})
   const [rutaTienda, setRutaTienda] = useState(null)
   const [detalleRepuesto, setDetalleRepuesto] = useState(null)
@@ -672,28 +702,33 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false
+    // Se va acumulando aquí para pintar la primera página de inmediato y seguir
+    // agregando las demás sin volver a empezar.
+    const acumulado = []
 
-    getDocs(collection(firestore, 'merida'))
-      .then((snap) => {
-        if (cancelled) return
-
-        const items = snap.docs
-          .filter((doc) => String(doc.data()?.publicado || '').toLowerCase() !== 'oculto')
-          .map((doc) => normalizeHomeProduct(doc.data(), doc.id))
-          .filter((item) => item.imagen)
-
-        if (items.length > 0) {
-          setCatalogo([...items, ...MOTO_PRODUCTS])
-          setCatalogoError('')
-        } else {
-          setCatalogo([...PRODUCTOS, ...MOTO_PRODUCTS])
-          setCatalogoError('La colección de repuestos no devolvió imágenes visibles.')
-        }
-      })
+    // `catalogoCargando` ya nace en true: esta carga es la primera.
+    recorrerCatalogo((docs) => {
+      if (cancelled) return
+      const nuevos = docs
+        .filter((doc) => String(doc.data()?.publicado || '').toLowerCase() !== 'oculto')
+        .map((doc) => normalizeHomeProduct(doc.data(), doc.id))
+        .filter((item) => item.imagen)
+      if (!nuevos.length) return
+      acumulado.push(...nuevos)
+      setCatalogo([...acumulado, ...MOTO_PRODUCTS])
+      setCatalogoError('')
+    }, () => !cancelled)
       .catch(() => {
         if (cancelled) return
-        setCatalogo([...PRODUCTOS, ...MOTO_PRODUCTS])
-        setCatalogoError('No se pudo cargar el catálogo de repuestos desde Firebase.')
+        // Si falló antes de traer nada se muestran los de ejemplo; si ya había
+        // repuestos reales en pantalla se quedan los que alcanzaron a llegar.
+        if (acumulado.length === 0) {
+          setCatalogo([...PRODUCTOS, ...MOTO_PRODUCTS])
+          setCatalogoError('No se pudo cargar el catálogo de repuestos desde Firebase.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCatalogoCargando(false)
       })
 
     return () => {
@@ -785,6 +820,20 @@ export default function Home() {
     const matchSearch = !q || searchableText.includes(q)
     return matchVehicle && matchBrand && matchCat && matchSearch
   })
+
+  // Al cambiar de filtro, de marca o de búsqueda se vuelve a empezar por el
+  // primer lote: si no, un filtro nuevo heredaría el "ver más" del anterior.
+  // Se ajusta durante el render (patrón de React para estado derivado) en vez
+  // de con un efecto, que provocaría un segundo render en cascada.
+  const claveFiltro = `${catalogVehicleType}|${selectedBrand}|${catActiva}|${busqueda}`
+  const [filtroDeLosVisibles, setFiltroDeLosVisibles] = useState(claveFiltro)
+  if (filtroDeLosVisibles !== claveFiltro) {
+    setFiltroDeLosVisibles(claveFiltro)
+    setVisiblesCatalogo(PASO_CATALOGO)
+  }
+
+  const productosVisibles = productosFiltrados.slice(0, visiblesCatalogo)
+  const quedanPorMostrar = productosFiltrados.length - productosVisibles.length
 
   const handleCat = (id) => {
     setCatActiva(id)
@@ -1045,9 +1094,18 @@ export default function Home() {
       })
       setCatalogImage(null)
 
-      const snap = await getDocs(collection(firestore, 'merida'))
-      const items = snap.docs.map((doc) => normalizeHomeProduct(doc.data(), doc.id)).filter((item) => item.imagen)
-      if (items.length > 0) setCatalogo(items)
+      // Recarga el catálogo por páginas (igual que al abrir la home) en vez de
+      // pedir la colección entera de nuevo.
+      const recargado = []
+      await recorrerCatalogo((docs) => {
+        const nuevos = docs
+          .filter((doc) => String(doc.data()?.publicado || '').toLowerCase() !== 'oculto')
+          .map((doc) => normalizeHomeProduct(doc.data(), doc.id))
+          .filter((item) => item.imagen)
+        if (!nuevos.length) return
+        recargado.push(...nuevos)
+        setCatalogo([...recargado, ...MOTO_PRODUCTS])
+      }, () => true)
     } catch (err) {
       setCatalogMessage(err.message || 'No se pudo publicar el repuesto.')
     } finally {
@@ -1711,6 +1769,7 @@ export default function Home() {
               <p className="text-gray-500 text-sm mt-1">
                 {productosFiltrados.length} repuesto{productosFiltrados.length !== 1 ? 's' : ''} encontrado{productosFiltrados.length !== 1 ? 's' : ''}
                 {busqueda && ` para "${busqueda}"`}
+                {catalogoCargando && ' · cargando más…'}
               </p>
               {catalogoError && (
                 <p className="text-amber-600 text-xs mt-2">{catalogoError}</p>
@@ -1786,7 +1845,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-              {productosFiltrados.map((p) => (
+              {productosVisibles.map((p) => (
                 <div
                   key={p.id}
                   id={`producto-${p.id}`}
@@ -1909,6 +1968,19 @@ export default function Home() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Se pinta de a lotes: la grilla completa son miles de tarjetas. */}
+          {quedanPorMostrar > 0 && (
+            <div className="mt-10 text-center">
+              <button
+                type="button"
+                onClick={() => setVisiblesCatalogo((n) => n + PASO_CATALOGO)}
+                className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-6 py-3 text-sm font-extrabold text-yellow-400 transition hover:bg-gray-800"
+              >
+                Ver más repuestos ({quedanPorMostrar})
+              </button>
             </div>
           )}
         </div>
