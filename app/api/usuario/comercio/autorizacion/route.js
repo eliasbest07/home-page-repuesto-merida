@@ -3,6 +3,10 @@ import crypto from 'crypto'
 import { verifyRifaToken } from '@/lib/rifaJwt'
 import { syncPublicProfilesFromUsers } from '@/lib/publicProfileAdmin'
 import { canManageCommerces } from '@/lib/comercioAuthorization'
+import {
+  indexIdentityProfilesByPhone,
+  summarizeIdentityVerification,
+} from '@/lib/identityVerificationPolicy'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -74,22 +78,6 @@ function cleanJsonList(value, maxItems = 80) {
   }
 }
 
-function identityVerification(primary = {}, legacy = {}) {
-  const primaryStatus = cleanText(primary?.cedula_estado, 30).toLowerCase()
-  const legacyStatus = cleanText(legacy?.cedula_estado, 30).toLowerCase()
-  const verified = Boolean(
-    cleanText(primary?.cedula, 40)
-    || primaryStatus === 'aprobado'
-    || cleanText(legacy?.cedula, 40)
-    || legacyStatus === 'aprobado',
-  )
-  return {
-    verified,
-    status: primaryStatus || legacyStatus || '',
-    updated_at: primary?.cedula_actualizada_en || legacy?.cedula_actualizada_en || null,
-  }
-}
-
 async function findRealtimeUserByPhone(rtdb, telefono) {
   const target = canonPhone(telefono)
   if (!target) return null
@@ -97,18 +85,24 @@ async function findRealtimeUserByPhone(rtdb, telefono) {
   if (!snap.exists()) return null
 
   let uidFallback = null
+  const matches = []
   for (const [uid, user] of Object.entries(snap.val() || {})) {
     if (!user || typeof user !== 'object') continue
     const phones = [user.whatsapp, user.telefono, user.phone, user.id]
       .map(canonPhone)
       .filter((phone) => phone.length >= 10)
-    if (phones.includes(target)) return { path: 'users', uid, user }
+    if (phones.includes(target)) matches.push({ path: 'users', uid, user })
     if (phones.length === 0 && canonPhone(uid) === target) {
       uidFallback = { path: 'users', uid, user }
     }
   }
 
-  return uidFallback
+  const owner = matches[0] || uidFallback
+  if (!owner) return null
+  return {
+    ...owner,
+    identityProfiles: matches.length > 0 ? matches.map((match) => match.user) : [owner.user],
+  }
 }
 
 async function findCommerceLocations(rtdb, day, commerceId) {
@@ -201,18 +195,7 @@ export async function GET(request) {
     ])
     const users = snap.exists() ? snap.val() || {} : {}
     const legacyUsers = legacySnap.exists() ? legacySnap.val() || {} : {}
-    const legacyByPhone = {}
-    for (const [legacyKey, legacyUser] of Object.entries(legacyUsers)) {
-      if (!legacyUser || typeof legacyUser !== 'object') continue
-      const phones = [
-        legacyKey,
-        legacyUser.whatsapp,
-        legacyUser.telefono,
-        legacyUser.phone,
-        legacyUser.id,
-      ].map(canonPhone).filter(Boolean)
-      for (const phone of phones) legacyByPhone[phone] = legacyUser
-    }
+    const identityProfilesByPhone = indexIdentityProfilesByPhone(legacyUsers, users)
     const comerciosPorDia = {}
 
     for (const [uid, user] of Object.entries(users)) {
@@ -224,7 +207,10 @@ export async function GET(request) {
           const commercePhone = canonPhone(rawCommerce?.whatsapp)
           const commerce = {
             ...rawCommerce,
-            identity_verification: identityVerification(user, legacyByPhone[commercePhone]),
+            identity_verification: summarizeIdentityVerification([
+              user,
+              ...(identityProfilesByPhone.get(commercePhone) || []),
+            ]),
           }
           const current = comerciosPorDia[day].comercios[commerceId]
           const currentUpdatedAt = Number(current?.actualizado_en || 0)
@@ -440,7 +426,7 @@ export async function POST(request) {
       comercio: {
         ...commerce,
         realtime_user_uid: realtimeUid,
-        identity_verification: identityVerification(owner?.user),
+        identity_verification: summarizeIdentityVerification(owner?.identityProfiles || [owner?.user]),
       },
       realtime_user_uid: realtimeUid,
     })
