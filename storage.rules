@@ -1,16 +1,43 @@
+// ARCHIVO CANONICO DE REGLAS DE STORAGE del proyecto `repuestos-merida`.
+//
+// Vive solo en este repo: es el unico cuyo firebase.json declara `storage`.
+// El repo de la app Flutter no tiene ni debe tener una copia, para que no
+// pueda volver a pisarlo un despliegue desde alli.
+//
+// Lo desplegado (15-jul-2026) permitia escribir cualquier imagen en cualquier
+// ruta sin sesion. La version endurecida del repo corrigio eso pero perdio
+// cuatro bloques (`imagenrep`, `imagenes_anuncios`, `rifas_usuarios`,
+// `comercios`): desplegarla habria roto las subidas de la app. Este archivo
+// une ambas.
+//
+// Quien escribe cada ruta:
+//   - App Flutter: SIEMPRE con sesion de Firebase Auth. Las sesiones por
+//     WhatsApp tambien lo estan: la app entra con signInWithCustomToken y su
+//     uid es `wa_...` (repuestos_merida/lib/helpers/verificar_whatsapp.dart:151).
+//   - Web: NO usa Firebase Auth (tiene su propio JWT), por eso sus rutas de
+//     cliente no pueden exigir `request.auth`.
+//   - Rutas solo de Admin SDK (no necesitan regla, el Admin se salta estas
+//     reglas): perfiles/, comercios_autorizados/, comercio_repuestos/,
+//     aprobar_publicacion/, catalogo_repuestos/ y imagenes_anuncios/{doc}.{ext}.
+
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Documentos de identidad heredados de Flutter. El propietario puede
-    // subir/reemplazar; ningún cliente puede leerlos. Firebase Admin conserva
-    // acceso para revisión o descarga autorizada.
+
+    // ── App Flutter (con Firebase Auth) ──────────────────────────────────
+
+    // Documentos de identidad. El propietario puede subir/reemplazar y
+    // borrarlos al eliminar su cuenta (repuestos_merida/lib/helpers/
+    // eliminar_cuenta.dart), pero ningun cliente puede leerlos: la app guarda
+    // la ruta interna, nunca una URL publica. Firebase Admin conserva acceso
+    // para la revision autorizada.
     match /fotocedula/{uid} {
       allow read: if false;
       allow create, update: if request.auth != null
                             && request.auth.uid == uid
                             && request.resource.size < 5 * 1024 * 1024
                             && request.resource.contentType.matches('image/.*');
-      allow delete: if false;
+      allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
     match /fotofacecedula/{uid} {
@@ -19,19 +46,11 @@ service firebase.storage {
                             && request.auth.uid == uid
                             && request.resource.size < 5 * 1024 * 1024
                             && request.resource.contentType.matches('image/.*');
-      allow delete: if false;
-    }
-
-    // Fotos públicas de perfil, siempre escritas por su propietario.
-    match /fotos_usuarios/{uid}/{fileName} {
-      allow read: if true;
-      allow create, update: if request.auth != null
-                            && request.auth.uid == uid
-                            && request.resource.size < 5 * 1024 * 1024
-                            && request.resource.contentType.matches('image/.*');
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
+    // Foto publica de perfil: la app la guarda como `fotos_usuarios/{uid}.jpg`
+    // (repuestos_merida/lib/helpers/firebase_save_user.dart).
     match /fotos_usuarios/{fileName} {
       allow read: if true;
       allow create, update: if request.auth != null
@@ -42,21 +61,20 @@ service firebase.storage {
                     && fileName == request.auth.uid + '.jpg';
     }
 
-    match /verificaciones-edad/{telefono}/{fileName} {
-      allow read, write: if false;
-    }
-
-    match /verificaciones-cedula/{telefono}/{fileName} {
-      allow read, write: if false;
-    }
-
-    match /solicitudes-debate/{solicitudId}/{telefono}/{fileName} {
+    // Fotos de las publicaciones de repuestos de la app
+    // (repuestos_merida/lib/helpers/firebase_subir_img.dart:18). Reinstaurado:
+    // sin este bloque la app no puede publicar nada.
+    match /imagenrep/{uid}/{fileName} {
       allow read: if true;
-      allow create: if request.resource.size < 5 * 1024 * 1024
-                    && request.resource.contentType.matches('image/.*');
-      allow update, delete: if false;
+      allow create, update: if request.auth != null
+                            && request.auth.uid == uid
+                            && request.resource.size < 5 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
+    // Fotos y nota de voz de una solicitud de repuesto
+    // (repuestos_merida/lib/helpers/guardar_solicitud.dart).
     match /solicitudes_repuestos/{uid}/{fileName} {
       allow read: if true;
       allow create: if request.auth != null
@@ -71,6 +89,8 @@ service firebase.storage {
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
+    // Imagen adjunta a una pregunta sobre un repuesto
+    // (repuestos_merida/lib/helpers/preguntas_repuesto.dart:119).
     match /preguntas_repuestos/{uid}/{fileName} {
       allow read: if true;
       allow create: if request.auth != null
@@ -79,6 +99,73 @@ service firebase.storage {
                     && request.resource.contentType.matches('image/.*');
       allow update: if false;
       allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── Rutas de cliente sin Firebase Auth ───────────────────────────────
+
+    // Imagenes de anuncios de Plaza subidas desde la app en
+    // `imagenes_anuncios/usuario_{uid}/{ts}.jpg`. No se ata al uid a proposito:
+    // hay instalaciones viejas con otra convencion de carpeta y romperlas
+    // dejaria al usuario sin poder publicar. Las de la web las sube
+    // /api/plaza/anuncios con Admin SDK y no pasan por aqui.
+    match /imagenes_anuncios/{carpeta}/{fileName} {
+      allow read: if true;
+      allow write: if request.resource == null
+                   || (
+                     request.resource.size < 5 * 1024 * 1024
+                     && request.resource.contentType.matches('image/.*')
+                   );
+    }
+
+    // Fotos de una solicitud de debate, subidas desde la web
+    // (app/solicitados/SolicitudesClient.jsx:393).
+    match /solicitudes-debate/{solicitudId}/{telefono}/{fileName} {
+      allow read: if true;
+      allow create: if request.resource.size < 5 * 1024 * 1024
+                    && request.resource.contentType.matches('image/.*');
+      allow update, delete: if false;
+    }
+
+    // ── Solo lectura (las escribe el Admin SDK) ──────────────────────────
+
+    // Foto de fachada del comercio, escrita por /api/usuario/comercio.
+    match /comercios/{fileName} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Legado: 3 objetos, ninguno desde julio-2026. Antes tenia escritura
+    // abierta con comodin recursivo; se cierra porque ya nadie sube ahi.
+    match /rifas_usuarios/{fileName=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Denegado ────────────────────────────────────────────────────────
+
+    match /verificaciones-edad/{telefono}/{fileName} {
+      allow read, write: if false;
+    }
+
+    match /verificaciones-cedula/{telefono}/{fileName} {
+      allow read, write: if false;
+    }
+
+    // La web sube aqui desde el cliente (app/plaza/page.js:992 y
+    // app/registro/page.js:88) pero no tiene sesion de Firebase Auth, asi que
+    // la subida ya falla hoy y se traga el error. Queda denegado a proposito:
+    // esa foto debe pasar por una API con Admin SDK, como ya hace `perfiles/`.
+    match /fotos_usuarios/{uid}/{fileName} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Portada de rifa (app/rifa/crear/page.js:58). Mismo caso que el anterior:
+    // no hay ni un objeto subido porque nunca hubo regla. Denegado a proposito
+    // hasta que la subida se mueva a una API con Admin SDK.
+    match /rifas/{rifaId}/{fileName} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }

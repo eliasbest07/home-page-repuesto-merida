@@ -18,6 +18,7 @@
 !/scripts/backup-firebase-ecosystem.mjs
 !/scripts/verify-firebase-backup.mjs
 !/scripts/download-verification-files.mjs
+!/scripts/check-rules-sync.mjs
 /output/audits/
 /backups/
 # next.js

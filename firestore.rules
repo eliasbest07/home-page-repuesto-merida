@@ -1,3 +1,19 @@
+// ARCHIVO CANONICO DE REGLAS DE FIRESTORE del proyecto `repuestos-merida`.
+//
+// Copia identica en dos repos; editar SOLO aqui y sincronizar con:
+//   node scripts/check-rules-sync.mjs --fix
+//   - home-page-repuesto-merida/firestore.rules   (canonico, el que se despliega)
+//   - repuestos_merida/firestore.rules            (app Flutter, copia)
+//
+// Antes existia una version distinta en cada repo y ganaba el ultimo
+// `firebase deploy`: la app Flutter perdio el acceso a `comercio_repuestos`,
+// `autorizados`, `reportes` y `votos_vendedores` porque el despliegue del web
+// no incluia esos bloques.
+//
+// Colecciones SIN bloque aqui (solo Admin SDK, denegadas para todo cliente):
+//   analytics_pagina_principal_diario, analytics_pagina_principal_sesiones,
+//   evaluaciones_bot, modelos_vehiculos, solicitudes
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -24,6 +40,16 @@ service cloud.firestore {
                data.owner_uid == request.auth.uid
                || data.userID == request.auth.uid
                || data.propietario_id == request.auth.uid
+               // Un comercio suele tener varias cuentas (uid de Google/Apple,
+               // nodo de WhatsApp, telefono) y el documento las lista todas en
+               // `owner_uids`. Sin esta rama, de las 4 cuentas de un comercio
+               // solo la que figura en `propietario_id` podia editar o retirar
+               // sus propios repuestos.
+               || (
+                 'owner_uids' in data
+                 && data.owner_uids is list
+                 && request.auth.uid in data.owner_uids
+               )
              );
     }
 
@@ -316,5 +342,68 @@ service cloud.firestore {
     match /usuarios_plaza/{telefono} {
       allow read, write: if request.auth != null;
     }
+
+    // ── Bloques de la app Flutter ────────────────────────────────────────
+    // Estaban solo en repuestos_merida/firestore.rules y por eso nunca se
+    // desplegaron: la app los consulta y recibia permission-denied.
+
+    // Lista de vendedores autorizados (repuestos_merida/lib/helpers/obtener_autorizados.dart).
+    match /autorizados/{doc} {
+      allow read: if true;
+      allow write: if false;  // solo consola/Admin SDK
+    }
+
+    // Bandeja de repuestos pendientes/aprobados. La app solo la lee como
+    // respaldo cuando el catalogo `merida` no devuelve nada para el comercio
+    // (repuestos_merida/lib/helpers/obtener_repuestos_comercio.dart).
+    // La crean y aprueban el panel web y el bot, siempre con Admin SDK.
+    match /comercio_repuestos/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Fichas de comercios autorizados que alimentan el mapa.
+    match /comercios_autorizados/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Reportes de contenido ofensivo (App Store 1.2). Cualquiera puede crear
+    // uno; nadie los lee ni los modifica desde la app: son para soporte, que
+    // los revisa desde la consola en menos de 24 horas.
+    match /reportes/{id} {
+      allow read, update, delete: if false;
+      allow create: if request.resource.data.keys().hasAll(
+                         ['tipo', 'contenido_id', 'autor_id', 'motivo'])
+                    && request.resource.data.tipo is string
+                    && request.resource.data.tipo.size() <= 30
+                    && request.resource.data.contenido_id is string
+                    && request.resource.data.contenido_id.size() <= 200
+                    && request.resource.data.autor_id is string
+                    && request.resource.data.autor_id.size() <= 200
+                    && request.resource.data.motivo is string
+                    && request.resource.data.motivo.size() <= 120
+                    && request.resource.data.detalle is string
+                    && request.resource.data.detalle.size() <= 300
+                    && request.resource.data.resumen is string
+                    && request.resource.data.resumen.size() <= 300
+                    && request.resource.data.estado == 'pendiente';
+    }
+
+    // Reputacion de vendedores. El votante se identifica con el uid de Firebase
+    // Auth o, en sesiones por WhatsApp, con su numero desde LocalStorage
+    // (repuestos_merida/lib/helpers/votos_vendedor.dart): por eso NO se puede
+    // exigir `request.auth != null` sin romper la mitad de los votos.
+    // PENDIENTE DE ENDURECER: hoy la escritura es abierta, tal como estaba en
+    // el repo Flutter. Ver nota en el informe.
+    match /votos_vendedores/{vendedorId} {
+      allow read: if true;
+      allow write: if true;
+      match /votantes/{votanteId} {
+        allow read: if true;
+        allow write: if true;
+      }
+    }
+
   }
 }
