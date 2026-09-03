@@ -9,6 +9,7 @@ import {
   releaseIdentityVerification,
 } from '@/lib/identityVerificationGuard'
 import { isIdentityVerificationApproved } from '@/lib/identityVerificationPolicy'
+import { pickCanonicalRealtimeUser } from '@/lib/realtimeUserLookup'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -369,12 +370,16 @@ async function findRealtimeUserByPhone(rtdb, telefono) {
     const snap = await (path ? rtdb.ref(path) : rtdb.ref()).get()
     if (!snap.exists()) continue
 
-    const users = snap.val() || {}
-    for (const [uid, user] of Object.entries(users)) {
+    // Varios nodos pueden declarar el mismo WhatsApp: nos quedamos con la
+    // cuenta real del dueño, no con la primera que devuelva RTDB.
+    const matches = []
+    for (const [uid, user] of Object.entries(snap.val() || {})) {
       if (user && typeof user === 'object' && canonPhone(user.whatsapp) === target) {
-        return { path, uid, user }
+        matches.push({ path, uid, user })
       }
     }
+    const owner = pickCanonicalRealtimeUser(matches)
+    if (owner) return owner
   }
 
   return null

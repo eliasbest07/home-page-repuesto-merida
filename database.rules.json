@@ -1,6 +1,77 @@
 {
   "rules": {
     "anuncios":        { ".read": true, ".write": true },
+    "cardads":         { ".read": true, ".write": false },
+
+    // Métricas de uso. Cada quien solo puede tocar su propio registro, y nadie
+    // puede leer el nodo desde la app: los informes se sacan por consola o con
+    // el SDK Admin, que se salta las reglas.
+    "metricas": {
+      ".read": false,
+      ".write": false,
+      "sala_club": {
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".read": "auth != null && auth.uid === $uid",
+          "clics": { ".validate": "newData.isNumber()" },
+          "primero_en": { ".validate": "newData.isNumber()" },
+          "ultimo_en": { ".validate": "newData.isNumber()" },
+          "nombre": { ".validate": "newData.isString() && newData.val().length <= 60" },
+          "$otro": { ".validate": false }
+        }
+      }
+    },
+    "configuracion":   { ".read": true, ".write": false },
+
+    // Verificación de WhatsApp al registrarse.
+    // El nombre lleva la errata "Whastapp" porque así está escrito en la app:
+    // NO corregirla aquí sin cambiarla allá. Sin esta regla la escritura se
+    // denegaba y el usuario solo veía "encontraste una falla".
+    "verificarWhastappRegistro": {
+      ".read": false,
+      ".write": false,
+      "$numero": {
+        ".read": false,
+        ".write": false,
+        "solicitudes": {
+          ".read": false,
+          ".write": false,
+          // El installId son 48 hex aleatorios que solo conoce este teléfono, y
+          // los niveles de arriba están cerrados: nadie puede listar el nodo
+          // para descubrir las rutas de otros.
+          // El umbral es 16 porque es el que usa `_getOrCreateInstallId` en la
+          // app: un teléfono con un id viejo de 16 a 31 caracteres lo conserva,
+          // y exigir más aquí le denegaba la escritura.
+          // OJO: en Realtime Database `.write` CASCADEA hacia abajo y un hijo
+          // NO lo puede revocar. Por eso aquí NO hay `.write`: se concede campo
+          // por campo. Un `".write": true` en este nivel dejaría al cliente
+          // escribir `resultado` y autoverificarse cualquier número, aunque el
+          // hijo dijera `".write": false`.
+          "$installId": {
+            ".read": true,
+            "creado_en": {
+              ".write": "$installId.length >= 16",
+              ".validate": "newData.isNumber()"
+            },
+            "codigo_intento": {
+              ".write": "$installId.length >= 16",
+              ".validate": "newData.isString() && newData.val().length <= 12"
+            },
+            "intento_id": {
+              ".write": "$installId.length >= 16",
+              ".validate": "newData.isString() && newData.val().length <= 64"
+            },
+            "intento_en": {
+              ".write": "$installId.length >= 16",
+              ".validate": "newData.isNumber()"
+            }
+            // `resultado` no aparece: sin `.write` en él ni en ningún ancestro,
+            // solo lo puede escribir el bot con el SDK Admin, que se salta las
+            // reglas. Es lo que impide que el cliente se apruebe a sí mismo.
+          }
+        }
+      }
+    },
     "users": {
       ".read": true,
       ".indexOn": ["whatsapp", "telefono"],
@@ -8,6 +79,17 @@
         ".write": "auth != null && auth.uid === $uid"
       }
     },
+    "search": {
+  ".read": false,
+  ".write": false,
+  "$quien": {
+    ".write": "auth != null && auth.uid === $quien",
+    "$momento": {
+      ".write": "auth == null && !data.exists()",
+      ".validate": "newData.isString() && newData.val().length <= 120"
+    }
+  }
+},
     "public_profiles": {
       ".read": true,
       "$uid": {
@@ -91,8 +173,18 @@
         "storage_schema_version": {
           ".validate": "!newData.exists() || newData.val() === 2"
         },
+        // "Enviar a verificar": lo escribe la app cuando la persona ya aceptó el
+        // consentimiento, y es el gatillo del bot. Las tres claves de arriba se
+        // escriben foto por foto al terminar cada subida, o sea antes de que
+        // nadie pidiera nada; solo esta las convierte en una solicitud.
+        // Tiene que ser la hora del servidor: así nadie puede antedatar (ni
+        // postdatar) su solicitud para colarse o para saltarse el control de
+        // reenvíos, que compara este sello con el último ya revisado.
+        "enviado_en": {
+          ".validate": "!newData.exists() || newData.val() === now"
+        },
         "$other": {
-          ".validate": "$other === 'fotocedula' || $other === 'fotocaracedula' || $other === 'storage_schema_version'"
+          ".validate": "$other === 'fotocedula' || $other === 'fotocaracedula' || $other === 'storage_schema_version' || $other === 'enviado_en'"
         }
       }
     },

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { verifyRifaToken } from '@/lib/rifaJwt'
 import { canManageCommerces } from '@/lib/comercioAuthorization'
+import { pickCanonicalRealtimeUser } from '@/lib/realtimeUserLookup'
 import {
   DATA_SCHEMA_VERSION,
   identityIdForPhone,
@@ -331,9 +332,12 @@ async function commerceProfile(rtdb, session) {
   const target = canonPhone(phone)
   const allUsers = await rtdb.ref('users').get()
   if (allUsers.exists()) {
-    for (const user of Object.values(allUsers.val() || {})) {
-      if (user && typeof user === 'object' && canonPhone(user.whatsapp) === target) return user
+    const matches = []
+    for (const [uid, user] of Object.entries(allUsers.val() || {})) {
+      if (user && typeof user === 'object' && canonPhone(user.whatsapp) === target) matches.push({ uid, user })
     }
+    const owner = pickCanonicalRealtimeUser(matches)
+    if (owner) return owner.user
   }
 
   const rifas = await rtdb.ref(`rifas_usuarios/${phone}`).get()
@@ -342,16 +346,22 @@ async function commerceProfile(rtdb, session) {
 
 async function findRealtimeUserByPhone(rtdb, telefono) {
   const target = canonPhone(telefono)
+  if (!target) return null
   const snap = await rtdb.ref('users').get()
   if (!snap.exists()) return null
 
+  // El mismo telefono puede aparecer en varios nodos. Los que lo declaran en
+  // un campo son duenos de verdad; los que solo lo tienen como clave son
+  // nodos viejos y quedan como ultimo recurso.
+  const matches = []
+  const uidFallbacks = []
   for (const [uid, user] of Object.entries(snap.val() || {})) {
-    if (user && typeof user === 'object' && canonPhone(user.whatsapp || user.telefono || uid) === target) {
-      return { uid, user }
-    }
+    if (!user || typeof user !== 'object') continue
+    if (canonPhone(user.whatsapp || user.telefono) === target) matches.push({ uid, user })
+    else if (canonPhone(uid) === target) uidFallbacks.push({ uid, user })
   }
 
-  return null
+  return pickCanonicalRealtimeUser(matches) || pickCanonicalRealtimeUser(uidFallbacks)
 }
 
 function commerceFromProfile(profile = {}, commerceId = '', dia = '') {
@@ -365,22 +375,40 @@ function commerceFromProfile(profile = {}, commerceId = '', dia = '') {
 function findCommerceById(users = {}, commerceId = '', preferredDay = '') {
   if (!commerceId) return null
 
+  // Un comercio_id puede estar copiado en varios nodos de /users. Se recogen
+  // todos y despues se elige: primero el que coincide con el dia pedido y,
+  // entre esos, el nodo de la cuenta real del dueno.
+  const candidates = []
   for (const [uid, user] of Object.entries(users)) {
     if (!user || typeof user !== 'object') continue
     const preferred = user.comercios_por_dia?.[preferredDay]?.comercios?.[commerceId]
-    if (preferred && typeof preferred === 'object') return { uid, user, commerce: preferred }
+    if (preferred && typeof preferred === 'object') {
+      candidates.push({ uid, user, commerce: preferred, dayMatch: true })
+      continue
+    }
 
+    let anyDay = null
     for (const value of Object.values(user.comercios_por_dia || {})) {
       const commerce = value?.comercios?.[commerceId]
-      if (commerce && typeof commerce === 'object') return { uid, user, commerce }
+      if (commerce && typeof commerce === 'object') {
+        anyDay = { uid, user, commerce, dayMatch: false }
+        break
+      }
+    }
+    if (anyDay) {
+      candidates.push(anyDay)
+      continue
     }
 
     if (user.comercio_autorizado?.comercio_id === commerceId) {
-      return { uid, user, commerce: user.comercio_autorizado }
+      candidates.push({ uid, user, commerce: user.comercio_autorizado, dayMatch: false })
     }
   }
 
-  return null
+  if (candidates.length === 0) return null
+  const sameDay = candidates.filter((entry) => entry.dayMatch)
+  const best = pickCanonicalRealtimeUser(sameDay.length ? sameDay : candidates)
+  return best ? { uid: best.uid, user: best.user, commerce: best.commerce } : null
 }
 
 function firstCommerceFromUser(uid, user = {}, preferredDay = '') {
@@ -435,7 +463,8 @@ function findCommerceByPhone(users = {}, rawPhone = '', preferredDay = '') {
     }
   }
 
-  return matches.find((entry) => entry.commerce.dia === preferredDay) || matches[0] || null
+  const sameDay = matches.filter((entry) => entry.commerce.dia === preferredDay)
+  return pickCanonicalRealtimeUser(sameDay.length ? sameDay : matches)
 }
 
 function resolveAppCommerce(users = {}, appUid = '', pending = {}) {

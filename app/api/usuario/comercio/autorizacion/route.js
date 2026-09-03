@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { verifyRifaToken } from '@/lib/rifaJwt'
 import { syncPublicProfilesFromUsers } from '@/lib/publicProfileAdmin'
 import { canManageCommerces } from '@/lib/comercioAuthorization'
+import { pickCanonicalRealtimeUser } from '@/lib/realtimeUserLookup'
 import {
   indexIdentityProfilesByPhone,
   summarizeIdentityVerification,
@@ -97,7 +98,7 @@ async function findRealtimeUserByPhone(rtdb, telefono) {
     }
   }
 
-  const owner = matches[0] || uidFallback
+  const owner = pickCanonicalRealtimeUser(matches) || uidFallback
   if (!owner) return null
   return {
     ...owner,
