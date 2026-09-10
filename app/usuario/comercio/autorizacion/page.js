@@ -100,6 +100,17 @@ function isAuthorized(value) {
   return value === true || value === 'true' || value === 1 || value === '1'
 }
 
+function mergeRepuestos(...collections) {
+  const itemsById = new Map()
+  for (const collection of collections) {
+    for (const item of collection || []) {
+      if (item?.id) itemsById.set(item.id, item)
+    }
+  }
+  return Array.from(itemsById.values())
+    .sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
+}
+
 // Precio en texto libre: antepone "$" solo si es puramente numérico.
 function formatPrecio(value) {
   const s = String(value ?? '').trim()
@@ -397,6 +408,7 @@ export default function ComercioAutorizacionPage() {
   const [error, setError] = useState('')
   const [repuestos, setRepuestos] = useState([])
   const [repuestosLoading, setRepuestosLoading] = useState(false)
+  const [allRepuestosLoaded, setAllRepuestosLoaded] = useState(false)
   const [repuestoSaving, setRepuestoSaving] = useState(false)
   const [repuestoForm, setRepuestoForm] = useState(EMPTY_REPUESTO)
   const [uploadingPhotoId, setUploadingPhotoId] = useState('')
@@ -579,6 +591,7 @@ export default function ComercioAutorizacionPage() {
   const repuestoFormReady = Boolean(
     session?.token
     && selectedCommerceId
+    && commerceCedulaVerified
     && currentVenta
     && repuestoForm.marca
     && repuestoForm.modelo.trim()
@@ -603,8 +616,17 @@ export default function ComercioAutorizacionPage() {
     const requestedForSelectedDay = requestedCommerce?.dia === selectedDay
     // Si la lista del dia se refresca (p. ej. tras guardar) y el comercio
     // seleccionado sigue existiendo, se mantiene la seleccion y el formulario.
-    if (!dayChanged && !requestedForSelectedDay && selectedCommerceId
-      && commerceList.some((commerce) => commerce.comercio_id === selectedCommerceId)) {
+    const persistedCommerce = commerceList.find((commerce) => commerce.comercio_id === selectedCommerceId)
+    if (!dayChanged && !requestedForSelectedDay && selectedCommerceId && persistedCommerce) {
+      // Conserva los campos que el administrador esté editando, pero incorpora
+      // los metadatos privados que llegan después desde la API. Sin esta mezcla,
+      // una selección hecha antes de terminar la carga quedaba para siempre como
+      // "Cédula no verificada" aunque el perfil canónico estuviera aprobado.
+      setForm((current) => ({
+        ...current,
+        identity_verification: persistedCommerce.identity_verification || current.identity_verification,
+        realtime_user_uid: persistedCommerce.realtime_user_uid || current.realtime_user_uid,
+      }))
       return
     }
     const next = requestedForSelectedDay ? requestedCommerce : (commerceList[0] || { ...EMPTY_DAY })
@@ -656,6 +678,17 @@ export default function ComercioAutorizacionPage() {
 
   function setField(name, value) {
     setForm((current) => ({ ...current, [name]: value }))
+  }
+
+  function setCommerceWhatsapp(value) {
+    setForm((current) => {
+      const samePhone = canonPhone(current.whatsapp) === canonPhone(value)
+      return {
+        ...current,
+        whatsapp: value,
+        ...(samePhone ? {} : { identity_verification: undefined, realtime_user_uid: '' }),
+      }
+    })
   }
 
   async function loadHomeAnalytics() {
@@ -768,6 +801,11 @@ export default function ComercioAutorizacionPage() {
       setActivePanel('comercio')
       return
     }
+    if (!commerceCedulaVerified) {
+      setError('Este comercio necesita verificar su cédula antes de crear repuestos.')
+      setActivePanel('comercio')
+      return
+    }
 
     let venta = currentVenta
     if (!venta) {
@@ -793,15 +831,50 @@ export default function ComercioAutorizacionPage() {
     }, 50)
   }
 
-  function loadCommerceForWhatsapp(rawPhone = form.whatsapp) {
+  async function loadCommerceForWhatsapp(rawPhone = form.whatsapp) {
     const target = canonPhone(rawPhone)
     if (target.length < 10) return false
     const existing = visibleCommerces.find((commerce) => canonPhone(commerce.whatsapp) === target)
       || allGlobalCommerces.find((commerce) => canonPhone(commerce.whatsapp) === target)
-    if (!existing || existing.comercio_id === selectedCommerceId) return false
-    selectCommerce({ ...existing, dia: selectedDay })
-    setMessage('Comercio cargado por WhatsApp para editar su informacion publica.')
-    return true
+    if (existing && existing.comercio_id !== selectedCommerceId) {
+      selectCommerce({ ...existing, dia: selectedDay })
+      setMessage('Comercio cargado por WhatsApp para editar su informacion publica.')
+      return true
+    }
+    if (existing?.identity_verification) {
+      setForm((current) => ({
+        ...current,
+        identity_verification: existing.identity_verification,
+        realtime_user_uid: existing.realtime_user_uid || current.realtime_user_uid,
+      }))
+      return true
+    }
+
+    if (!session?.token) return false
+    try {
+      const params = new URLSearchParams({ telefono: rawPhone })
+      const res = await fetch(`/api/usuario/comercio/autorizacion?${params}`, {
+        headers: { Authorization: `Bearer ${session.token}` },
+        cache: 'no-store',
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudo consultar la cédula.')
+      setForm((current) => {
+        if (canonPhone(current.whatsapp) !== target) return current
+        return {
+          ...current,
+          identity_verification: body.identity_verification || {},
+          realtime_user_uid: body.realtime_user_uid || '',
+        }
+      })
+      setMessage(body.identity_verification?.verified
+        ? 'Cédula verificada para este WhatsApp.'
+        : 'Este WhatsApp todavía no tiene una cédula verificada.')
+      return true
+    } catch (err) {
+      setError(err.message || 'No se pudo consultar la cédula del comercio.')
+      return false
+    }
   }
 
   async function selectPhoto(event) {
@@ -848,20 +921,78 @@ export default function ComercioAutorizacionPage() {
   async function loadRepuestos() {
     setRepuestosLoading(true)
     try {
-      const params = new URLSearchParams()
-      params.set('scope', 'all')
-      const res = await fetch(`/api/usuario/comercio/repuestos${params.toString() ? `?${params}` : ''}`, {
+      const approvalParams = new URLSearchParams({ scope: 'approval' })
+      const commerceParams = new URLSearchParams({ scope: 'commerce' })
+      const commerceId = selectedCommerceId || form.comercio_id
+      const commercePhone = form.whatsapp || form.whatsapp_normalizado
+      const realtimeUid = form.realtime_user_uid
+      if (commerceId) commerceParams.set('comercio_id', commerceId)
+      if (commercePhone) commerceParams.set('telefono', commercePhone)
+      if (realtimeUid) commerceParams.set('realtime_user_uid', realtimeUid)
+
+      const approvalRequest = fetch(`/api/usuario/comercio/repuestos?${approvalParams}`, {
         headers: { Authorization: `Bearer ${session.token}` },
+        cache: 'no-store',
       })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudieron cargar los repuestos.')
-      setRepuestos(body.items || [])
+      const commerceRequest = commerceId || commercePhone || realtimeUid
+        ? fetch(`/api/usuario/comercio/repuestos?${commerceParams}`, {
+          headers: { Authorization: `Bearer ${session.token}` },
+          cache: 'no-store',
+        })
+        : null
+
+      // Pinta primero la bandeja global de pendientes. La carga del inventario
+      // del comercio es independiente y no puede volver a ocultar una solicitud
+      // de aprobación si una consulta secundaria falla o tarda demasiado.
+      const approvalResponse = await approvalRequest
+      const approvalBody = await approvalResponse.json().catch(() => ({}))
+      if (!approvalResponse.ok || !approvalBody.ok) {
+        throw new Error(approvalBody.error || 'No se pudieron cargar los repuestos pendientes.')
+      }
+      setRepuestos((current) => mergeRepuestos(
+        current.filter((item) => item.aprobado || item.archivado),
+        approvalBody.items || [],
+      ))
+
+      if (commerceRequest) {
+        const commerceResponse = await commerceRequest
+        const commerceBody = await commerceResponse.json().catch(() => ({}))
+        if (!commerceResponse.ok || !commerceBody.ok) {
+          throw new Error(commerceBody.error || 'No se pudo cargar el inventario del comercio.')
+        }
+        setRepuestos((current) => mergeRepuestos(current, commerceBody.items || []))
+      }
       setAllRepuestosPage(1)
     } catch (err) {
       setError(err.message || 'No se pudieron cargar los repuestos.')
     } finally {
       setRepuestosLoading(false)
     }
+  }
+
+  async function loadAllRepuestos() {
+    setRepuestosLoading(true)
+    try {
+      const res = await fetch('/api/usuario/comercio/repuestos?scope=all', {
+        headers: { Authorization: `Bearer ${session.token}` },
+        cache: 'no-store',
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) throw new Error(body.error || 'No se pudieron cargar todos los repuestos.')
+      setRepuestos(body.items || [])
+      setAllRepuestosLoaded(true)
+      setAllRepuestosPage(1)
+    } catch (err) {
+      setError(err.message || 'No se pudieron cargar todos los repuestos.')
+    } finally {
+      setRepuestosLoading(false)
+    }
+  }
+
+  function toggleAllRepuestos() {
+    const opening = !showAllRepuestos
+    setShowAllRepuestos(opening)
+    if (opening && !allRepuestosLoaded && !repuestosLoading) loadAllRepuestos()
   }
 
   async function saveCommerce() {
@@ -1404,7 +1535,7 @@ export default function ComercioAutorizacionPage() {
               <SoftButton active={showSidebarLists} onClick={() => setShowSidebarLists((prev) => !prev)}>
                 {showSidebarLists ? 'Ocultar listas de comercios' : 'Mostrar listas de comercios'}
               </SoftButton>
-              <SoftButton active={showAllRepuestos} onClick={() => setShowAllRepuestos((prev) => !prev)}>
+              <SoftButton active={showAllRepuestos} onClick={toggleAllRepuestos}>
                 {showAllRepuestos ? 'Ocultar repuestos' : 'Repuestos (todos)'}
               </SoftButton>
               <SoftButton active={showHomeAnalytics} onClick={toggleHomeAnalytics}>
@@ -1537,7 +1668,7 @@ export default function ComercioAutorizacionPage() {
                   <p className="text-xs font-extrabold uppercase text-amber-600">Todos los comercios</p>
                   <h2 className="text-xl font-extrabold">Repuestos por estado</h2>
                 </div>
-                <SoftButton onClick={loadRepuestos} disabled={repuestosLoading}>
+                <SoftButton onClick={loadAllRepuestos} disabled={repuestosLoading}>
                   {repuestosLoading ? 'Cargando...' : 'Actualizar'}
                 </SoftButton>
               </div>
@@ -1744,7 +1875,7 @@ export default function ComercioAutorizacionPage() {
                     <span className="text-sm font-bold text-slate-700">WhatsApp <span className="font-semibold text-slate-400">(opcional)</span></span>
                     <input
                       value={form.whatsapp}
-                      onChange={(event) => setField('whatsapp', event.target.value.replace(/\D/g, '').slice(0, 15))}
+                      onChange={(event) => setCommerceWhatsapp(event.target.value.replace(/\D/g, '').slice(0, 15))}
                       onBlur={(event) => loadCommerceForWhatsapp(event.target.value)}
                       inputMode="tel"
                       placeholder="58412... (opcional)"

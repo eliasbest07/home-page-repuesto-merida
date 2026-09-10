@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { verifyRifaToken } from '@/lib/rifaJwt'
 import { canManageCommerces } from '@/lib/comercioAuthorization'
 import { pickCanonicalRealtimeUser } from '@/lib/realtimeUserLookup'
+import { evaluateCommercePublicationEligibility } from '@/lib/comercioPublicationPolicy'
 import {
   DATA_SCHEMA_VERSION,
   identityIdForPhone,
@@ -14,6 +15,7 @@ export const dynamic = 'force-dynamic'
 const REPUESTOS_COLLECTION = 'comercio_repuestos'
 const MODELOS_COLLECTION = 'modelos_vehiculos'
 const CATALOGO_COLLECTION = 'merida'
+const AUTHORIZED_COMMERCE_COLLECTION = 'comercios_autorizados'
 const APP_PENDING_PATH = 'aprobarPublicacion'
 const APP_PENDING_SOURCE = 'app_realtime'
 const CATALOG_SOURCE = 'catalogo'
@@ -527,6 +529,122 @@ export async function GET(request) {
     const requestedTelefono = cleanPhone(url.searchParams.get('telefono'))
     const scope = cleanText(url.searchParams.get('scope'), 20)
 
+    if (scope === 'approval') {
+      const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
+      const rtdb = getAdminRealtimeDb()
+      const authorized = await canManageCommerces(rtdb, session)
+      if (!authorized) return NextResponse.json({ error: 'No puedes ver repuestos de otros comercios.' }, { status: 403 })
+
+      // La bandeja de aprobación no debe esperar la descarga del catálogo
+      // completo. `merida` contiene miles de documentos y esa lectura puede
+      // tardar más que el timeout de la ruta, aunque haya un pendiente nuevo.
+      const [firestorePendingSnap, firestoreStatusPendingSnap, appPendingSnap, usersSnap] = await Promise.all([
+        db.collection(REPUESTOS_COLLECTION).where('aprobado', '==', false).limit(1000).get()
+          .catch(() => ({ docs: [] })),
+        db.collection(REPUESTOS_COLLECTION).where('estado_aprobacion', '==', 'pendiente').limit(1000).get()
+          .catch(() => ({ docs: [] })),
+        rtdb.ref(APP_PENDING_PATH).get(),
+        rtdb.ref('users').get(),
+      ])
+
+      const users = usersSnap.exists() ? usersSnap.val() || {} : {}
+      const itemsById = new Map()
+      for (const doc of [...firestorePendingSnap.docs, ...firestoreStatusPendingSnap.docs]) {
+        const item = serializeRepuesto(doc)
+        if (!item.aprobado && !item.archivado && !item.eliminado) itemsById.set(item.id, item)
+      }
+
+      if (appPendingSnap.exists()) {
+        for (const [uid, pendingById] of Object.entries(appPendingSnap.val() || {})) {
+          if (!pendingById || typeof pendingById !== 'object') continue
+          for (const [pendingId, pending] of Object.entries(pendingById)) {
+            if (!pending || typeof pending !== 'object') continue
+            if (cleanText(pending.publicado, 30).toLowerCase() !== 'espera') continue
+            const resolved = resolveAppCommerce(users, uid, pending)
+            const item = serializeAppPending(uid, pendingId, pending, resolved.user, resolved)
+            itemsById.set(item.id, item)
+          }
+        }
+      }
+
+      const items = Array.from(itemsById.values())
+        .sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
+      return NextResponse.json({ ok: true, items })
+    }
+
+    if (scope === 'commerce') {
+      const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
+      const rtdb = getAdminRealtimeDb()
+      const authorized = await canManageCommerces(rtdb, session)
+      if (!authorized) return NextResponse.json({ error: 'No puedes ver repuestos de otros comercios.' }, { status: 403 })
+
+      const commerceId = cleanText(url.searchParams.get('comercio_id'), 80)
+      const realtimeUid = realtimeKey(url.searchParams.get('realtime_user_uid'), 128)
+      const variants = phoneVariants(url.searchParams.get('telefono'))
+      if (!commerceId && !realtimeUid && variants.length === 0) {
+        return NextResponse.json({ error: 'Falta identificar el comercio.' }, { status: 400 })
+      }
+
+      const sourceQueries = []
+      const catalogQueries = []
+      if (commerceId) {
+        sourceQueries.push(db.collection(REPUESTOS_COLLECTION).where('comercio_id', '==', commerceId).limit(1000).get())
+        catalogQueries.push(db.collection(CATALOGO_COLLECTION).where('comercio_id', '==', commerceId).limit(1000).get())
+      }
+      if (variants.length > 0) {
+        for (const field of ['telefono', 'comercio_whatsapp', 'creado_por']) {
+          sourceQueries.push(db.collection(REPUESTOS_COLLECTION).where(field, 'in', variants).limit(1000).get())
+        }
+        catalogQueries.push(db.collection(CATALOGO_COLLECTION).where('whatsapp', 'in', variants).limit(1000).get())
+      }
+      if (realtimeUid) {
+        sourceQueries.push(db.collection(REPUESTOS_COLLECTION).where('owner_uid', '==', realtimeUid).limit(1000).get())
+        catalogQueries.push(
+          db.collection(CATALOGO_COLLECTION).where('owner_uid', '==', realtimeUid).limit(1000).get(),
+          db.collection(CATALOGO_COLLECTION).where('userID', '==', realtimeUid).limit(1000).get(),
+          db.collection(CATALOGO_COLLECTION).where('propietario_id', '==', realtimeUid).limit(1000).get(),
+        )
+      }
+
+      const [sourceSnaps, catalogSnaps] = await Promise.all([
+        Promise.all(sourceQueries.map((query) => query.catch(() => ({ docs: [] })))),
+        Promise.all(catalogQueries.map((query) => query.catch(() => ({ docs: [] })))),
+      ])
+      const sourceDocsById = new Map()
+      const catalogDocsById = new Map()
+      sourceSnaps.forEach((snap) => snap.docs.forEach((doc) => sourceDocsById.set(doc.id, doc)))
+      catalogSnaps.forEach((snap) => snap.docs.forEach((doc) => catalogDocsById.set(doc.id, doc)))
+
+      const catalogDocsByRepuestoId = new Map()
+      catalogDocsById.forEach((doc) => {
+        const sourceId = cleanText(doc.data()?.comercio_repuesto_id, 64)
+        if (sourceId) catalogDocsByRepuestoId.set(sourceId, doc)
+      })
+      const linkedCatalogIds = new Set()
+      const sourceItems = Array.from(sourceDocsById.values()).map(serializeRepuesto)
+      const synchronizedSourceItems = sourceItems.map((item) => {
+        const catalogDoc = (item.catalogo_id ? catalogDocsById.get(item.catalogo_id) : null)
+          || catalogDocsByRepuestoId.get(item.id)
+        if (!catalogDoc) return item
+        const catalogItem = serializeCatalogRepuesto(catalogDoc)
+        linkedCatalogIds.add(catalogDoc.id)
+        return {
+          ...item,
+          catalogo_id: catalogDoc.id,
+          catalogo_oculto: catalogItem.catalogo_oculto,
+          fotos: item.fotos.length ? item.fotos : catalogItem.fotos,
+        }
+      })
+      const catalogItems = Array.from(catalogDocsById.values())
+        .filter((doc) => !linkedCatalogIds.has(doc.id))
+        .map(serializeCatalogRepuesto)
+      const items = [...synchronizedSourceItems, ...catalogItems]
+        .filter((item) => !item.eliminado)
+        .sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
+
+      return NextResponse.json({ ok: true, items })
+    }
+
     if (scope === 'all') {
       const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
       const rtdb = getAdminRealtimeDb()
@@ -661,12 +779,36 @@ export async function POST(request) {
 
     const requestedTelefono = cleanPhone(body.telefono || body.whatsapp)
     const ownerPhone = authorized && requestedTelefono ? requestedTelefono : session.telefono
-    const identities = await resolveRealtimeIdentities(rtdb, ownerPhone)
+    const db = getAdminDb()
+    const [identities, authorizedCommerceSnap] = await Promise.all([
+      resolveRealtimeIdentities(rtdb, ownerPhone),
+      db.collection(AUTHORIZED_COMMERCE_COLLECTION).get(),
+    ])
     const owner = identities[0] ? { uid: identities[0].uid, user: identities[0].profile } : null
     const ownerUids = identities.map((identity) => identity.uid)
     const ownerProfile = owner?.user || await commerceProfile(rtdb, { ...session, telefono: ownerPhone, tel: ownerPhone })
     const ownerCommerce = commerceFromProfile(ownerProfile, comercioId, dia)
-    const db = getAdminDb()
+    const eligibility = evaluateCommercePublicationEligibility({
+      phone: ownerPhone,
+      identityProfiles: [
+        ...identities.map((identity) => identity.profile),
+        ownerProfile,
+      ],
+      authorizedCommerces: authorizedCommerceSnap.docs.map((doc) => ({ id: doc.id, ...(doc.data() || {}) })),
+    })
+
+    if (!eligibility.hasCedula) {
+      return NextResponse.json(
+        { error: 'Este WhatsApp necesita tener una cédula verificada antes de publicar desde Mi tienda.' },
+        { status: 403 },
+      )
+    }
+    if (!eligibility.authorizedCommerce) {
+      return NextResponse.json(
+        { error: 'Este WhatsApp no pertenece a un comercio autorizado.' },
+        { status: 403 },
+      )
+    }
 
     const repuestoRef = db.collection(REPUESTOS_COLLECTION).doc()
     const repuestoData = {

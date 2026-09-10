@@ -62,7 +62,9 @@ export default function UsuarioComercioPage() {
 
   const perfilVivo = { ...(session?.perfil || session?.prefill || {}), ...(realtimeProfile || {}) }
   const cedulaActual = cedulaLive || perfilVivo?.cedula || ''
-  const cedulaVerificada = Boolean(cedulaActual || perfilVivo?.cedula_estado === 'aprobado')
+  // Para publicar desde Mi tienda basta con que la cédula ya haya sido
+  // guardada por el flujo de las dos fotos; no dependemos de `cedula_estado`.
+  const cedulaVerificada = Boolean(cedulaActual)
   const brandOptions = repuesto.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const isAllBrands = normalize(repuesto.marca) === normalize(ALL_BRANDS)
   const selectedBrand = useMemo(
@@ -79,12 +81,27 @@ export default function UsuarioComercioPage() {
 
   useEffect(() => {
     let cancelled = false
-    ensureSession().then((current) => {
+    ensureSession().then(async (current) => {
       if (cancelled) return
       if (!current?.telefono) {
         router.replace(`/login?redirect=${encodeURIComponent('/usuario/comercio')}`)
         return
       }
+      try {
+        const membershipRes = await fetch('/api/usuario/comercio/membresia', {
+          headers: { Authorization: `Bearer ${current.token}` },
+          cache: 'no-store',
+        })
+        const membership = await membershipRes.json().catch(() => ({}))
+        if (!membershipRes.ok || !membership.autorizado) {
+          router.replace('/usuario/opciones')
+          return
+        }
+      } catch {
+        router.replace('/usuario/opciones')
+        return
+      }
+      if (cancelled) return
       const perfil = current.perfil || current.prefill || {}
       setSession(current)
       setComercio({

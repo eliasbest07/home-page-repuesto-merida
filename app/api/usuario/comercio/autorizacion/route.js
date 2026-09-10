@@ -197,6 +197,27 @@ export async function GET(request) {
     const users = snap.exists() ? snap.val() || {} : {}
     const legacyUsers = legacySnap.exists() ? legacySnap.val() || {} : {}
     const identityProfilesByPhone = indexIdentityProfilesByPhone(legacyUsers, users)
+    const requestedPhone = canonPhone(new URL(request.url).searchParams.get('telefono'))
+    if (requestedPhone.length >= 10) {
+      const matches = []
+      for (const [uid, user] of Object.entries(users)) {
+        if (!user || typeof user !== 'object') continue
+        const phones = [user.whatsapp, user.telefono, user.phone, user.id]
+          .map(canonPhone)
+          .filter((phone) => phone.length >= 10)
+        if (phones.includes(requestedPhone) || (phones.length === 0 && canonPhone(uid) === requestedPhone)) {
+          matches.push({ uid, user })
+        }
+      }
+      const owner = pickCanonicalRealtimeUser(matches)
+      const profiles = identityProfilesByPhone.get(requestedPhone) || []
+      return NextResponse.json({
+        ok: true,
+        found: Boolean(owner || profiles.length),
+        realtime_user_uid: owner?.uid || '',
+        identity_verification: summarizeIdentityVerification(profiles),
+      })
+    }
     const comerciosPorDia = {}
 
     for (const [uid, user] of Object.entries(users)) {
