@@ -12,6 +12,7 @@ import { clearSession, ensureSession, saveSession } from '@/lib/rifaSession'
 import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
 import { formatFileSize, MAX_SOURCE_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 import { AI_VERIFICATION_CONSENT_VERSION } from '@/lib/legalConfig'
+import { hasVerifiedDocument } from '@/lib/identityVerificationPolicy'
 
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
@@ -152,7 +153,7 @@ export default function UsuarioOpcionesPage() {
   const foto = perfil?.foto_url || perfil?.foto || ''
   const comercioFoto = perfil?.comercio_foto_url || perfil?.comercio_autorizado?.comercio_foto_url || firstCommercePhoto(perfil?.comercios_por_dia)
   const cedulaActual = cedulaLive || perfil?.cedula || ''
-  const edadVerificada = Boolean(cedulaActual || perfil?.cedula_estado === 'aprobado')
+  const edadVerificada = hasVerifiedDocument({ ...perfil, cedula: cedulaActual })
   const notificationCount = Number(perfil?.notificaciones_nuevas || perfil?.notificacionesNuevas || 0)
   const brandOptions = vehicle.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const selectedBrand = useMemo(
@@ -443,7 +444,7 @@ export default function UsuarioOpcionesPage() {
                     <span className="truncate">{locationLabel}</span>
                   </p>
                   {fotoError && <p className="mt-1 text-xs font-semibold text-red-600">{fotoError}</p>}
-                  {cedulaActual ? (
+                  {edadVerificada ? (
                     <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700">
                       <CheckIcon className="h-3.5 w-3.5" />
                     </span>

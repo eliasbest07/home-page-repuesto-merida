@@ -9,6 +9,7 @@ import { collection, documentId, getDocs, orderBy, query, startAfter, where, lim
 import { get, ref } from 'firebase/database'
 import { firestore, rtdb } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
+import { hasVerifiedDocument } from '@/lib/identityVerificationPolicy'
 
 const PlazaChat = dynamic(() => import('./components/PlazaChat'), { ssr: false })
 const ComerciosMap = dynamic(() => import('./components/ComerciosMap'), { ssr: false })
@@ -871,7 +872,7 @@ export default function Home() {
   const sessionProfile = requestSession?.perfil || requestSession?.prefill || null
   const sessionName = sessionProfile?.nombre || 'Nombre'
   const sessionPhoto = sessionProfile?.foto_url || ''
-  const sessionHasCedula = Boolean(sessionProfile?.cedula)
+  const sessionHasCedula = hasVerifiedDocument(sessionProfile)
   const visibleBrands = brandType === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const homepageUrl = `${SITE_URL}/`
   const flattenedTrendPatterns = LOCAL_SEO_SIGNALS.intentClusters.flatMap((cluster) => cluster.patterns)

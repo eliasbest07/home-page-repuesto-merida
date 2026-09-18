@@ -4,6 +4,7 @@ import { verifyRifaToken } from '@/lib/rifaJwt'
 import { syncPublicProfilesFromUsers } from '@/lib/publicProfileAdmin'
 import { canManageCommerces } from '@/lib/comercioAuthorization'
 import { pickCanonicalRealtimeUser } from '@/lib/realtimeUserLookup'
+import { evaluateCommercePublicationEligibility } from '@/lib/comercioPublicationPolicy'
 import {
   indexIdentityProfilesByPhone,
   summarizeIdentityVerification,
@@ -183,19 +184,21 @@ export async function GET(request) {
     const session = authPayload(request)
     if (!session) return NextResponse.json({ error: 'Sesión inválida.' }, { status: 401 })
 
-    const { getAdminRealtimeDb } = await import('@/lib/firebaseAdmin')
+    const { getAdminRealtimeDb, getAdminDb } = await import('@/lib/firebaseAdmin')
     const rtdb = getAdminRealtimeDb()
     const authorized = await canManageCommerces(rtdb, session)
     if (!authorized) {
       return NextResponse.json({ error: 'Tu solicitud aún está en espera de autorización.' }, { status: 403 })
     }
 
-    const [snap, legacySnap] = await Promise.all([
+    const [snap, legacySnap, authorizedCommerceSnap] = await Promise.all([
       rtdb.ref('users').get(),
       rtdb.ref('rifas_usuarios').get(),
+      getAdminDb().collection(FIRESTORE_COLLECTION).get(),
     ])
     const users = snap.exists() ? snap.val() || {} : {}
     const legacyUsers = legacySnap.exists() ? legacySnap.val() || {} : {}
+    const authorizedCommerces = authorizedCommerceSnap.docs.map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
     const identityProfilesByPhone = indexIdentityProfilesByPhone(legacyUsers, users)
     const requestedPhone = canonPhone(new URL(request.url).searchParams.get('telefono'))
     if (requestedPhone.length >= 10) {
@@ -227,12 +230,32 @@ export async function GET(request) {
         comerciosPorDia[day] = comerciosPorDia[day] || { dia: day, comercios: {} }
         for (const [commerceId, rawCommerce] of Object.entries(value.comercios || {})) {
           const commercePhone = canonPhone(rawCommerce?.whatsapp)
+          const phoneMatches = Object.entries(users)
+            .filter(([, candidate]) => candidate && typeof candidate === 'object' && [
+              candidate.whatsapp,
+              candidate.telefono,
+              candidate.phone,
+              candidate.id,
+            ].some((candidatePhone) => canonPhone(candidatePhone) === commercePhone))
+            .map(([candidateUid, candidate]) => ({ uid: candidateUid, user: candidate }))
+          const owner = pickCanonicalRealtimeUser(phoneMatches)
+          const identityProfiles = [
+            user,
+            ...(identityProfilesByPhone.get(commercePhone) || []),
+          ]
+          const publicationEligibility = evaluateCommercePublicationEligibility({
+            phone: rawCommerce?.whatsapp,
+            commerceId,
+            identityProfiles,
+            authorizedCommerces,
+            profile: user,
+            commerce: rawCommerce,
+            ownerUid: owner?.uid || '',
+          })
           const commerce = {
             ...rawCommerce,
-            identity_verification: summarizeIdentityVerification([
-              user,
-              ...(identityProfilesByPhone.get(commercePhone) || []),
-            ]),
+            identity_verification: summarizeIdentityVerification(identityProfiles),
+            publication_eligibility: publicationEligibility,
           }
           const current = comerciosPorDia[day].comercios[commerceId]
           const currentUpdatedAt = Number(current?.actualizado_en || 0)
@@ -449,6 +472,15 @@ export async function POST(request) {
         ...commerce,
         realtime_user_uid: realtimeUid,
         identity_verification: summarizeIdentityVerification(owner?.identityProfiles || [owner?.user]),
+        publication_eligibility: evaluateCommercePublicationEligibility({
+          phone: commercePhone,
+          commerceId,
+          identityProfiles: owner?.identityProfiles || [owner?.user],
+          authorizedCommerces: [{ ...commerce, comercio_id: commerceId, autorizado: true }],
+          profile: { ...(owner?.user || {}), vender: true },
+          commerce,
+          ownerUid: owner?.uid || '',
+        }),
       },
       realtime_user_uid: realtimeUid,
     })

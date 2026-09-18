@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { verifyRifaToken } from '@/lib/rifaJwt'
 import { LEGAL_VERSION } from '@/lib/legalConfig'
+import { hasVerifiedDocument } from '@/lib/identityVerificationPolicy'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -37,7 +38,7 @@ async function verifiedProfile(rtdb, phone) {
   const snapshot = await rtdb.ref('users').get()
   if (!snapshot.exists()) return null
   return Object.values(snapshot.val() || {}).find(user =>
-    user && canonPhone(user.whatsapp) === target && Boolean(user.cedula || user.cedula_estado === 'aprobado')
+    user && canonPhone(user.whatsapp) === target && hasVerifiedDocument(user)
   ) || null
 }
 

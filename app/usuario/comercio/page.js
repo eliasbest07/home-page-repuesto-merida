@@ -10,6 +10,7 @@ import { rtdb } from '@/lib/firebase'
 import { ensureSession, saveSession } from '@/lib/rifaSession'
 import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
 import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
+import { hasVerifiedDocument } from '@/lib/identityVerificationPolicy'
 
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
@@ -62,9 +63,7 @@ export default function UsuarioComercioPage() {
 
   const perfilVivo = { ...(session?.perfil || session?.prefill || {}), ...(realtimeProfile || {}) }
   const cedulaActual = cedulaLive || perfilVivo?.cedula || ''
-  // Para publicar desde Mi tienda basta con que la cédula ya haya sido
-  // guardada por el flujo de las dos fotos; no dependemos de `cedula_estado`.
-  const cedulaVerificada = Boolean(cedulaActual)
+  const cedulaVerificada = hasVerifiedDocument({ ...perfilVivo, cedula: cedulaActual })
   const brandOptions = repuesto.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
   const isAllBrands = normalize(repuesto.marca) === normalize(ALL_BRANDS)
   const selectedBrand = useMemo(

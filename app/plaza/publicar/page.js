@@ -7,6 +7,7 @@ import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { ensureSession } from '@/lib/rifaSession'
 import { LEGAL_VERSION } from '@/lib/legalConfig'
+import { hasVerifiedDocument } from '@/lib/identityVerificationPolicy'
 
 const PlazaChat = dynamic(() => import('../../components/PlazaChat'), { ssr: false })
 
@@ -57,7 +58,7 @@ export default function PublicarPage() {
       // Fuente de verdad: la verificación por cédula queda en el perfil (/users).
       // Igual que en /solicitados y /usuario/comercio. El chequeo de "edad"
       // (verificaciones_edad, revisión manual) se mantiene solo como respaldo.
-      let verificado = Boolean(s.perfil?.cedula) || s.perfil?.cedula_estado === 'aprobado'
+      let verificado = hasVerifiedDocument(s.perfil)
 
       if (!verificado) {
         try {

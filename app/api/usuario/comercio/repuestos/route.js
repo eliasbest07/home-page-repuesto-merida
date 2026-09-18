@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server'
 import { verifyRifaToken } from '@/lib/rifaJwt'
 import { canManageCommerces } from '@/lib/comercioAuthorization'
 import { pickCanonicalRealtimeUser } from '@/lib/realtimeUserLookup'
-import { evaluateCommercePublicationEligibility } from '@/lib/comercioPublicationPolicy'
+import {
+  evaluateCommercePublicationEligibility,
+  isRealtimeAccountUid,
+} from '@/lib/comercioPublicationPolicy'
 import {
   DATA_SCHEMA_VERSION,
   identityIdForPhone,
@@ -784,17 +787,27 @@ export async function POST(request) {
       resolveRealtimeIdentities(rtdb, ownerPhone),
       db.collection(AUTHORIZED_COMMERCE_COLLECTION).get(),
     ])
-    const owner = identities[0] ? { uid: identities[0].uid, user: identities[0].profile } : null
+    const ownerIdentity = identities.find((identity) => isRealtimeAccountUid(identity.uid)) || identities[0]
+    const owner = ownerIdentity ? { uid: ownerIdentity.uid, user: ownerIdentity.profile } : null
     const ownerUids = identities.map((identity) => identity.uid)
     const ownerProfile = owner?.user || await commerceProfile(rtdb, { ...session, telefono: ownerPhone, tel: ownerPhone })
-    const ownerCommerce = commerceFromProfile(ownerProfile, comercioId, dia)
+    const commerceIdentity = identities.find((identity) => {
+      const candidate = commerceFromProfile(identity.profile, comercioId, dia)
+      return cleanText(candidate?.comercio_id, 80) === comercioId
+    })
+    const commerceProfileSource = commerceIdentity?.profile || ownerProfile
+    const ownerCommerce = commerceFromProfile(commerceProfileSource, comercioId, dia)
     const eligibility = evaluateCommercePublicationEligibility({
       phone: ownerPhone,
+      commerceId,
       identityProfiles: [
         ...identities.map((identity) => identity.profile),
         ownerProfile,
       ],
       authorizedCommerces: authorizedCommerceSnap.docs.map((doc) => ({ id: doc.id, ...(doc.data() || {}) })),
+      profile: commerceProfileSource,
+      commerce: ownerCommerce,
+      ownerUid: owner?.uid || '',
     })
 
     if (!eligibility.hasCedula) {
@@ -806,6 +819,18 @@ export async function POST(request) {
     if (!eligibility.authorizedCommerce) {
       return NextResponse.json(
         { error: 'Este WhatsApp no pertenece a un comercio autorizado.' },
+        { status: 403 },
+      )
+    }
+    if (!eligibility.commerceAuthorized || !eligibility.canSell) {
+      return NextResponse.json(
+        { error: 'La ficha de este comercio todavía no está habilitada para publicar.' },
+        { status: 403 },
+      )
+    }
+    if (!eligibility.linkedAppAccount) {
+      return NextResponse.json(
+        { error: 'Este comercio necesita vincular una cuenta real de la app antes de publicar.' },
         { status: 403 },
       )
     }

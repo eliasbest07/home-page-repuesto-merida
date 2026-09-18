@@ -21,6 +21,7 @@ import { ensureSession } from '@/lib/rifaSession'
 import { formatFileSize, MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
 import AdSenseBlock from '@/app/components/AdSenseBlock'
+import { hasVerifiedDocument } from '@/lib/identityVerificationPolicy'
 
 const COMMENT_COLLECTION = 'solicitudes_comentarios'
 const CONTACT_COLLECTION = 'solicitudes_contactos'
@@ -275,7 +276,7 @@ function CommentSection({
   const fileRef = useRef(null)
   const currentParticipantId = sessionParticipantId(session)
   // Solo usuarios con edad verificada (cédula) pueden publicar en el debate.
-  const isVerified = Boolean(session?.perfil?.cedula) || session?.perfil?.cedula_estado === 'aprobado'
+  const isVerified = hasVerifiedDocument(session?.perfil)
 
   const contactMap = useMemo(() => {
     const map = new Map()

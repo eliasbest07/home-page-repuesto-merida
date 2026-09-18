@@ -525,6 +525,8 @@ export default function ComercioAutorizacionPage() {
   const commerceIdentity = form.identity_verification || {}
   const commerceCedulaVerified = commerceIdentity.verified === true
   const commerceCedulaPending = commerceIdentity.status === 'pendiente'
+  const commerceEligibility = form.publication_eligibility || {}
+  const commerceCanPublish = commerceEligibility.allowed === true
   const currentVenta = selectedVenta || form.lista_ventas_repuestos[0] || ''
   const commerceRepuestos = repuestos.filter((item) => {
     if (repuestoBelongsToCommerce(item, form)) return true
@@ -591,7 +593,7 @@ export default function ComercioAutorizacionPage() {
   const repuestoFormReady = Boolean(
     session?.token
     && selectedCommerceId
-    && commerceCedulaVerified
+    && commerceCanPublish
     && currentVenta
     && repuestoForm.marca
     && repuestoForm.modelo.trim()
@@ -625,6 +627,7 @@ export default function ComercioAutorizacionPage() {
       setForm((current) => ({
         ...current,
         identity_verification: persistedCommerce.identity_verification || current.identity_verification,
+        publication_eligibility: persistedCommerce.publication_eligibility || current.publication_eligibility,
         realtime_user_uid: persistedCommerce.realtime_user_uid || current.realtime_user_uid,
       }))
       return
@@ -686,7 +689,11 @@ export default function ComercioAutorizacionPage() {
       return {
         ...current,
         whatsapp: value,
-        ...(samePhone ? {} : { identity_verification: undefined, realtime_user_uid: '' }),
+        ...(samePhone ? {} : {
+          identity_verification: undefined,
+          publication_eligibility: undefined,
+          realtime_user_uid: '',
+        }),
       }
     })
   }
@@ -801,8 +808,8 @@ export default function ComercioAutorizacionPage() {
       setActivePanel('comercio')
       return
     }
-    if (!commerceCedulaVerified) {
-      setError('Este comercio necesita verificar su cédula antes de crear repuestos.')
+    if (!commerceCanPublish) {
+      setError('Este comercio necesita estar registrado, tener una cuenta vinculada y una cédula aprobada antes de crear repuestos.')
       setActivePanel('comercio')
       return
     }
@@ -845,6 +852,7 @@ export default function ComercioAutorizacionPage() {
       setForm((current) => ({
         ...current,
         identity_verification: existing.identity_verification,
+        publication_eligibility: existing.publication_eligibility || current.publication_eligibility,
         realtime_user_uid: existing.realtime_user_uid || current.realtime_user_uid,
       }))
       return true
@@ -864,6 +872,7 @@ export default function ComercioAutorizacionPage() {
         return {
           ...current,
           identity_verification: body.identity_verification || {},
+          publication_eligibility: undefined,
           realtime_user_uid: body.realtime_user_uid || '',
         }
       })
@@ -1076,6 +1085,11 @@ export default function ComercioAutorizacionPage() {
     }
     if (!selectedCommerceId) {
       setError('Guarda este comercio antes de crear repuestos.')
+      setActivePanel('comercio')
+      return
+    }
+    if (!commerceCanPublish) {
+      setError('Este comercio necesita estar registrado, tener una cuenta vinculada y una cédula aprobada antes de crear repuestos.')
       setActivePanel('comercio')
       return
     }
@@ -1616,7 +1630,7 @@ export default function ComercioAutorizacionPage() {
           </section>
         </aside>
 
-        <div className="min-w-0 space-y-5">
+        <div className="flex min-w-0 flex-col gap-5">
           {showHomeAnalytics && (
           <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1826,7 +1840,7 @@ export default function ComercioAutorizacionPage() {
             </section>
           )}
 
-          <section ref={commerceInfoRef} className="scroll-mt-24 rounded-lg border border-slate-200 bg-white shadow-sm">
+          <section ref={commerceInfoRef} className="order-10 scroll-mt-24 rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -1838,8 +1852,18 @@ export default function ComercioAutorizacionPage() {
                     {fieldReady(form.nombre_comercio) ? 'Completo' : 'Pendiente'}
                   </StatusPill>
                   <StatusPill tone={locationReady ? 'good' : 'neutral'}>{locationReady ? 'Ubicado' : 'Sin mapa'}</StatusPill>
-                  <StatusPill tone={commerceCedulaVerified ? 'good' : commerceCedulaPending ? 'warn' : 'neutral'}>
-                    {commerceCedulaVerified ? 'Cédula verificada' : commerceCedulaPending ? 'Cédula en revisión' : 'Cédula no verificada'}
+                  <StatusPill tone={commerceCanPublish ? 'good' : commerceCedulaPending ? 'warn' : 'neutral'}>
+                    {commerceCanPublish
+                      ? 'Puede publicar'
+                      : commerceCedulaPending
+                        ? 'Cédula en revisión'
+                        : !commerceCedulaVerified
+                          ? 'Cédula no verificada'
+                          : commerceEligibility.authorizedCommerce === false || commerceEligibility.commerceAuthorized === false
+                            ? 'Comercio no registrado'
+                            : commerceEligibility.linkedAppAccount === false
+                              ? 'Sin cuenta vinculada'
+                              : 'No puede publicar'}
                   </StatusPill>
                 </div>
               </div>
@@ -1976,7 +2000,7 @@ export default function ComercioAutorizacionPage() {
             </div>
           </section>
 
-          <section ref={publishedRepuestosRef} className="scroll-mt-24 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section ref={publishedRepuestosRef} className="order-50 scroll-mt-24 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-extrabold uppercase text-emerald-700">Catálogo del comercio</p>
@@ -2069,7 +2093,7 @@ export default function ComercioAutorizacionPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="order-20 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-extrabold uppercase text-amber-600">Pendientes del comercio</p>
@@ -2231,7 +2255,7 @@ export default function ComercioAutorizacionPage() {
           </section>
 
           {activePanel === 'ventas' && (
-            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="order-30 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-xs font-extrabold uppercase text-amber-600">Lista visible en esta pagina</p>
@@ -2292,7 +2316,7 @@ export default function ComercioAutorizacionPage() {
           )}
 
           {activePanel === 'repuestos' && (
-            <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="order-40 min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-extrabold uppercase text-amber-600">Inventario por venta</p>
