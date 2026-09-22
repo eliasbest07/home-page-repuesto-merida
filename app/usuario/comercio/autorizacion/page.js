@@ -373,12 +373,65 @@ function MiniLocationMap({ lat, lng }) {
   )
 }
 
+// Icono minimo para el dock de accesos rapidos movil.
+function QuickIcon({ name }) {
+  const paths = {
+    tienda: 'M4 9h16l-1 10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1L4 9Zm2-5h12l1.5 5h-15L6 4Z',
+    ficha: 'M6 3h9l4 4v14H6V3Zm8 0v5h5M9 12h7M9 16h7',
+    aprobar: 'M20 7 10 17l-5-5',
+    catalogo: 'M4 5h7v14H4V5Zm9 0h7v14h-7V5Z',
+    lista: 'M4 6h16M4 12h16M4 18h16',
+    mas: 'M12 5v14M5 12h14',
+    grafico: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+    arriba: 'M12 19V5M5 12l7-7 7 7',
+    menu: 'M4 6h16M4 12h16M4 18h16',
+    cerrar: 'M6 6l12 12M18 6 6 18',
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+      <path d={paths[name] || paths.lista} />
+    </svg>
+  )
+}
+
+function QuickAction({ icon, label, badge = null, tone = 'neutral', onClick }) {
+  const tones = {
+    neutral: 'bg-white/10 text-white',
+    warn: 'bg-amber-400 text-[#20263a]',
+    good: 'bg-emerald-400 text-[#0b2e22]',
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-extrabold text-white transition active:scale-[0.98] hover:bg-white/10"
+    >
+      <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}>
+        <QuickIcon name={icon} />
+      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {badge !== null && (
+        <span className={`inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-extrabold ${badge > 0 ? 'bg-amber-400 text-[#20263a]' : 'bg-white/15 text-white/70'}`}>
+          {badge}
+        </span>
+      )}
+    </button>
+  )
+}
+
 export default function ComercioAutorizacionPage() {
   const router = useRouter()
   const repuestoFormRef = useRef(null)
   const pendingRepuestosRef = useRef(null)
   const publishedRepuestosRef = useRef(null)
   const commerceInfoRef = useRef(null)
+  const sidebarRef = useRef(null)
+  const pendingSectionRef = useRef(null)
+  const allRepuestosSectionRef = useRef(null)
+  const salesInventoryRef = useRef(null)
+  const [quickMenuOpen, setQuickMenuOpen] = useState(false)
+  // El pill "Cookies" de CookieConsent vive en la misma esquina; si esta visible subimos el dock.
+  const [cookiePillVisible, setCookiePillVisible] = useState(false)
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [realtimeProfile, setRealtimeProfile] = useState(null)
@@ -424,6 +477,17 @@ export default function ComercioAutorizacionPage() {
   const [homeAnalyticsLoading, setHomeAnalyticsLoading] = useState(false)
   const pendingCommerceSelectionRef = useRef(null)
   const lastSelectedDayRef = useRef(selectedDay)
+
+  useEffect(() => {
+    const read = () => {
+      try {
+        setCookiePillVisible(window.localStorage.getItem('repuestos-merida-cookie-consent') === 'rejected')
+      } catch { setCookiePillVisible(false) }
+    }
+    read()
+    window.addEventListener('repuestos-merida:cookie-consent', read)
+    return () => window.removeEventListener('repuestos-merida:cookie-consent', read)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -1004,6 +1068,39 @@ export default function ComercioAutorizacionPage() {
     if (opening && !allRepuestosLoaded && !repuestosLoading) loadAllRepuestos()
   }
 
+  // Accesos rapidos (vista movil): lleva a la seccion, abriendola antes si esta colapsada.
+  function scrollToRef(ref, delay = 0) {
+    setQuickMenuOpen(false)
+    window.setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, delay)
+  }
+
+  function quickGoComercios() {
+    setShowSidebarLists(true)
+    setShowNamedList(true)
+    scrollToRef(sidebarRef, 60)
+  }
+
+  function quickGoAllRepuestos() {
+    if (!showAllRepuestos) {
+      setShowAllRepuestos(true)
+      if (!allRepuestosLoaded && !repuestosLoading) loadAllRepuestos()
+    }
+    scrollToRef(allRepuestosSectionRef, 60)
+  }
+
+  function quickGoInventario() {
+    setShowSalesInventory(true)
+    scrollToRef(salesInventoryRef, 60)
+  }
+
+  function quickGoEstadisticas() {
+    if (!showHomeAnalytics) toggleHomeAnalytics()
+    setQuickMenuOpen(false)
+    window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 60)
+  }
+
   async function saveCommerce() {
     setError('')
     setMessage('')
@@ -1492,7 +1589,7 @@ export default function ComercioAutorizacionPage() {
       </nav>
 
       <main className="mx-auto grid max-w-6xl grid-cols-1 gap-5 px-4 py-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="min-w-0 space-y-4">
+        <aside ref={sidebarRef} className="min-w-0 space-y-4 scroll-mt-20">
           <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-extrabold uppercase text-slate-500">Dia de venta</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
@@ -1676,7 +1773,7 @@ export default function ComercioAutorizacionPage() {
           {message && <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{message}</p>}
 
           {showAllRepuestos && (
-            <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <section ref={allRepuestosSectionRef} className="min-w-0 scroll-mt-20 overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-extrabold uppercase text-amber-600">Todos los comercios</p>
@@ -1840,7 +1937,7 @@ export default function ComercioAutorizacionPage() {
             </section>
           )}
 
-          <section ref={commerceInfoRef} className="order-10 scroll-mt-24 rounded-lg border border-slate-200 bg-white shadow-sm">
+          <section ref={commerceInfoRef} className="order-1 scroll-mt-24 rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -2000,7 +2097,7 @@ export default function ComercioAutorizacionPage() {
             </div>
           </section>
 
-          <section ref={publishedRepuestosRef} className="order-50 scroll-mt-24 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section ref={publishedRepuestosRef} className="order-5 scroll-mt-24 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-extrabold uppercase text-emerald-700">Catálogo del comercio</p>
@@ -2093,7 +2190,7 @@ export default function ComercioAutorizacionPage() {
             </div>
           </section>
 
-          <section className="order-20 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section ref={pendingSectionRef} className="order-2 scroll-mt-20 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-extrabold uppercase text-amber-600">Pendientes del comercio</p>
@@ -2255,7 +2352,7 @@ export default function ComercioAutorizacionPage() {
           </section>
 
           {activePanel === 'ventas' && (
-            <section className="order-30 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="order-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-xs font-extrabold uppercase text-amber-600">Lista visible en esta pagina</p>
@@ -2316,7 +2413,7 @@ export default function ComercioAutorizacionPage() {
           )}
 
           {activePanel === 'repuestos' && (
-            <section className="order-40 min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <section ref={salesInventoryRef} className="order-4 min-w-0 max-w-full scroll-mt-20 overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-extrabold uppercase text-amber-600">Inventario por venta</p>
@@ -2506,6 +2603,95 @@ export default function ComercioAutorizacionPage() {
           )}
         </div>
       </main>
+
+      {/* Accesos rapidos: solo movil/tablet, esquina inferior izquierda. */}
+      <div className={`fixed left-4 z-40 lg:hidden ${cookiePillVisible ? 'bottom-14' : 'bottom-4'}`}>
+        {quickMenuOpen && (
+          <button
+            type="button"
+            aria-label="Cerrar accesos rapidos"
+            onClick={() => setQuickMenuOpen(false)}
+            className="fixed inset-0 -z-10 bg-slate-950/40 backdrop-blur-[1px]"
+          />
+        )}
+
+        {quickMenuOpen && (
+          <div
+            id="quick-access-menu"
+            className="mb-3 w-[min(17rem,calc(100vw-2rem))] max-h-[65vh] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-[#20263a] p-2 shadow-2xl"
+          >
+            <p className="px-3 pb-1 pt-2 text-[11px] font-extrabold uppercase tracking-wide text-amber-300">
+              Accesos rapidos
+            </p>
+            <div className="grid gap-0.5">
+              <QuickAction
+                icon="tienda"
+                label="Lista de comercios"
+                badge={namedCommerces.length}
+                onClick={quickGoComercios}
+              />
+              <QuickAction
+                icon="ficha"
+                label="Datos del comercio"
+                onClick={() => scrollToRef(commerceInfoRef)}
+              />
+              <QuickAction
+                icon="aprobar"
+                label="Repuestos por aprobar"
+                badge={repuestosPendientes.length}
+                tone={repuestosPendientes.length ? 'warn' : 'neutral'}
+                onClick={() => scrollToRef(pendingSectionRef)}
+              />
+              <QuickAction
+                icon="catalogo"
+                label="Repuestos publicados"
+                badge={repuestosPublicados.length}
+                tone={repuestosPublicados.length ? 'good' : 'neutral'}
+                onClick={() => scrollToRef(publishedRepuestosRef)}
+              />
+              <QuickAction
+                icon="lista"
+                label="Repuestos (todos)"
+                onClick={quickGoAllRepuestos}
+              />
+              <QuickAction
+                icon="mas"
+                label="Crear repuesto pendiente"
+                onClick={quickGoInventario}
+              />
+              <QuickAction
+                icon="grafico"
+                label="Estadisticas"
+                onClick={quickGoEstadisticas}
+              />
+              <QuickAction
+                icon="arriba"
+                label="Ir al inicio"
+                onClick={() => {
+                  setQuickMenuOpen(false)
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setQuickMenuOpen((prev) => !prev)}
+          aria-expanded={quickMenuOpen}
+          aria-controls="quick-access-menu"
+          aria-label={quickMenuOpen ? 'Ocultar accesos rapidos' : 'Mostrar accesos rapidos'}
+          className="relative inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#20263a] text-white shadow-xl ring-1 ring-white/10 transition active:scale-95"
+        >
+          <QuickIcon name={quickMenuOpen ? 'cerrar' : 'menu'} />
+          {!quickMenuOpen && pendingApprovalCount > 0 && (
+            <span className="absolute -right-1 -top-1 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-amber-400 px-1.5 text-[11px] font-extrabold text-[#20263a]">
+              {pendingApprovalCount}
+            </span>
+          )}
+        </button>
+      </div>
 
       {mapOpen && (
         <MapPicker
