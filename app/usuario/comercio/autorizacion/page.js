@@ -440,6 +440,8 @@ export default function ComercioAutorizacionPage() {
   const [selectedCommerceId, setSelectedCommerceId] = useState('')
   const [commerceSearch, setCommerceSearch] = useState('')
   const [showNamedList, setShowNamedList] = useState(true)
+  const [registeredCommerces, setRegisteredCommerces] = useState([])
+  const [showRegisteredList, setShowRegisteredList] = useState(true)
   const [showBadWhatsappList, setShowBadWhatsappList] = useState(true)
   const [showNamelessList, setShowNamelessList] = useState(true)
   const [showSidebarLists, setShowSidebarLists] = useState(true)
@@ -735,10 +737,15 @@ export default function ComercioAutorizacionPage() {
       .then((res) => res.json())
       .then((body) => {
         if (cancelled) return
-        if (body.ok) setGlobalComerciosPorDia(body.comercios_por_dia || {})
+        if (!body.ok) return
+        setGlobalComerciosPorDia(body.comercios_por_dia || {})
+        setRegisteredCommerces(Array.isArray(body.comercios_registrados) ? body.comercios_registrados : [])
       })
       .catch(() => {
-        if (!cancelled) setGlobalComerciosPorDia({})
+        if (!cancelled) {
+          setGlobalComerciosPorDia({})
+          setRegisteredCommerces([])
+        }
       })
     return () => { cancelled = true }
   }, [session?.token, authorized])
@@ -819,6 +826,81 @@ export default function ComercioAutorizacionPage() {
       return
     }
     selectCommerce(commerce)
+  }
+
+  // Lista real: comercios con al menos un repuesto publicado en `merida`.
+  function selectRegisteredCommerce(item) {
+    const ficha = item.ficha
+      ? allGlobalCommerces.find((commerce) => (
+        commerce.comercio_id === item.ficha.comercio_id && commerce.dia === item.ficha.dia
+      ))
+      : null
+    if (ficha) {
+      selectSearchedCommerce(ficha)
+      return
+    }
+    // Publica en el catálogo pero no tiene ficha en el panel: se precarga con
+    // lo que dicen sus piezas para guardarla en el día que corresponda.
+    setSelectedCommerceId('')
+    setForm({
+      ...EMPTY_DAY,
+      nombre_comercio: item.nombre_comercio || '',
+      whatsapp: item.whatsapp || '',
+      comercio_direccion: item.comercio_direccion || '',
+      comercio_lat: item.comercio_lat ?? null,
+      comercio_lng: item.comercio_lng ?? null,
+      tipo_vehiculo: item.tipo_vehiculo === 'moto' ? 'moto' : 'carro',
+      identity_verification: item.identity_verification,
+    })
+    setSelectedVenta('')
+    setPhotoFile(null)
+    setPhotoPreview('')
+    setError('')
+    setMessage(`${item.nombre_comercio} publica en el catálogo pero no tiene ficha en el panel. Completa la foto y guárdala en este día para crear pendientes.`)
+    setActivePanel('comercio')
+    window.setTimeout(() => {
+      commerceInfoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
+  }
+
+  function renderRegisteredButton(item) {
+    const verified = item.identity_verification?.verified === true
+    const active = Boolean(item.ficha) && selectedCommerceId === item.ficha.comercio_id && selectedDay === item.ficha.dia
+    const fichaDay = item.ficha ? DAYS.find((day) => day.key === item.ficha.dia)?.label || item.ficha.dia : ''
+    return (
+      <button
+        key={item.user_id}
+        type="button"
+        onClick={() => selectRegisteredCommerce(item)}
+        className={`min-w-0 w-full overflow-hidden rounded-lg border px-3 py-2 text-left transition ${
+          active ? 'border-[#20263a] bg-slate-50 ring-2 ring-amber-200' : 'border-slate-200 bg-white hover:border-amber-300'
+        }`}
+      >
+        <span className="block whitespace-normal break-words text-sm font-extrabold text-slate-950">
+          {item.nombre_comercio}
+        </span>
+        <span className="mt-1 block whitespace-normal break-words text-xs font-semibold text-slate-500">
+          {item.whatsapp || 'Sin WhatsApp'} · {item.piezas} {item.piezas === 1 ? 'repuesto' : 'repuestos'}
+          {fichaDay ? ` · ${fichaDay}` : ' · sin ficha'}
+        </span>
+        {/* Publicar en `merida` lo hace válido; la cédula faltante es solo una nota de datos. */}
+        <span className="mt-1.5 flex flex-wrap gap-1">
+          <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">
+            Válido
+          </span>
+          {!verified && (
+            <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-600">
+              Nota: cédula sin registrar
+            </span>
+          )}
+          {!item.ficha && (
+            <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-600">
+              Nota: sin ficha en el panel
+            </span>
+          )}
+        </span>
+      </button>
+    )
   }
 
   function renderCommerceButton(commerce, showDay = false) {
@@ -1655,6 +1737,30 @@ export default function ComercioAutorizacionPage() {
             </div>
             {showSidebarLists && (
             <div className="mt-4 border-t border-slate-200 pt-4">
+              {registeredCommerces.length > 0 && (
+                <div className="mb-5 border-b border-dashed border-slate-300 pb-4">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                      Comercios registrados ({registeredCommerces.length})
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowRegisteredList((prev) => !prev)}
+                      className="rounded-md border border-slate-200 px-2.5 py-1 text-[11px] font-extrabold text-slate-600 transition hover:border-amber-300 hover:text-slate-900"
+                    >
+                      {showRegisteredList ? 'Ocultar' : 'Mostrar'}
+                    </button>
+                  </div>
+                  <p className="mb-2 text-[11px] font-semibold text-slate-500">
+                    Válidos por tener al menos un repuesto publicado · {registeredCommerces.filter((item) => !item.identity_verification?.verified).length} con nota de cédula
+                  </p>
+                  {showRegisteredList && (
+                    <div className="grid gap-2">
+                      {registeredCommerces.map((item) => renderRegisteredButton(item))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
                   Seleccionar comercio ({namedCommerces.length})

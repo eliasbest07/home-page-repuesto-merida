@@ -14,6 +14,7 @@
     "test:public-profiles": "node scripts/test-public-profile-contract.mjs",
     "test:identity-verification": "node scripts/test-identity-verification-policy.mjs",
     "test:commerce-publication": "node scripts/test-commerce-publication-policy.mjs",
+    "test:catalog-publishers": "node scripts/test-catalog-publishers.mjs",
     "rules:rtdb": "node --env-file-if-exists=.env.local scripts/manage-rtdb-rules.mjs",
     "backup:firebase": "node --env-file-if-exists=.env.local scripts/backup-firebase-ecosystem.mjs",
     "verify:firebase-backup": "node scripts/verify-firebase-backup.mjs",

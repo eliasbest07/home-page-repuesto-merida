@@ -5,6 +5,7 @@ import { syncPublicProfilesFromUsers } from '@/lib/publicProfileAdmin'
 import { canManageCommerces } from '@/lib/comercioAuthorization'
 import { pickCanonicalRealtimeUser } from '@/lib/realtimeUserLookup'
 import { evaluateCommercePublicationEligibility } from '@/lib/comercioPublicationPolicy'
+import { findCatalogPublisher, findCatalogPublisherByQuery, loadCatalogPublishers } from '@/lib/catalogPublishers'
 import {
   indexIdentityProfilesByPhone,
   summarizeIdentityVerification,
@@ -191,16 +192,18 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Tu solicitud aún está en espera de autorización.' }, { status: 403 })
     }
 
-    const [snap, legacySnap, authorizedCommerceSnap] = await Promise.all([
+    const requestedPhone = canonPhone(new URL(request.url).searchParams.get('telefono'))
+    const [snap, legacySnap, authorizedCommerceSnap, publicProfilesSnap] = await Promise.all([
       rtdb.ref('users').get(),
       rtdb.ref('rifas_usuarios').get(),
       getAdminDb().collection(FIRESTORE_COLLECTION).get(),
+      rtdb.ref('public_profiles').get(),
     ])
     const users = snap.exists() ? snap.val() || {} : {}
     const legacyUsers = legacySnap.exists() ? legacySnap.val() || {} : {}
+    const publicProfiles = publicProfilesSnap.exists() ? publicProfilesSnap.val() || {} : {}
     const authorizedCommerces = authorizedCommerceSnap.docs.map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
     const identityProfilesByPhone = indexIdentityProfilesByPhone(legacyUsers, users)
-    const requestedPhone = canonPhone(new URL(request.url).searchParams.get('telefono'))
     if (requestedPhone.length >= 10) {
       const matches = []
       for (const [uid, user] of Object.entries(users)) {
@@ -221,6 +224,10 @@ export async function GET(request) {
         identity_verification: summarizeIdentityVerification(profiles),
       })
     }
+    // La lista real de comercios: los que ya publican en `merida`. Si el
+    // catálogo no se puede leer, la ruta sigue funcionando con las fichas.
+    const catalogPublishers = await loadCatalogPublishers(getAdminDb(), { publicProfiles, users })
+      .catch(() => [])
     const comerciosPorDia = {}
 
     for (const [uid, user] of Object.entries(users)) {
@@ -243,6 +250,11 @@ export async function GET(request) {
             user,
             ...(identityProfilesByPhone.get(commercePhone) || []),
           ]
+          const catalogPublisher = findCatalogPublisher(catalogPublishers, {
+            phone: rawCommerce?.whatsapp,
+            uids: [uid, owner?.uid],
+            commerceId,
+          })
           const publicationEligibility = evaluateCommercePublicationEligibility({
             phone: rawCommerce?.whatsapp,
             commerceId,
@@ -251,6 +263,7 @@ export async function GET(request) {
             profile: user,
             commerce: rawCommerce,
             ownerUid: owner?.uid || '',
+            catalogPublisher,
           })
           const commerce = {
             ...rawCommerce,
@@ -273,7 +286,37 @@ export async function GET(request) {
       }
     }
 
-    return NextResponse.json({ ok: true, comercios_por_dia: comerciosPorDia })
+    // Cada publicador con su estado de cédula y, si existe, la ficha del panel
+    // (día + comercio_id) para poder abrirla desde la lista.
+    const fichas = Object.values(comerciosPorDia).flatMap((value) => Object.values(value.comercios || {}))
+    const comerciosRegistrados = catalogPublishers.map((publisher) => {
+      const identityProfiles = [
+        users[publisher.user_id],
+        ...publisher.telefonos.flatMap((phone) => identityProfilesByPhone.get(phone) || []),
+      ].filter(Boolean)
+      const ficha = fichas.find((item) => publisher.comercio_ids.includes(item.comercio_id))
+        || fichas.find((item) => item.realtime_user_uid === publisher.user_id)
+        || fichas.find((item) => publisher.telefonos.includes(canonPhone(item.whatsapp)))
+        || null
+      return {
+        user_id: publisher.user_id,
+        nombre_comercio: publisher.nombre || 'Comercio sin nombre',
+        whatsapp: publisher.whatsapp,
+        piezas: publisher.piezas,
+        comercio_direccion: publisher.comercio_direccion,
+        comercio_lat: publisher.comercio_lat,
+        comercio_lng: publisher.comercio_lng,
+        tipo_vehiculo: publisher.tipo_vehiculo,
+        identity_verification: summarizeIdentityVerification(identityProfiles),
+        ficha: ficha ? { comercio_id: ficha.comercio_id, dia: ficha.dia } : null,
+      }
+    })
+
+    return NextResponse.json({
+      ok: true,
+      comercios_por_dia: comerciosPorDia,
+      comercios_registrados: comerciosRegistrados,
+    })
   } catch (error) {
     return NextResponse.json({ error: error?.message || 'No se pudieron cargar los comercios.' }, { status: 400 })
   }
@@ -458,6 +501,12 @@ export async function POST(request) {
       }, { merge: true }),
       ...staleFirestoreDocs.map((doc) => doc.ref.delete()),
     ])
+    // Un comercio que ya publica en `merida` es válido desde que se guarda su ficha.
+    const canon = canonPhone(commercePhone)
+    const catalogPublisher = await findCatalogPublisherByQuery(firestore, {
+      phoneVariants: canon ? [canon, `0${canon}`, `58${canon}`, `+58${canon}`] : [],
+      uids: [owner?.uid, originalRealtimeUid].filter(Boolean),
+    })
     await syncPublicProfilesFromUsers([
       realtimeUid,
       originalRealtimeUid,
@@ -480,6 +529,7 @@ export async function POST(request) {
           profile: { ...(owner?.user || {}), vender: true },
           commerce,
           ownerUid: owner?.uid || '',
+          catalogPublisher,
         }),
       },
       realtime_user_uid: realtimeUid,

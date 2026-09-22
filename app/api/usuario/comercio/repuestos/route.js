@@ -6,6 +6,7 @@ import {
   evaluateCommercePublicationEligibility,
   isRealtimeAccountUid,
 } from '@/lib/comercioPublicationPolicy'
+import { findCatalogPublisherByQuery } from '@/lib/catalogPublishers'
 import {
   DATA_SCHEMA_VERSION,
   identityIdForPhone,
@@ -787,9 +788,25 @@ export async function POST(request) {
       resolveRealtimeIdentities(rtdb, ownerPhone),
       db.collection(AUTHORIZED_COMMERCE_COLLECTION).get(),
     ])
+    // Si el comercio ya publica en `merida`, está registrado y autorizado, y su
+    // pendiente se firma con la misma cuenta con la que ya publica.
+    const catalogPublisher = await findCatalogPublisherByQuery(db, {
+      phoneVariants: phoneVariants(ownerPhone),
+      uids: identities.map((identity) => identity.uid),
+    })
     const ownerIdentity = identities.find((identity) => isRealtimeAccountUid(identity.uid)) || identities[0]
-    const owner = ownerIdentity ? { uid: ownerIdentity.uid, user: ownerIdentity.profile } : null
-    const ownerUids = identities.map((identity) => identity.uid)
+    const owner = catalogPublisher
+      ? {
+        uid: catalogPublisher.user_id,
+        user: identities.find((identity) => identity.uid === catalogPublisher.user_id)?.profile
+          || ownerIdentity?.profile
+          || null,
+      }
+      : ownerIdentity ? { uid: ownerIdentity.uid, user: ownerIdentity.profile } : null
+    const ownerUids = Array.from(new Set([
+      ...(catalogPublisher ? [catalogPublisher.user_id] : []),
+      ...identities.map((identity) => identity.uid),
+    ]))
     const ownerProfile = owner?.user || await commerceProfile(rtdb, { ...session, telefono: ownerPhone, tel: ownerPhone })
     const commerceIdentity = identities.find((identity) => {
       const candidate = commerceFromProfile(identity.profile, comercioId, dia)
@@ -799,7 +816,7 @@ export async function POST(request) {
     const ownerCommerce = commerceFromProfile(commerceProfileSource, comercioId, dia)
     const eligibility = evaluateCommercePublicationEligibility({
       phone: ownerPhone,
-      commerceId,
+      commerceId: comercioId,
       identityProfiles: [
         ...identities.map((identity) => identity.profile),
         ownerProfile,
@@ -808,6 +825,7 @@ export async function POST(request) {
       profile: commerceProfileSource,
       commerce: ownerCommerce,
       ownerUid: owner?.uid || '',
+      catalogPublisher,
     })
 
     if (!eligibility.hasCedula) {
