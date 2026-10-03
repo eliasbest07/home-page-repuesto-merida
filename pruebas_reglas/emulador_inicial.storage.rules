@@ -1,0 +1,11 @@
+// Solo para que arranque el emulador de Storage (lo exige el CLI). Las reglas
+// que se prueban son las de ../storage.rules: reglas.test.mjs las carga en los
+// emuladores al empezar, junto con ../firestore.rules y ../database.rules.json.
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{todo=**} {
+      allow read, write: if false;
+    }
+  }
+}
