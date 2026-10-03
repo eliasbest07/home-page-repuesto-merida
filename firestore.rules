@@ -18,12 +18,22 @@ service cloud.firestore {
              && (data.vendedor_id == request.auth.uid || data.vendedorId == request.auth.uid);
     }
 
+    // Dueño de un repuesto del catálogo.
+    //
+    // Se usa `data.get(campo, valor)` y NO `data.campo`: en las reglas, leer un
+    // campo que el documento no tiene es un ERROR que tumba toda la condición,
+    // así que un repuesto viejo sin `owner_uid` hacía que ni su propio dueño
+    // pudiera editarlo o borrarlo aunque el `userID` sí fuera el suyo.
+    //
+    // Un comercio suele tener varias cuentas (uid de Google/Apple, nodo de
+    // WhatsApp, teléfono) y el documento las lista todas en `owner_uids`.
     function catalogOwner(data) {
       return request.auth != null
              && (
-               data.owner_uid == request.auth.uid
-               || data.userID == request.auth.uid
-               || data.propietario_id == request.auth.uid
+               data.get('owner_uid', '') == request.auth.uid
+               || data.get('userID', '') == request.auth.uid
+               || data.get('propietario_id', '') == request.auth.uid
+               || request.auth.uid in data.get('owner_uids', [])
              );
     }
 
@@ -315,6 +325,374 @@ service cloud.firestore {
     // Imágenes y datos de verificación — solo admin
     match /usuarios_plaza/{telefono} {
       allow read, write: if request.auth != null;
+    }
+
+    // "Mis vehículos" de la app: cada documento es de quien lo guardó (`uid`).
+    // Solo esa cuenta lo lee, lo crea, lo cambia o lo borra; la app lo lista
+    // con where('uid', '==', auth.uid).
+    function vehiculoValido(data) {
+      return data.keys().hasOnly([
+               'uid', 'tipo', 'marca', 'modelo', 'anio', 'apodo', 'color', 'creado_en',
+               'fotos'
+             ])
+             // Fotos: lista de {id, url} de Storage, como mucho 12.
+             && (!('fotos' in data) || (data.fotos is list && data.fotos.size() <= 12))
+             && data.uid == request.auth.uid
+             && data.tipo in ['carro', 'moto']
+             && data.marca is string && data.marca.size() > 0 && data.marca.size() <= 60
+             && data.modelo is string && data.modelo.size() <= 80
+             && data.anio is int && data.anio >= 0 && data.anio <= 2100
+             && data.apodo is string && data.apodo.size() <= 60
+             && data.color is string && data.color.size() <= 40
+             && data.creado_en is int;
+    }
+
+    match /vehiculos_usuarios/{id} {
+      allow read, delete: if request.auth != null
+                          && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null
+                    && vehiculoValido(request.resource.data);
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid
+                    && vehiculoValido(request.resource.data);
+    }
+
+    // ── Servicios con chat (taller, cauchos, remolque, batería, llaves) ─────
+    // Contrato completo con el bot y el oso: ENCARGO_OSO_CHAT_SERVICIOS.md en
+    // el repo de la app.
+
+    // Anuncio de quien atiende un servicio (un taller). Lo publica el propio
+    // taller desde la app con id {uid}_{tipo}, apagado y `pendiente`: las
+    // reglas de Firestore no pueden leer Realtime Database, así que el que
+    // comprueba `users/{uid}/taller == true` y lo enciende (`activo`) es el
+    // oso. También puede crearlo el bot con Admin.
+    function campoCambia(campo) {
+      return campo in request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function urlPropia(url, carpeta) {
+      return url is string
+             && url.matches('https://firebasestorage[.]googleapis[.]com/v0/b/repuestos-merida[.]appspot[.]com/o/'
+                            + carpeta + '%2F' + request.auth.uid + '%2F.*');
+    }
+
+    function ubicacionValida(u) {
+      return u is map
+             && u.keys().hasOnly(['lat', 'lng'])
+             && u.lat is number && u.lat >= -90 && u.lat <= 90
+             && u.lng is number && u.lng >= -180 && u.lng <= 180;
+    }
+
+    function anuncioCamposValidos(d) {
+      return d.get('nombre', '') is string
+             && d.get('nombre', '').size() > 0 && d.get('nombre', '').size() <= 80
+             && d.get('responsable', '') is string && d.get('responsable', '').size() <= 80
+             && d.get('descripcion', '') is string && d.get('descripcion', '').size() <= 600
+             && d.get('ciudad', '') is string && d.get('ciudad', '').size() <= 40
+             && d.get('zona', '') is string && d.get('zona', '').size() <= 160
+             && d.get('horario', '') is string && d.get('horario', '').size() <= 80
+             && d.get('a_domicilio', false) is bool
+             && d.get('pausado', false) is bool
+             && d.get('foto', '') is string && d.get('foto', '').size() <= 2048
+             && d.get('fotos', []) is list && d.get('fotos', []).size() <= 30
+             && (!('ubicacion' in d) || ubicacionValida(d.ubicacion));
+    }
+
+    match /servicios_proveedores/{proveedorId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasOnly([
+                         'tipo', 'nombre', 'responsable', 'descripcion', 'ciudad',
+                         'zona', 'ubicacion', 'horario', 'a_domicilio', 'foto',
+                         'portada', 'fotos', 'owner_uids', 'activo', 'verificado',
+                         'pausado', 'estado', 'creado_en', 'actualizado_en'
+                       ])
+                    && request.resource.data.tipo in ['taller', 'cauchos', 'remolque', 'bateria', 'llaves']
+                    && proveedorId == request.auth.uid + '_' + request.resource.data.tipo
+                    && request.resource.data.owner_uids == [request.auth.uid]
+                    && request.resource.data.responsable.size() > 0
+                    && 'ubicacion' in request.resource.data
+                    && (request.resource.data.foto == ''
+                        || urlPropia(request.resource.data.foto, 'servicios_proveedores'))
+                    && request.resource.data.portada == ''
+                    && request.resource.data.fotos == []
+                    && request.resource.data.activo == false
+                    && request.resource.data.verificado == false
+                    && request.resource.data.pausado == false
+                    && request.resource.data.estado == 'pendiente'
+                    && anuncioCamposValidos(request.resource.data)
+                    && request.resource.data.creado_en == request.time
+                    && request.resource.data.actualizado_en == request.time;
+      // El dueño cambia sus datos, su galería y la pausa. No toca `activo`,
+      // `verificado`, `tipo` ni `owner_uids`; solo puede devolver a
+      // revisión un anuncio rechazado (estado 'rechazado' → 'pendiente').
+      allow update: if request.auth != null
+                    && request.auth.uid in resource.data.get('owner_uids', [])
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly([
+                           'fotos', 'nombre', 'responsable', 'descripcion',
+                           'ciudad', 'zona', 'ubicacion', 'horario',
+                           'a_domicilio', 'foto', 'pausado', 'estado', 'motivo',
+                           'actualizado_en'
+                         ])
+                    && anuncioCamposValidos(request.resource.data)
+                    && (!campoCambia('estado')
+                        || (resource.data.get('estado', '') == 'rechazado'
+                            && request.resource.data.estado == 'pendiente'))
+                    && (!campoCambia('motivo') || request.resource.data.motivo == '')
+                    && (!campoCambia('foto')
+                        || urlPropia(request.resource.data.foto, 'servicios_proveedores'))
+                    && request.resource.data.actualizado_en == request.time;
+      allow delete: if false;
+
+      // Una opinión por persona (id = uid). Solo opina quien abrió un chat
+      // con el servicio, y nunca el dueño sobre el suyo. `oculta` la pone
+      // el oso o soporte; el autor no la puede tocar.
+      function opinionValida(d) {
+        return d.keys().hasOnly([
+                 'uid', 'nombre', 'foto', 'estrellas', 'texto',
+                 'creado_en', 'actualizado_en', 'oculta'
+               ])
+               && d.uid == request.auth.uid
+               && d.estrellas is int && d.estrellas >= 1 && d.estrellas <= 5
+               && d.texto is string && d.texto.size() <= 500
+               && d.nombre is string && d.nombre.size() <= 120
+               && d.foto is string && d.foto.size() <= 2048
+               && d.actualizado_en == request.time;
+      }
+
+      match /opiniones/{uid} {
+        allow read: if true;
+        allow create: if request.auth != null
+                      && request.auth.uid == uid
+                      && opinionValida(request.resource.data)
+                      && !('oculta' in request.resource.data)
+                      && request.resource.data.creado_en == request.time
+                      && exists(/databases/$(database)/documents/chats_servicios/$(proveedorId + '_' + uid))
+                      && !(uid in get(/databases/$(database)/documents/servicios_proveedores/$(proveedorId)).data.get('owner_uids', []));
+        allow update: if request.auth != null
+                      && request.auth.uid == uid
+                      && opinionValida(request.resource.data)
+                      && request.resource.data.creado_en == resource.data.creado_en
+                      && request.resource.data.get('oculta', false) == resource.data.get('oculta', false);
+        allow delete: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Chat entre un cliente y quien atiende: id = {proveedorId}_{clienteUid}.
+    // Lo crea el cliente con su primer mensaje. `ultimo_mensaje` y
+    // `actualizado_en` los mueve el oso al aprobar; la app solo marca hasta
+    // dónde leyó cada quien.
+    match /chats_servicios/{chatId} {
+      function proveedorDelChat(id) {
+        return get(/databases/$(database)/documents/servicios_proveedores/$(id)).data;
+      }
+
+      allow get: if request.auth != null
+                 && (resource == null || request.auth.uid in resource.data.participantes);
+      allow list: if request.auth != null
+                  && request.auth.uid in resource.data.participantes;
+      function solicitudDelChat(id) {
+        return get(/databases/$(database)/documents/solicitudes_servicios/$(id)).data;
+      }
+
+      // Lo crea el cliente al escribirle a un servicio, o el taller al
+      // responder una solicitud abierta de ese cliente.
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasOnly([
+                         'proveedor_id', 'servicio', 'proveedor_nombre',
+                         'proveedor_foto', 'cliente_uid', 'cliente_nombre',
+                         'cliente_foto', 'participantes', 'leido_en',
+                         'solicitud_id', 'solicitud_texto',
+                         'creado_en', 'actualizado_en'
+                       ])
+                    && request.resource.data.proveedor_id is string
+                    && request.resource.data.cliente_uid is string
+                    && chatId == request.resource.data.proveedor_id + '_' + request.resource.data.cliente_uid
+                    && proveedorDelChat(request.resource.data.proveedor_id).get('activo', false) == true
+                    && !(request.resource.data.cliente_uid in proveedorDelChat(request.resource.data.proveedor_id).get('owner_uids', []))
+                    && request.resource.data.participantes
+                         == [request.resource.data.cliente_uid].concat(proveedorDelChat(request.resource.data.proveedor_id).owner_uids)
+                    && request.resource.data.servicio == proveedorDelChat(request.resource.data.proveedor_id).tipo
+                    && (
+                      (
+                        request.resource.data.cliente_uid == request.auth.uid
+                        && !('solicitud_id' in request.resource.data)
+                        && !('solicitud_texto' in request.resource.data)
+                      ) || (
+                        request.auth.uid in proveedorDelChat(request.resource.data.proveedor_id).owner_uids
+                        && request.resource.data.solicitud_id is string
+                        && solicitudDelChat(request.resource.data.solicitud_id).uid == request.resource.data.cliente_uid
+                        && solicitudDelChat(request.resource.data.solicitud_id).estado == 'abierta'
+                        && solicitudDelChat(request.resource.data.solicitud_id).tipo
+                             == proveedorDelChat(request.resource.data.proveedor_id).tipo
+                        && request.resource.data.solicitud_texto is string
+                        && request.resource.data.solicitud_texto.size() <= 200
+                      )
+                    )
+                    && request.resource.data.proveedor_nombre is string
+                    && request.resource.data.proveedor_nombre.size() <= 120
+                    && request.resource.data.proveedor_foto is string
+                    && request.resource.data.proveedor_foto.size() <= 2048
+                    && request.resource.data.cliente_nombre is string
+                    && request.resource.data.cliente_nombre.size() <= 120
+                    && request.resource.data.cliente_foto is string
+                    && request.resource.data.cliente_foto.size() <= 2048
+                    && request.resource.data.leido_en == {}
+                    && request.resource.data.creado_en == request.time
+                    && request.resource.data.actualizado_en == request.time;
+      allow update: if request.auth != null
+                    && request.auth.uid in resource.data.participantes
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leido_en'])
+                    && request.resource.data.leido_en.diff(resource.data.leido_en).affectedKeys()
+                         .hasOnly([request.auth.uid])
+                    && request.resource.data.leido_en[request.auth.uid] == request.time;
+      allow delete: if false;
+
+      // Cada mensaje nace `pendiente` y visible solo para su autor. El oso
+      // lo aprueba (agrega al otro a `visible_para`) o lo rechaza con un
+      // `motivo`. Nadie puede leer lo que no le toca: la regla mira
+      // `visible_para` y la app consulta con array-contains de su uid.
+      match /mensajes/{mensajeId} {
+        allow read: if request.auth != null
+                    && request.auth.uid in resource.data.visible_para;
+        allow create: if request.auth != null
+                      && request.auth.uid in get(/databases/$(database)/documents/chats_servicios/$(chatId)).data.participantes
+                      && request.resource.data.keys().hasOnly([
+                           'autor_uid', 'autor_rol', 'tipo', 'texto', 'url',
+                           'duracion', 'estado', 'visible_para', 'creado_en',
+                           'enviado_ms'
+                         ])
+                      && request.resource.data.autor_uid == request.auth.uid
+                      && request.resource.data.autor_rol ==
+                           (request.auth.uid == get(/databases/$(database)/documents/chats_servicios/$(chatId)).data.cliente_uid
+                              ? 'cliente' : 'proveedor')
+                      && request.resource.data.texto is string
+                      && request.resource.data.texto.size() <= 1000
+                      && request.resource.data.url is string
+                      && request.resource.data.duracion is int
+                      && request.resource.data.duracion >= 0
+                      && request.resource.data.duracion <= 600
+                      && (
+                        (
+                          request.resource.data.tipo == 'texto'
+                          && request.resource.data.texto.size() > 0
+                          && request.resource.data.url == ''
+                        ) || (
+                          request.resource.data.tipo in ['imagen', 'audio']
+                          // Solo archivos subidos a la carpeta de este chat y
+                          // de este autor: nada de enlaces de afuera.
+                          && request.resource.data.url.matches(
+                               'https://firebasestorage[.]googleapis[.]com/v0/b/repuestos-merida[.]appspot[.]com/o/chats_servicios%2F'
+                               + chatId + '%2F' + request.auth.uid + '%2F.*')
+                        )
+                      )
+                      && request.resource.data.estado == 'pendiente'
+                      && request.resource.data.visible_para == [request.auth.uid]
+                      && request.resource.data.enviado_ms is int
+                      && request.resource.data.creado_en == request.time;
+        allow update, delete: if false;
+      }
+    }
+
+    // Solicitudes de servicio: la tarjeta de quien busca un taller. Nace
+    // `pendiente` (solo la ve su dueño); el oso la pasa a `abierta` y ahí la
+    // ven todos con sesión. El dueño solo puede cerrarla o borrarla.
+    match /solicitudes_servicios/{solicitudId} {
+      allow read: if request.auth != null
+                  && (resource.data.estado == 'abierta'
+                      || resource.data.uid == request.auth.uid);
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasOnly([
+                         'uid', 'nombre', 'foto', 'tipo', 'descripcion',
+                         'repuesto', 'vehiculo', 'ciudad', 'zona',
+                         'a_domicilio', 'fotos', 'estado', 'creado_en',
+                         'actualizado_en'
+                       ])
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.tipo in ['taller', 'cauchos', 'remolque', 'bateria', 'llaves']
+                    && request.resource.data.descripcion is string
+                    && request.resource.data.descripcion.size() >= 8
+                    && request.resource.data.descripcion.size() <= 800
+                    && request.resource.data.repuesto is string
+                    && request.resource.data.repuesto.size() <= 120
+                    && request.resource.data.vehiculo is string
+                    && request.resource.data.vehiculo.size() <= 80
+                    && request.resource.data.ciudad is string
+                    && request.resource.data.ciudad.size() <= 40
+                    && request.resource.data.zona is string
+                    && request.resource.data.zona.size() <= 120
+                    && request.resource.data.nombre is string
+                    && request.resource.data.nombre.size() <= 120
+                    && request.resource.data.foto is string
+                    && request.resource.data.foto.size() <= 2048
+                    && request.resource.data.a_domicilio is bool
+                    && request.resource.data.fotos is list
+                    && request.resource.data.fotos.size() <= 3
+                    && (request.resource.data.fotos.size() < 1
+                        || urlPropia(request.resource.data.fotos[0], 'solicitudes_servicios'))
+                    && (request.resource.data.fotos.size() < 2
+                        || urlPropia(request.resource.data.fotos[1], 'solicitudes_servicios'))
+                    && (request.resource.data.fotos.size() < 3
+                        || urlPropia(request.resource.data.fotos[2], 'solicitudes_servicios'))
+                    && request.resource.data.estado == 'pendiente'
+                    && request.resource.data.creado_en == request.time
+                    && request.resource.data.actualizado_en == request.time;
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['estado', 'actualizado_en'])
+                    && resource.data.estado == 'abierta'
+                    && request.resource.data.estado == 'cerrada'
+                    && request.resource.data.actualizado_en == request.time;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // "Avísale por WhatsApp": la app deja el pedido, el bot lo atiende
+    // cuando el oso aprueba el mensaje. Nadie lo lee desde el cliente.
+    match /avisos_bot/{avisoId} {
+      allow read, update, delete: if false;
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasOnly([
+                         'tipo', 'chat_id', 'mensaje_id', 'proveedor_id',
+                         'remitente_uid', 'para', 'estado', 'creado_en'
+                       ])
+                    && request.resource.data.tipo == 'chat_servicio'
+                    && request.resource.data.remitente_uid == request.auth.uid
+                    && request.resource.data.chat_id is string
+                    && request.resource.data.mensaje_id is string
+                    && request.auth.uid in get(/databases/$(database)/documents/chats_servicios/$(request.resource.data.chat_id)).data.participantes
+                    && exists(/databases/$(database)/documents/chats_servicios/$(request.resource.data.chat_id)/mensajes/$(request.resource.data.mensaje_id))
+                    && request.resource.data.para in ['proveedor', 'cliente']
+                    && request.resource.data.estado == 'pendiente'
+                    && request.resource.data.creado_en == request.time;
+    }
+
+    // Reportes de contenido (guía 1.2 de la App Store): la app solo crea;
+    // soporte los lee desde la consola o con Admin.
+    match /reportes/{id} {
+      allow read, update, delete: if false;
+      allow create: if request.resource.data.keys().hasOnly([
+                         'tipo', 'contenido_id', 'autor_id', 'reportado_por',
+                         'motivo', 'detalle', 'resumen', 'estado',
+                         'plataforma', 'creado_en'
+                       ])
+                    && request.resource.data.reportado_por
+                         == (request.auth == null ? '' : request.auth.uid)
+                    && request.resource.data.tipo is string
+                    && request.resource.data.tipo.size() <= 40
+                    && request.resource.data.contenido_id is string
+                    && request.resource.data.contenido_id.size() <= 300
+                    && request.resource.data.autor_id is string
+                    && request.resource.data.autor_id.size() <= 128
+                    && request.resource.data.motivo is string
+                    && request.resource.data.motivo.size() <= 100
+                    && request.resource.data.detalle is string
+                    && request.resource.data.detalle.size() <= 1000
+                    && request.resource.data.resumen is string
+                    && request.resource.data.resumen.size() <= 300
+                    && request.resource.data.estado == 'pendiente'
+                    && request.resource.data.creado_en == request.time;
     }
   }
 }

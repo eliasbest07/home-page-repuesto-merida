@@ -1,11 +1,110 @@
 {
   "rules": {
     "anuncios":        { ".read": true, ".write": true },
+    "cardads":         { ".read": true, ".write": false },
+
+    // Métricas de uso. Cada quien solo puede tocar su propio registro, y nadie
+    // puede leer el nodo desde la app: los informes se sacan por consola o con
+    // el SDK Admin, que se salta las reglas.
+    "metricas": {
+      ".read": false,
+      ".write": false,
+      "sala_club": {
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".read": "auth != null && auth.uid === $uid",
+          "clics": { ".validate": "newData.isNumber()" },
+          "primero_en": { ".validate": "newData.isNumber()" },
+          "ultimo_en": { ".validate": "newData.isNumber()" },
+          "nombre": { ".validate": "newData.isString() && newData.val().length <= 60" },
+          "$otro": { ".validate": false }
+        }
+      }
+    },
+    "configuracion":   { ".read": true, ".write": false },
+
+    // Verificación de WhatsApp al registrarse.
+    // El nombre lleva la errata "Whastapp" porque así está escrito en la app:
+    // NO corregirla aquí sin cambiarla allá. Sin esta regla la escritura se
+    // denegaba y el usuario solo veía "encontraste una falla".
+    "verificarWhastappRegistro": {
+      ".read": false,
+      ".write": false,
+      "$numero": {
+        ".read": false,
+        ".write": false,
+        "solicitudes": {
+          ".read": false,
+          ".write": false,
+          // El installId son 48 hex aleatorios que solo conoce este teléfono, y
+          // los niveles de arriba están cerrados: nadie puede listar el nodo
+          // para descubrir las rutas de otros.
+          // El umbral es 16 porque es el que usa `_getOrCreateInstallId` en la
+          // app: un teléfono con un id viejo de 16 a 31 caracteres lo conserva,
+          // y exigir más aquí le denegaba la escritura.
+          // OJO: en Realtime Database `.write` CASCADEA hacia abajo y un hijo
+          // NO lo puede revocar. Por eso aquí NO hay `.write`: se concede campo
+          // por campo. Un `".write": true` en este nivel dejaría al cliente
+          // escribir `resultado` y autoverificarse cualquier número, aunque el
+          // hijo dijera `".write": false`.
+          "$installId": {
+            ".read": true,
+            "creado_en": {
+              ".write": "$installId.length >= 16",
+              ".validate": "newData.isNumber()"
+            },
+            "codigo_intento": {
+              ".write": "$installId.length >= 16",
+              ".validate": "newData.isString() && newData.val().length <= 12"
+            },
+            "intento_id": {
+              ".write": "$installId.length >= 16",
+              ".validate": "newData.isString() && newData.val().length <= 64"
+            },
+            "intento_en": {
+              ".write": "$installId.length >= 16",
+              ".validate": "newData.isNumber()"
+            }
+            // `resultado` no aparece: sin `.write` en él ni en ningún ancestro,
+            // solo lo puede escribir el bot con el SDK Admin, que se salta las
+            // reglas. Es lo que impide que el cliente se apruebe a sí mismo.
+          }
+        }
+      }
+    },
+    // Perfil PRIVADO de cada usuario: lo lee y escribe solo su dueño. Lo que
+    // tenga que ver todo el mundo (nombre, foto, ciudad, tipo de vendedor)
+    // va en `public_profiles`, que se regenera desde aquí. El bot y la API
+    // usan el SDK Admin, que se salta estas reglas. Sin `.read` en este nivel
+    // nadie puede listar el nodo; el índice sigue sirviendo al Admin.
     "users": {
-      ".read": true,
       ".indexOn": ["whatsapp", "telefono"],
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid"
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        // Taller verificado: lo pone el bot o soporte (Admin, que se salta
+        // las reglas). El dueño no se lo puede poner ni cambiar solo; el
+        // oso lo lee antes de encender un anuncio de servicio.
+        "taller": {
+          ".validate": "newData.val() === data.val()"
+        }
+      }
+    },
+
+    // Búsquedas que guarda la app (`enviarSearch` en guardar_seachs.dart):
+    // `search/{uid}/{momento} = texto`. Este nodo estaba desplegado en consola
+    // pero no en este archivo, y cada deploy desde aquí lo borraba: sin él la
+    // raíz deniega la escritura y la app se lo traga en silencio. Un usuario
+    // con sesión escribe bajo su uid; uno anónimo solo puede crear (no editar).
+    "search": {
+      ".read": false,
+      ".write": false,
+      "$quien": {
+        ".write": "auth != null && auth.uid === $quien",
+        "$momento": {
+          ".write": "auth == null && !data.exists()",
+          ".validate": "newData.isString() && newData.val().length <= 120"
+        }
       }
     },
     "public_profiles": {
@@ -91,8 +190,16 @@
         "storage_schema_version": {
           ".validate": "!newData.exists() || newData.val() === 2"
         },
+        // Marca de "el usuario pulsó enviar" en la app. Es la señal que
+        // espera el bot para analizar el par de fotos: sin esto, el nodo solo
+        // dice que las fotos se subieron, que ocurre foto por foto y antes de
+        // que la persona decidiera mandarlas. Se exige la hora del servidor
+        // para que el cliente no pueda antedatar ni postdatar el envío.
+        "enviado_en": {
+          ".validate": "!newData.exists() || newData.val() === now"
+        },
         "$other": {
-          ".validate": "$other === 'fotocedula' || $other === 'fotocaracedula' || $other === 'storage_schema_version'"
+          ".validate": "$other === 'fotocedula' || $other === 'fotocaracedula' || $other === 'storage_schema_version' || $other === 'enviado_en'"
         }
       }
     },
