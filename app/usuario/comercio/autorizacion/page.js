@@ -10,6 +10,7 @@ import { rtdb } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
 import { MAX_SOURCE_IMAGE_SIZE, MAX_UPLOADED_IMAGE_SIZE, prepareImageForUpload } from '@/lib/imageCompression'
 import { CAR_BRANDS, MOTO_BRANDS } from '@/lib/vehicleBrands'
+import ControlUsuarios from './ControlUsuarios'
 
 const MapPicker = dynamic(() => import('@/app/components/MapPicker'), { ssr: false })
 
@@ -68,9 +69,17 @@ function repuestoPhone(item = {}) {
   return ''
 }
 
-function repuestoBelongsToCommerce(item, commerce = {}) {
+function commerceKey(commerce = {}) {
+  return commerce.comercio_id || canonPhone(commerce.whatsapp || commerce.whatsapp_normalizado)
+}
+
+function repuestoBelongsToCommerce(item, commerce = {}, catalogUserIds = []) {
   const itemPhone = repuestoPhone(item)
   const commercePhone = canonPhone(commerce.whatsapp || commerce.whatsapp_normalizado)
+
+  // Las piezas del catálogo pertenecen a la cuenta que las publicó (`userID`),
+  // aunque traigan otro WhatsApp o ninguno: así las cuenta la app.
+  if (item.source === 'catalogo' && item.owner_uid && catalogUserIds.includes(item.owner_uid)) return true
 
   if (isAppPending(item)) {
     if (item.dia && commerce.dia && item.dia !== commerce.dia) return false
@@ -447,6 +456,7 @@ export default function ComercioAutorizacionPage() {
   const [showSidebarLists, setShowSidebarLists] = useState(true)
   const [showAllRepuestos, setShowAllRepuestos] = useState(false)
   const [showHomeAnalytics, setShowHomeAnalytics] = useState(false)
+  const [showUserControl, setShowUserControl] = useState(false)
   const [showSalesInventory, setShowSalesInventory] = useState(true)
   const [allRepuestosFilter, setAllRepuestosFilter] = useState('todos')
   const [allRepuestosPage, setAllRepuestosPage] = useState(1)
@@ -462,6 +472,7 @@ export default function ComercioAutorizacionPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [repuestos, setRepuestos] = useState([])
+  const [catalogUserIdsByCommerce, setCatalogUserIdsByCommerce] = useState({})
   const [repuestosLoading, setRepuestosLoading] = useState(false)
   const [allRepuestosLoaded, setAllRepuestosLoaded] = useState(false)
   const [repuestoSaving, setRepuestoSaving] = useState(false)
@@ -594,8 +605,16 @@ export default function ComercioAutorizacionPage() {
   const commerceEligibility = form.publication_eligibility || {}
   const commerceCanPublish = commerceEligibility.allowed === true
   const currentVenta = selectedVenta || form.lista_ventas_repuestos[0] || ''
+  const catalogUserIdsFor = (commerce = {}) => Array.from(new Set([
+    ...(catalogUserIdsByCommerce[commerceKey(commerce)] || []),
+    commerce.catalog_user_id,
+    commerce.publication_eligibility?.catalogUserId,
+  ].filter(Boolean)))
+  const belongsToCommerce = (item, commerce) => (
+    repuestoBelongsToCommerce(item, commerce, catalogUserIdsFor(commerce))
+  )
   const commerceRepuestos = repuestos.filter((item) => {
-    if (repuestoBelongsToCommerce(item, form)) return true
+    if (belongsToCommerce(item, form)) return true
     if (repuestoPhone(item) || item.comercio_id) return false
     if (item.dia) return item.dia === selectedDay
     return false
@@ -603,14 +622,14 @@ export default function ComercioAutorizacionPage() {
   const pendingApprovalCount = commerceRepuestos.filter((item) => !item.aprobado && !item.archivado).length
   const repuestosForCommerce = (commerce) => {
     return repuestos.filter((item) => {
-      if (repuestoBelongsToCommerce(item, commerce)) return true
+      if (belongsToCommerce(item, commerce)) return true
       if (repuestoPhone(item) || item.comercio_id) return false
       return selectedCommerceId === commerce.comercio_id && (!item.dia || item.dia === selectedDay)
     })
   }
   const pendingCountForCommerce = (commerce) => repuestos.filter((item) => {
     if (item.aprobado || item.archivado) return false
-    if (repuestoBelongsToCommerce(item, commerce)) return true
+    if (belongsToCommerce(item, commerce)) return true
     if (repuestoPhone(item) || item.comercio_id) return false
     return selectedCommerceId === commerce.comercio_id && (!item.dia || item.dia === selectedDay)
   }).length
@@ -851,6 +870,7 @@ export default function ComercioAutorizacionPage() {
       comercio_lng: item.comercio_lng ?? null,
       tipo_vehiculo: item.tipo_vehiculo === 'moto' ? 'moto' : 'carro',
       identity_verification: item.identity_verification,
+      catalog_user_id: item.user_id || '',
     })
     setSelectedVenta('')
     setPhotoFile(null)
@@ -1081,15 +1101,18 @@ export default function ComercioAutorizacionPage() {
       const commerceId = selectedCommerceId || form.comercio_id
       const commercePhone = form.whatsapp || form.whatsapp_normalizado
       const realtimeUid = form.realtime_user_uid
+      const catalogUserId = form.catalog_user_id || form.publication_eligibility?.catalogUserId || ''
+      const requestedCommerceKey = commerceKey(form)
       if (commerceId) commerceParams.set('comercio_id', commerceId)
       if (commercePhone) commerceParams.set('telefono', commercePhone)
       if (realtimeUid) commerceParams.set('realtime_user_uid', realtimeUid)
+      if (catalogUserId) commerceParams.set('catalog_user_id', catalogUserId)
 
       const approvalRequest = fetch(`/api/usuario/comercio/repuestos?${approvalParams}`, {
         headers: { Authorization: `Bearer ${session.token}` },
         cache: 'no-store',
       })
-      const commerceRequest = commerceId || commercePhone || realtimeUid
+      const commerceRequest = commerceId || commercePhone || realtimeUid || catalogUserId
         ? fetch(`/api/usuario/comercio/repuestos?${commerceParams}`, {
           headers: { Authorization: `Bearer ${session.token}` },
           cache: 'no-store',
@@ -1116,6 +1139,12 @@ export default function ComercioAutorizacionPage() {
           throw new Error(commerceBody.error || 'No se pudo cargar el inventario del comercio.')
         }
         setRepuestos((current) => mergeRepuestos(current, commerceBody.items || []))
+        if (requestedCommerceKey && Array.isArray(commerceBody.catalog_user_ids)) {
+          setCatalogUserIdsByCommerce((current) => ({
+            ...current,
+            [requestedCommerceKey]: commerceBody.catalog_user_ids,
+          }))
+        }
       }
       setAllRepuestosPage(1)
     } catch (err) {
@@ -1495,8 +1524,8 @@ export default function ComercioAutorizacionPage() {
     const target = typeof itemArg === 'object' && itemArg ? itemArg : repuestos.find((r) => r.id === itemArg)
     if (!target) return
     const id = target.id
-    const matchingCommerces = allGlobalCommerces.filter((commerce) => repuestoBelongsToCommerce(target, commerce))
-    const selectedCommerceMatches = repuestoBelongsToCommerce(target, form)
+    const matchingCommerces = allGlobalCommerces.filter((commerce) => belongsToCommerce(target, commerce))
+    const selectedCommerceMatches = belongsToCommerce(target, form)
       && (!target.dia || target.dia === selectedDay)
     const linkedCommerce = selectedCommerceMatches
       ? { ...form, comercio_id: selectedCommerceId || form.comercio_id }
@@ -1731,6 +1760,9 @@ export default function ComercioAutorizacionPage() {
               <SoftButton active={showAllRepuestos} onClick={toggleAllRepuestos}>
                 {showAllRepuestos ? 'Ocultar repuestos' : 'Repuestos (todos)'}
               </SoftButton>
+              <SoftButton active={showUserControl} onClick={() => setShowUserControl((prev) => !prev)}>
+                {showUserControl ? 'Ocultar control de usuarios' : 'Control de usuarios'}
+              </SoftButton>
               <SoftButton active={showHomeAnalytics} onClick={toggleHomeAnalytics}>
                 {showHomeAnalytics ? 'Ocultar estadísticas' : 'Ver estadísticas'}
               </SoftButton>
@@ -1834,6 +1866,8 @@ export default function ComercioAutorizacionPage() {
         </aside>
 
         <div className="flex min-w-0 flex-col gap-5">
+          {showUserControl && <ControlUsuarios token={session?.token} />}
+
           {showHomeAnalytics && (
           <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

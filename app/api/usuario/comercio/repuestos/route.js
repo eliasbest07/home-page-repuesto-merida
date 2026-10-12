@@ -59,6 +59,9 @@ function phoneVariants(raw) {
     canon ? `0${canon}` : '',
     canon ? `58${canon}` : '',
     canon ? `+58${canon}` : '',
+    // La app Android guardó piezas como `+5804...`: el 0 local quedó dentro.
+    canon ? `580${canon}` : '',
+    canon ? `+580${canon}` : '',
   ].filter(Boolean)))
 }
 
@@ -584,8 +587,9 @@ export async function GET(request) {
 
       const commerceId = cleanText(url.searchParams.get('comercio_id'), 80)
       const realtimeUid = realtimeKey(url.searchParams.get('realtime_user_uid'), 128)
+      const catalogUserId = realtimeKey(url.searchParams.get('catalog_user_id'), 128)
       const variants = phoneVariants(url.searchParams.get('telefono'))
-      if (!commerceId && !realtimeUid && variants.length === 0) {
+      if (!commerceId && !realtimeUid && !catalogUserId && variants.length === 0) {
         return NextResponse.json({ error: 'Falta identificar el comercio.' }, { status: 400 })
       }
 
@@ -619,6 +623,23 @@ export async function GET(request) {
       sourceSnaps.forEach((snap) => snap.docs.forEach((doc) => sourceDocsById.set(doc.id, doc)))
       catalogSnaps.forEach((snap) => snap.docs.forEach((doc) => catalogDocsById.set(doc.id, doc)))
 
+      // La app cuenta las piezas de un comercio por `userID` (la cuenta que
+      // publica). Hay piezas con otro WhatsApp, con el número vacío o en un
+      // formato viejo; por teléfono no aparecen, así que se completa con
+      // todas las piezas de las cuentas encontradas.
+      const queriedUids = new Set([realtimeUid].filter(Boolean))
+      const catalogUserIds = new Set([catalogUserId].filter(Boolean))
+      catalogDocsById.forEach((doc) => {
+        const uid = realtimeKey(doc.data()?.userID, 128)
+        if (uid) catalogUserIds.add(uid)
+      })
+      const missingUids = Array.from(catalogUserIds).filter((uid) => !queriedUids.has(uid)).slice(0, 10)
+      const expandedSnaps = await Promise.all(missingUids.map((uid) => (
+        db.collection(CATALOGO_COLLECTION).where('userID', '==', uid).limit(1000).get()
+          .catch(() => ({ docs: [] }))
+      )))
+      expandedSnaps.forEach((snap) => snap.docs.forEach((doc) => catalogDocsById.set(doc.id, doc)))
+
       const catalogDocsByRepuestoId = new Map()
       catalogDocsById.forEach((doc) => {
         const sourceId = cleanText(doc.data()?.comercio_repuesto_id, 64)
@@ -646,7 +667,7 @@ export async function GET(request) {
         .filter((item) => !item.eliminado)
         .sort((a, b) => (b.creado_en ?? 0) - (a.creado_en ?? 0))
 
-      return NextResponse.json({ ok: true, items })
+      return NextResponse.json({ ok: true, items, catalog_user_ids: Array.from(catalogUserIds) })
     }
 
     if (scope === 'all') {

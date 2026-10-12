@@ -4,6 +4,7 @@ import CookieConsent from '@/app/components/CookieConsent'
 import GlobalLegalLinks from '@/app/components/GlobalLegalLinks'
 import AdSenseLoader from '@/app/components/AdSenseLoader'
 import ConsentAwareAnalytics from '@/app/components/ConsentAwareAnalytics'
+import AppDownloadBanner from '@/app/components/AppDownloadBanner'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
 const ADSENSE_ENABLED = process.env.NEXT_PUBLIC_ADSENSE_ENABLED === 'true'
@@ -90,6 +91,7 @@ export default function RootLayout({ children }) {
       <body>
         {children}
         <GlobalLegalLinks />
+        <AppDownloadBanner />
         <CookieConsent />
         <AdSenseLoader />
         <ConsentAwareAnalytics />
