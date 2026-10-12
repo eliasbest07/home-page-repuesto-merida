@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation'
 
 const GOOGLE_PLAY_URL = 'https://play.google.com/store/apps/details?id=com.btmstudio.rep_merida'
 const APP_STORE_URL = 'https://apps.apple.com/app/repuestos-m%C3%A9rida-app/id6783600411'
-const DISMISS_KEY = 'rm_app_banner_dismissed'
 
 // Rutas con botones flotantes propios abajo (chat de Plaza) donde el banner estorbaría.
 const HIDDEN_PREFIXES = ['/plaza']
@@ -49,11 +48,6 @@ export default function AppDownloadBanner() {
   useEffect(() => {
     const p = detectPlatform()
     if (!p) return
-    let dismissed = false
-    try {
-      dismissed = sessionStorage.getItem(DISMISS_KEY) === '1'
-    } catch {}
-    if (dismissed) return
     setPlatform(p)
 
     // El banner aparece con el primer scroll del usuario (o de inmediato si la
@@ -70,12 +64,8 @@ export default function AppDownloadBanner() {
   if (!visible || !platform) return null
   if (HIDDEN_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return null
 
-  const close = () => {
-    setVisible(false)
-    try {
-      sessionStorage.setItem(DISMISS_KEY, '1')
-    } catch {}
-  }
+  // Cerrar solo oculta el banner en esta carga; al recargar la página vuelve a aparecer.
+  const close = () => setVisible(false)
 
   const isIOS = platform === 'ios'
   const href = isIOS ? APP_STORE_URL : GOOGLE_PLAY_URL
