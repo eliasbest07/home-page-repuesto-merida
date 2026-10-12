@@ -55,7 +55,16 @@ export default function AppDownloadBanner() {
     } catch {}
     if (dismissed) return
     setPlatform(p)
-    setVisible(true)
+
+    // El banner aparece con el primer scroll del usuario (o de inmediato si la
+    // página ya carga desplazada, p. ej. al volver atrás).
+    if (window.scrollY > 0) {
+      setVisible(true)
+      return
+    }
+    const onFirstScroll = () => setVisible(true)
+    window.addEventListener('scroll', onFirstScroll, { passive: true, once: true })
+    return () => window.removeEventListener('scroll', onFirstScroll)
   }, [])
 
   if (!visible || !platform) return null
@@ -78,29 +87,31 @@ export default function AppDownloadBanner() {
       role="region"
       aria-label="Descargar la app de Repuestos Mérida"
     >
-      <div className="relative flex items-center gap-3 rounded-2xl border border-gray-700 bg-gray-900 p-3 pr-10 text-white shadow-2xl">
+      <div className="app-banner-enter relative flex items-center gap-3 rounded-2xl border border-gray-700 bg-gray-900 p-3 pr-10 text-white shadow-2xl">
         <img src="/iconorm.png" alt="" width={44} height={44} className="h-11 w-11 shrink-0 rounded-xl" />
         <div className="min-w-0 flex-1">
           <p className="font-brand text-sm leading-tight">Repuestos Mérida</p>
           <p className="text-xs text-gray-400 leading-tight">Tu repuesto, disponible ahora</p>
         </div>
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={isIOS ? 'Descargar en el App Store' : 'Disponible en Google Play'}
-          className="app-badge-glow shrink-0 active:scale-95 transition-transform"
-        >
-          <span className="flex items-center gap-1.5 rounded-[0.5rem] bg-black px-2.5 py-1.5 text-white">
-            {isIOS ? <AppleLogo /> : <PlayLogo />}
-            <span className="text-left leading-none">
-              <span className="block text-[9px] uppercase tracking-wide text-gray-300">
-                {isIOS ? 'Descárgalo en el' : 'Disponible en'}
+        <span className="app-badge-pop shrink-0">
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={isIOS ? 'Descargar en el App Store' : 'Disponible en Google Play'}
+            className="app-badge-glow block active:scale-95 transition-transform"
+          >
+            <span className="flex items-center gap-1.5 rounded-[0.5rem] bg-black px-2.5 py-1.5 text-white">
+              {isIOS ? <AppleLogo /> : <PlayLogo />}
+              <span className="text-left leading-none">
+                <span className="block text-[9px] uppercase tracking-wide text-gray-300">
+                  {isIOS ? 'Descárgalo en el' : 'Disponible en'}
+                </span>
+                <span className="block text-sm font-semibold">{isIOS ? 'App Store' : 'Google Play'}</span>
               </span>
-              <span className="block text-sm font-semibold">{isIOS ? 'App Store' : 'Google Play'}</span>
             </span>
-          </span>
-        </a>
+          </a>
+        </span>
         <button
           type="button"
           onClick={close}

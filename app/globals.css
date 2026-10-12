@@ -1116,7 +1116,7 @@ section[id] {
   padding: 1.5px;
   border-radius: 0.6rem;
   background: #4b5563;
-  animation: app-badge-halo 4.5s ease-in-out infinite;
+  animation: app-badge-halo 4.5s ease-in-out 0.9s infinite;
 }
 .app-badge-glow::before {
   content: '';
@@ -1131,7 +1131,8 @@ section[id] {
     #fff 350deg,
     transparent 360deg
   );
-  animation: app-badge-sweep 4.5s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  opacity: 0;
+  animation: app-badge-sweep 4.5s cubic-bezier(0.45, 0, 0.25, 1) 0.9s infinite;
 }
 @keyframes app-badge-sweep {
   0%        { transform: rotate(0deg);   opacity: 0; }
@@ -1143,7 +1144,27 @@ section[id] {
   0%, 15%, 70%, 100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
   40%                { box-shadow: 0 0 14px 1px rgba(255, 215, 0, 0.35); }
 }
+
+/* Entrada del banner (se monta con el primer scroll): sube con rebote suave,
+   luego el badge hace "pop" y arranca el destello del borde (delay 0.9s). */
+.app-banner-enter {
+  animation: app-banner-in 0.55s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+}
+.app-badge-pop {
+  display: block;
+  animation: app-badge-pop-in 0.45s cubic-bezier(0.34, 1.6, 0.64, 1) 0.35s both;
+}
+@keyframes app-banner-in {
+  from { transform: translateY(calc(100% + 1.5rem)); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@keyframes app-badge-pop-in {
+  from { transform: scale(0.6); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
 @media (prefers-reduced-motion: reduce) {
   .app-badge-glow,
-  .app-badge-glow::before { animation: none; }
+  .app-badge-glow::before,
+  .app-banner-enter,
+  .app-badge-pop { animation: none; }
 }
