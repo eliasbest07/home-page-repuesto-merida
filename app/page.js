@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useDeferredValue } from 'react'
 import dynamic from 'next/dynamic'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
 import { collection, documentId, getDocs, orderBy, query, startAfter, where, limit } from 'firebase/firestore'
@@ -10,6 +10,7 @@ import { get, ref } from 'firebase/database'
 import { firestore, rtdb } from '@/lib/firebase'
 import { ensureSession } from '@/lib/rifaSession'
 import { hasVerifiedDocument } from '@/lib/identityVerificationPolicy'
+import { construirIndice } from '@/lib/indiceBusqueda'
 
 const PlazaChat = dynamic(() => import('./components/PlazaChat'), { ssr: false })
 const ComerciosMap = dynamic(() => import('./components/ComerciosMap'), { ssr: false })
@@ -274,7 +275,8 @@ function matchesCatalogBrand(product, brandName) {
     product.descripcion,
   ].filter(Boolean).join(' '))
 
-  return haystack.includes(brand)
+  // Las piezas publicadas como "Todas las marcas" le sirven a cualquier marca.
+  return haystack.includes(brand) || haystack.includes('todas las marcas')
 }
 
 function formatPrice(value) {
@@ -343,6 +345,17 @@ function normalizeHomeProduct(item, id) {
     descripcion: item.descripcion || '',
     userID: item.userID || '',
     comercio: item.comercio || '',
+    // Campos crudos de `merida` para el buscador (ver lib/indiceBusqueda.js):
+    // `nombre`/`marca` de arriba ya vienen reacomodados para mostrar.
+    camposBusqueda: {
+      descripcion: item.descripcion || '',
+      marca: item.marca || '',
+      categoria: item.categoria || '',
+      modelos: item.modelos || '',
+      vehiculo: item.vehiculo || '',
+      buscar: Array.isArray(item.buscar) ? item.buscar : [],
+      comercio: item.comercio || '',
+    },
   }
 }
 
@@ -805,22 +818,42 @@ export default function Home() {
     }
   }, [])
 
-  const productosFiltrados = catalogo.filter((p) => {
+  const enAmbito = (p) => {
     const matchVehicle = !catalogVehicleType || (p.tipo_vehiculo || 'carro') === catalogVehicleType
     const matchBrand = matchesCatalogBrand(p, selectedBrand)
     const matchCat = catActiva === 'todos' || p.categoria === catActiva
-    const q = normalizeText(busqueda)
-    const sellerName = sellerDisplayName(usersById?.[p.userID] || {}, p)
-    const searchableText = normalizeText([
-      p.nombre,
-      p.marca,
-      p.compat,
-      p.descripcion,
-      sellerName,
-    ].filter(Boolean).join(' '))
-    const matchSearch = !q || searchableText.includes(q)
-    return matchVehicle && matchBrand && matchCat && matchSearch
-  })
+    return matchVehicle && matchBrand && matchCat
+  }
+
+  // Mismo buscador que la app (puntaje por campo, sinónimos de taller, tipeos
+  // por sonido, muletillas fuera). El índice solo se arma cuando hay algo
+  // escrito, y la búsqueda corre con el valor diferido para no trabar el input.
+  const busquedaDiferida = useDeferredValue(busqueda)
+  const hayBusqueda = Boolean(normalizeText(busquedaDiferida))
+  const indiceBusqueda = useMemo(() => {
+    if (!hayBusqueda) return null
+    return construirIndice(catalogo, (p) => {
+      const sellerName = sellerDisplayName(usersById?.[p.userID] || {}, p)
+      const campos = p.camposBusqueda || {
+        descripcion: `${p.nombre} ${p.descripcion || ''}`,
+        marca: p.marca,
+        modelos: p.compat,
+      }
+      return { ...campos, comercio: [campos.comercio, sellerName].filter(Boolean).join(' ') }
+    })
+  }, [catalogo, usersById, hayBusqueda])
+
+  const respuestaBusqueda = useMemo(() => {
+    if (!indiceBusqueda) return null
+    return indiceBusqueda.buscar(busquedaDiferida, { ambito: enAmbito })
+  }, [indiceBusqueda, busquedaDiferida, catalogVehicleType, selectedBrand, catActiva]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Con búsqueda: primero lo que responde a todas las palabras y, si no hay
+  // nada así, lo más parecido como sugerencia.
+  const soloSugerencias = Boolean(respuestaBusqueda && !respuestaBusqueda.resultados.length && respuestaBusqueda.sugerencias.length)
+  const productosFiltrados = respuestaBusqueda
+    ? [...respuestaBusqueda.resultados, ...respuestaBusqueda.sugerencias]
+    : catalogo.filter(enAmbito)
 
   // Al cambiar de filtro, de marca o de búsqueda se vuelve a empezar por el
   // primer lote: si no, un filtro nuevo heredaría el "ver más" del anterior.
@@ -1770,6 +1803,7 @@ export default function Home() {
               <p className="text-gray-500 text-sm mt-1">
                 {productosFiltrados.length} repuesto{productosFiltrados.length !== 1 ? 's' : ''} encontrado{productosFiltrados.length !== 1 ? 's' : ''}
                 {busqueda && ` para "${busqueda}"`}
+                {soloSugerencias && ' · sin coincidencia exacta, te mostramos lo más parecido'}
                 {catalogoCargando && ' · cargando más…'}
               </p>
               {catalogoError && (

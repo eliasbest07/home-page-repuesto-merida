@@ -72,7 +72,7 @@ export default function AppDownloadBanner() {
 
   return (
     <div
-      className="fixed inset-x-3 bottom-3 z-40 md:hidden"
+      className="fixed inset-x-3 bottom-3 z-[2147483647] md:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       role="region"
       aria-label="Descargar la app de Repuestos Mérida"

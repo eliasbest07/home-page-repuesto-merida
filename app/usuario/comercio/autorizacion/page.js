@@ -79,7 +79,11 @@ function repuestoBelongsToCommerce(item, commerce = {}, catalogUserIds = []) {
 
   // Las piezas del catálogo pertenecen a la cuenta que las publicó (`userID`),
   // aunque traigan otro WhatsApp o ninguno: así las cuenta la app.
-  if (item.source === 'catalogo' && item.owner_uid && catalogUserIds.includes(item.owner_uid)) return true
+  // La cuenta de la propia ficha también vale: así no depende de que haya
+  // llegado `catalog_user_ids` del servidor para contar las piezas con otro WhatsApp.
+  if (item.source === 'catalogo' && item.owner_uid && (
+    catalogUserIds.includes(item.owner_uid) || item.owner_uid === commerce.realtime_user_uid
+  )) return true
 
   if (isAppPending(item)) {
     if (item.dia && commerce.dia && item.dia !== commerce.dia) return false
