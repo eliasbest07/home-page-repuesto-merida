@@ -1,26 +1,34 @@
-const NOINDEX_HEADERS = [
-  '/api/:path*',
-  '/login',
-  '/registro',
-  '/auth/:path*',
-  '/configurador',
-  '/configurador/:path*',
-  '/bingo',
-  '/bingo/:path*',
-  '/rifa',
-  '/rifa/:path*',
-  '/rifas',
-  '/piedra-papel-tijera',
-  '/verificacion',
-  '/verificacion/:path*',
-  '/usuario/:path*',
-  '/directorio',
-  '/anuncio/:path*',
-  '/repuesto/:path*',
-  '/plaza/login',
-  '/plaza/publicar',
-  '/plaza/mis-anuncios',
-  '/plaza/solicitar',
+const NOINDEX_HEADERS = ['/api/:path*']
+
+// La web ahora es una sola landing que enseña a usar la app. Las páginas que
+// había antes redirigen a la guía más cercana (o al inicio), para no romper
+// enlaces compartidos ni perder lo que Google ya tenía indexado.
+const REDIRECCIONES_A_LA_GUIA = [
+  ['/blog', '/'],
+  ['/blog/:path*', '/'],
+  ['/guia-repuesto', '/#buscar'],
+  ['/rio-albarregas', '/'],
+  ['/rifa', '/'],
+  ['/rifa/:path*', '/'],
+  ['/rifas', '/'],
+  ['/bingo', '/'],
+  ['/bingo/:path*', '/'],
+  ['/piedra-papel-tijera', '/'],
+  ['/verificacion', '/#cuenta'],
+  ['/verificacion/:path*', '/#cuenta'],
+  ['/auth/:path*', '/#cuenta'],
+  ['/plaza', '/#plaza'],
+  ['/plaza/:path*', '/#plaza'],
+  ['/anuncio/:path*', '/#plaza'],
+  ['/solicitados', '/#pedir'],
+  ['/repuesto/:path*', '/#buscar'],
+  ['/mapa', '/#mapa'],
+  ['/directorio', '/#mapa'],
+  ['/configurador', '/#mi-carro'],
+  ['/configurador/:path*', '/#mi-carro'],
+  ['/login', '/#cuenta'],
+  ['/registro', '/#cuenta'],
+  ['/usuario/:path*', '/#cuenta'],
 ]
 
 const SECURITY_HEADERS = [
@@ -41,6 +49,13 @@ const nextConfig = {
       { protocol: 'https', hostname: '**' },
       { protocol: 'http', hostname: '**' },
     ],
+  },
+  async redirects() {
+    return REDIRECCIONES_A_LA_GUIA.map(([source, destination]) => ({
+      source,
+      destination,
+      permanent: true,
+    }))
   },
   async headers() {
     return [

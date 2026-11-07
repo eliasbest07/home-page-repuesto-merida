@@ -1,3005 +1,702 @@
-'use client'
-
 import Image from 'next/image'
 import Link from 'next/link'
-import { useState, useEffect, useRef } from 'react'
-import dynamic from 'next/dynamic'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
-import { collection, getDocs, query, where, limit } from 'firebase/firestore'
-import { get, ref } from 'firebase/database'
-import { firestore, rtdb } from '@/lib/firebase'
-import { ensureSession } from '@/lib/rifaSession'
 
-const PlazaChat = dynamic(() => import('./components/PlazaChat'), { ssr: false })
-const ComerciosMap = dynamic(() => import('./components/ComerciosMap'), { ssr: false })
+// Landing de la app: enseña a usar Repuestos Mérida App con capturas reales
+// (tomadas en un Motorola con la app 1.1.3). Es un componente de servidor sin
+// JavaScript propio, pensado para teléfonos de gama baja.
+
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
-const REQUEST_DRAFT_KEY = 'repuestos-merida-solicitud-borrador'
-const CITAS_TECNICAS = [
-  { nombre: 'NHTSA Vehicle Maintenance', url: 'https://www.nhtsa.gov/road-safety/vehicle-safety-maintenance' },
-  { nombre: 'Bosch Automotive Aftermarket', url: 'https://www.boschaftermarket.com/' },
-  { nombre: 'NGK Spark Plugs Catalog', url: 'https://www.ngkntk.com/' },
-  { nombre: 'Gates Automotive', url: 'https://www.gates.com/us/en.html' },
+const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.btmstudio.rep_merida'
+const APP_STORE_URL = 'https://apps.apple.com/app/id6783600411'
+const WA_SOPORTE = '584123375417'
+
+const CAPTURAS = {
+  inicio: { src: '/app-capturas/inicio.webp', w: 720, h: 1404 },
+  buscarResultados: { src: '/app-capturas/buscar-resultados.webp', w: 720, h: 1404 },
+  buscarPorModelo: { src: '/app-capturas/buscar-por-modelo.webp', w: 720, h: 1404 },
+  detalle: { src: '/app-capturas/detalle-repuesto.webp', w: 720, h: 1315 },
+  carroMarca: { src: '/app-capturas/carro-marca.webp', w: 720, h: 1486 },
+  carroModelo: { src: '/app-capturas/carro-modelo.webp', w: 720, h: 1486 },
+  miCarro: { src: '/app-capturas/repuestos-mi-carro.webp', w: 720, h: 1404 },
+  osoMenu: { src: '/app-capturas/oso-menu.webp', w: 720, h: 1404 },
+  osoFormulario: { src: '/app-capturas/oso-formulario.webp', w: 720, h: 1486 },
+  solicitarAviso: { src: '/app-capturas/solicitar-aviso.webp', w: 720, h: 1404 },
+  pideSesion: { src: '/app-capturas/pide-sesion.webp', w: 720, h: 1404 },
+  mapa: { src: '/app-capturas/mapa-comercios.webp', w: 720, h: 1486 },
+  catalogoComercio: { src: '/app-capturas/catalogo-comercio.webp', w: 720, h: 1486 },
+  servicios: { src: '/app-capturas/servicios.webp', w: 720, h: 1486 },
+  plaza: { src: '/app-capturas/plaza.webp', w: 720, h: 1486 },
+  cuenta: { src: '/app-capturas/cuenta.webp', w: 720, h: 1486 },
+  funciones: { src: '/app-capturas/menu-funciones.webp', w: 720, h: 1404 },
+}
+
+const GUIAS = [
+  {
+    id: 'buscar',
+    indice: 'Buscar un repuesto',
+    titulo: 'Busca un repuesto y háblale al vendedor',
+    intro:
+      'No necesitas cuenta para buscar, ver precios ni escribirle al vendedor. Escribe la pieza como la dirías en el taller.',
+    pasos: [
+      {
+        captura: 'buscarResultados',
+        titulo: 'Escribe lo que necesitas',
+        texto:
+          'Toca Buscar y escribe la pieza y el carro, por ejemplo «pastillas de freno corolla». Arriba salen las que coinciden y, debajo, las parecidas por si te sirven.',
+        alt: 'Resultados de la búsqueda «pastillas de freno Corolla» en Repuestos Mérida App',
+      },
+      {
+        captura: 'buscarPorModelo',
+        titulo: 'Filtra por marca, modelo y año',
+        texto:
+          'Toca el logo de la marca. Abajo aparecen los modelos y los años: elige el tuyo y la lista se queda solo con lo de tu carro.',
+        alt: 'Búsqueda de bomba de gasolina filtrada por Chevrolet Aveo con la barra de modelos y años',
+      },
+      {
+        captura: 'detalle',
+        titulo: 'Abre el repuesto y toca Escribir',
+        texto:
+          'Ves la foto, si es nuevo o usado, para qué modelos sirve, el precio y qué comercio lo vende. Escribir abre WhatsApp directo con el vendedor.',
+        alt: 'Detalle de unas pastillas de freno para Toyota Corolla con precio, vendedor y botón Escribir por WhatsApp',
+      },
+    ],
+    nota: {
+      titulo: 'Entiende cómo hablamos en Mérida',
+      texto:
+        'Si escribes «pila», busca la bomba de gasolina. «Muñón» encuentra rótulas, «meseta» encuentra brazos de control y «estopera» encuentra retenes.',
+    },
+  },
+  {
+    id: 'mi-carro',
+    indice: 'Ver solo lo que le sirve a mi carro',
+    titulo: 'Guarda tu carro y ve solo lo que le sirve',
+    intro:
+      'En el inicio toca «Agregar mi carro». Son cuatro pasos y casi todo se elige tocando, sin escribir.',
+    pasos: [
+      {
+        captura: 'carroMarca',
+        titulo: 'Elige carro o moto y la marca',
+        texto:
+          'Primero dices si es carro o moto. Después tocas el logo de la marca o la escribes si no está.',
+        alt: 'Paso de elegir la marca del vehículo con Toyota seleccionado',
+      },
+      {
+        captura: 'carroModelo',
+        titulo: 'Toca el modelo y el año',
+        texto:
+          'Salen los modelos de esa marca. El año es opcional, pero ayuda a que los resultados sean más exactos. Al final puedes ponerle un apodo y el color.',
+        alt: 'Paso de elegir modelo y año con Corolla 2025 seleccionado',
+      },
+      {
+        captura: 'miCarro',
+        titulo: 'Mira los repuestos de tu carro',
+        texto:
+          'En «Mi carro» aparecen todos los repuestos publicados para tu modelo, separados por categoría, con un buscador solo para tu carro.',
+        alt: 'Pantalla Mi carro con 170 repuestos para Toyota Corolla separados por categoría',
+      },
+    ],
+  },
+  {
+    id: 'oso',
+    indice: 'Que el oso me ayude a buscar',
+    titulo: 'Pregúntale al oso',
+    intro:
+      'El oso de arriba a la derecha es el asistente de la app. Te hace preguntas sencillas y te lleva a lo que buscas.',
+    pasos: [
+      {
+        captura: 'osoMenu',
+        titulo: 'Dile qué necesitas',
+        texto:
+          'Elige una opción: buscar un repuesto, «mi carro tiene un problema», vender algo, ver los comercios cerca o registrar tu tienda.',
+        alt: 'Menú del asistente el oso con las opciones busco un repuesto, mi carro tiene un problema, quiero vender algo, ver comercios y soy tienda física',
+      },
+      {
+        captura: 'osoFormulario',
+        titulo: 'Llena la pieza y tu carro',
+        texto:
+          'Escribe la pieza, toca la marca y escribe el modelo y el año. Toca «Buscar en el catálogo» y te muestra lo que hay.',
+        alt: 'Formulario del oso con bomba de gasolina, Chevrolet Aveo 2008',
+      },
+    ],
+  },
+  {
+    id: 'pedir',
+    indice: 'Pedírselo a los comercios',
+    titulo: '¿No aparece? Pídeselo a los comercios',
+    intro:
+      'Si nadie lo ha publicado todavía, mandas una solicitud y los vendedores de la ciudad reciben el aviso.',
+    pasos: [
+      {
+        captura: 'solicitarAviso',
+        titulo: 'Toca Solicitar',
+        texto:
+          'Es el botón azul debajo de las marcas, en el buscador. Si ya hay algo publicado, la app te lo enseña primero para que no esperes de balde.',
+        alt: 'Aviso de la app: ya hay un repuesto publicado, con las opciones ver resultados o solicitarlo igual',
+      },
+      {
+        captura: 'pideSesion',
+        titulo: 'Inicia sesión una sola vez',
+        texto:
+          'Para pedir necesitas tu cuenta, así los vendedores saben a quién responderle. Cuando la envías, los comercios reciben la notificación.',
+        alt: 'Aviso de la app pidiendo iniciar sesión para crear una solicitud',
+      },
+    ],
+    nota: {
+      titulo: 'Atajo si guardaste tu carro',
+      texto:
+        'En «Mi carro» el botón negro de abajo dice «Solicitar repuesto para» tu carro y ya lleva la marca, el modelo y el año.',
+    },
+  },
+  {
+    id: 'mapa',
+    indice: 'Encontrar comercios cerca',
+    titulo: 'Encuentra los comercios en el mapa',
+    intro:
+      'Toca Mapa en la barra de abajo o en el botón +. Están los comercios de repuestos de la ciudad con su ubicación.',
+    pasos: [
+      {
+        captura: 'mapa',
+        titulo: 'Ubica las tiendas',
+        texto:
+          'Cada punto es un comercio. «Estoy aquí» te centra el mapa donde estás y abajo deslizas las tarjetas de cada tienda.',
+        alt: 'Mapa de Mérida con 127 comercios de repuestos marcados',
+      },
+      {
+        captura: 'catalogoComercio',
+        titulo: 'Mira todo lo que vende',
+        texto:
+          'Toca «Ver más repuestos» en la tarjeta y entras al catálogo de ese comercio, con foto y precio de cada pieza.',
+        alt: 'Catálogo de un comercio de repuestos con parachoques, molduras, tapicería y alternador',
+      },
+    ],
+  },
+  {
+    id: 'servicios',
+    indice: 'Pedir un taller, caucho o grúa',
+    titulo: 'Pide un taller, cauchos, grúa o batería',
+    intro:
+      'En el inicio, «Servicios disponibles» tiene taller general, cauchos, remolque, baterías y llaves.',
+    pasos: [
+      {
+        captura: 'servicios',
+        titulo: 'Escoge el servicio y escribe',
+        texto:
+          'Ves quién atiende en tu ciudad y le escribes por el chat de la app, que acepta fotos y notas de voz. Si todavía no hay nadie, toca «Pedir servicio» y los talleres que se vayan sumando verán lo que necesitas.',
+        alt: 'Pantalla de servicios de taller general con el botón pedir servicio',
+      },
+    ],
+  },
+  {
+    id: 'plaza',
+    indice: 'Comprar o vender en Plaza',
+    titulo: 'Compra, vende y consigue trabajo en Plaza',
+    intro:
+      'Plaza es el clasificado de la app: transporte, empleos y cosas de todo tipo publicadas por la gente de la ciudad.',
+    pasos: [
+      {
+        captura: 'plaza',
+        titulo: 'Busca o publica',
+        texto:
+          'Usa el buscador de arriba o recorre las publicaciones. Para publicar toca el botón amarillo; te pide sesión y verificar tu cédula y tu WhatsApp, así todos saben con quién tratan.',
+        alt: 'Plaza con publicaciones de empleo, transporte y general y el botón Publicar',
+      },
+    ],
+  },
+  {
+    id: 'cuenta',
+    indice: 'Crear mi cuenta',
+    titulo: 'Crea tu cuenta y ten todo a mano',
+    intro:
+      'Con la cuenta puedes pedir repuestos, publicar y guardar tu carro en cualquier teléfono.',
+    pasos: [
+      {
+        captura: 'cuenta',
+        titulo: 'Entra con WhatsApp o Google',
+        texto:
+          'Toca el muñequito de arriba a la izquierda en el inicio. Verificas tu WhatsApp, o entras con tu cuenta de Google o con correo y clave.',
+        alt: 'Pantalla de inicio de sesión con verificar WhatsApp, cuenta de Google y correo',
+      },
+      {
+        captura: 'funciones',
+        titulo: 'El botón + lo tiene todo',
+        texto:
+          'Abre todas las funciones: carro, moto, Plaza, taller, remolque, llaves, cauchos, batería, mototaxi, mapa, noticias y Club Andino. Arriba guarda las últimas que usaste.',
+        alt: 'Menú de funciones de la app con últimos usados y todas las funciones',
+      },
+    ],
+  },
+  {
+    id: 'comercios',
+    indice: 'Publicar mis repuestos (tiendas)',
+    titulo: '¿Tienes una tienda de repuestos? Así publicas',
+    intro:
+      'Publicar es gratis. Para que quien compra sepa que detrás hay un negocio de verdad, antes de vender pedimos tres cosas.',
+    requisitos: [
+      {
+        titulo: 'Ser una tienda física',
+        texto: 'Un local de repuestos abierto al público, con dirección en la ciudad.',
+      },
+      {
+        titulo: 'Compartir la ubicación del local por WhatsApp',
+        texto: 'Se la mandas a nuestro equipo desde el chat que abre la app. Así comprobamos que el local existe.',
+      },
+      {
+        titulo: 'Completar el registro, con la confirmación de edad',
+        texto:
+          'Tus datos, tu WhatsApp verificado y dos fotos (tú y tu cédula) que se revisan en privado para confirmar que eres mayor de edad. Esas fotos no se publican.',
+      },
+    ],
+    pasos: [
+      {
+        captura: 'osoMenu',
+        titulo: 'Toca el oso y elige «Soy tienda física»',
+        texto:
+          'Se abre WhatsApp con nuestro equipo y el mensaje ya escrito. Envíalo y te ayudamos a montar tu tienda.',
+        alt: 'Opción Soy tienda física en el asistente el oso',
+      },
+      {
+        titulo: 'Comparte la ubicación de tu tienda',
+        texto:
+          'En ese mismo chat toca el clip, luego «Ubicación» y envía tu ubicación actual estando dentro del local.',
+      },
+      {
+        captura: 'cuenta',
+        titulo: 'Completa tu registro y confirma tu edad',
+        texto:
+          'Toca el muñequito de arriba a la izquierda. Llena tus datos, verifica tu WhatsApp y envía las dos fotos de la verificación de edad. Sin el WhatsApp y la edad verificados la app no te deja publicar.',
+        alt: 'Pantalla de cuenta con verificar WhatsApp',
+      },
+      {
+        titulo: 'Publica tus repuestos',
+        texto:
+          'Toca el oso, «Quiero vender algo» y «Repuestos». Sube la foto, el precio y para qué carros sirve. Cada repuesto pasa por revisión antes de salir en el buscador.',
+      },
+    ],
+    nota: {
+      titulo: '¿Tienes un taller o das un servicio?',
+      texto:
+        'En Servicios toca «¿Tienes un taller? Verifícalo aquí», o en el oso elige «Quiero vender algo» y «Ofrezco un servicio».',
+    },
+  },
 ]
 
-// ════════════════════════════════════════════════
-// CONFIGURACIÓN DE CONTACTO
-// ════════════════════════════════════════════════
-const WA_NUMBER = '+584123375417' // <— Reemplazar con número real
-const waLink = (texto) =>
-  `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(texto)}`
-
-// Mensajes según la intención del botón (no todo es "me interesa el repuesto").
-const waConsulta = () =>
-  waLink('¡Hola! 👋 Quiero hacer una consulta sobre repuestos. ¿Me pueden ayudar?')
-
-const waBusqueda = (termino) =>
-  waLink(`¡Hola! 👋 Estoy buscando *${termino}*. ¿Lo tienen disponible y a qué precio?`)
-
-const waNoEncontrado = () =>
-  waLink(
-    '¡Hola! 👋 No encontré mi repuesto en el catálogo.\n\n' +
-    '• Vehículo (marca / modelo / año):\n• Repuesto que necesito:\n\n' +
-    '¿Me ayudan a conseguirlo?'
-  )
-
-const waProducto = (nombre) =>
-  waLink(`Hola, me interesa el repuesto: *${nombre}*. ¿Está disponible y cuál es el precio?`)
-
-const waCustomUrl = (producto, mensaje = '') =>
-  mensaje.trim() ? waLink(mensaje.trim()) : waProducto(producto)
-
-// ════════════════════════════════════════════════
-// DATOS DEL CATÁLOGO
-// ════════════════════════════════════════════════
-const CATEGORIAS = [
-  { id: 'todos', nombre: 'Todos', emoji: '🔧', bg: 'bg-gray-900', text: 'text-white' },
-  { id: 'motor', nombre: 'Motor y Transmisión', emoji: '⚙️', bg: 'bg-amber-100', text: 'text-amber-900' },
-  { id: 'frenos', nombre: 'Frenos y Suspensión', emoji: '🛞', bg: 'bg-red-100', text: 'text-red-900' },
-  { id: 'electrico', nombre: 'Sistema Eléctrico', emoji: '⚡', bg: 'bg-blue-100', text: 'text-blue-900' },
-  { id: 'carroceria', nombre: 'Carrocería', emoji: '🚗', bg: 'bg-purple-100', text: 'text-purple-900' },
-  { id: 'filtros', nombre: 'Filtros y Lubric.', emoji: '🛢️', bg: 'bg-green-100', text: 'text-green-900' },
-  { id: 'refrigeracion', nombre: 'Refrigeración', emoji: '💧', bg: 'bg-cyan-100', text: 'text-cyan-900' },
+const PREGUNTAS = [
+  {
+    q: '¿Cuánto cuesta Repuestos Mérida App?',
+    a: 'Nada. La app es gratis en Android (Google Play) y en iPhone (App Store). Tampoco cobra por buscar ni por escribirle a los vendedores.',
+  },
+  {
+    q: '¿Necesito crear una cuenta para buscar repuestos?',
+    a: 'No. Buscar, ver fotos y precios, ver el mapa de comercios y escribirle al vendedor por WhatsApp funcionan sin cuenta. Para pedirle un repuesto a los comercios o publicar en Plaza sí necesitas iniciar sesión.',
+  },
+  {
+    q: '¿Cómo sé si un repuesto le sirve a mi carro?',
+    a: 'Guarda tu carro en «Agregar mi carro» con la marca, el modelo y el año: la app te muestra solo los repuestos publicados para ese modelo. En cada repuesto también dice para qué modelos sirve, y puedes preguntarle al vendedor por WhatsApp antes de comprar.',
+  },
+  {
+    q: '¿Dónde se consiguen repuestos en Mérida, Venezuela?',
+    a: 'En Repuestos Mérida App están los repuestos que publican los comercios de Mérida ciudad (Municipio Libertador) y sus alrededores, con más de 120 comercios en el mapa. Buscas por pieza, marca, modelo y año, y hablas con la tienda por WhatsApp.',
+  },
+  {
+    q: '¿Qué hago si no encuentro el repuesto?',
+    a: 'Toca «Solicitar» en el buscador o en «Mi carro». La solicitud les llega a los comercios y el que lo tenga te responde.',
+  },
+  {
+    q: '¿Funciona en otras ciudades?',
+    a: 'La app arranca en Mérida, que es donde hay más comercios. En el inicio, arriba, puedes cambiar a otras ciudades del país como Valencia, Barinas, Maracaibo, Caracas o San Cristóbal.',
+  },
+  {
+    q: 'Tengo una tienda de repuestos o un taller, ¿cómo aparezco?',
+    a: 'Si tienes una tienda física, abre la app, toca el oso y elige «Soy tienda física»: se abre WhatsApp con nuestro equipo y ahí compartes la ubicación de tu local. Después completas tu registro en la app, con tu WhatsApp verificado y la confirmación de edad, y ya puedes publicar tus repuestos. Si tienes un taller, en Servicios toca «¿Tienes un taller? Verifícalo aquí».',
+  },
 ]
 
-const MOBILE_CATEGORIES = [
-  { id: 'todos', nombre: 'Accesorios', icon: '/catalog-assets/categories/accesorios.png' },
-  { id: 'refrigeracion', nombre: 'Aire', icon: '/catalog-assets/categories/aire.png' },
-  { id: 'frenos', nombre: 'Amortiguador', icon: '/catalog-assets/categories/amortiguador.png' },
-  { id: 'electrico', nombre: 'Batería', icon: '/catalog-assets/categories/bateria.png' },
-  { id: 'motor', nombre: 'Caja', icon: '/catalog-assets/categories/caja.png' },
-  { id: 'todos', nombre: 'Caucho', icon: '/catalog-assets/categories/caucho.png' },
-  { id: 'motor', nombre: 'Correa', icon: '/catalog-assets/categories/correa.png' },
-  { id: 'electrico', nombre: 'Electricidad', icon: '/catalog-assets/categories/electricidad.png' },
-  { id: 'motor', nombre: 'Empaque', icon: '/catalog-assets/categories/empaque.png' },
-  { id: 'filtros', nombre: 'Filtro', icon: '/catalog-assets/categories/filtro.png' },
-  { id: 'frenos', nombre: 'Freno', icon: '/catalog-assets/categories/freno.png' },
-  { id: 'filtros', nombre: 'Líquido', icon: '/catalog-assets/categories/liquido.png' },
-  { id: 'motor', nombre: 'Motor', icon: '/catalog-assets/categories/motor.png' },
-  { id: 'todos', nombre: 'Otro', icon: '/catalog-assets/categories/otro.png' },
-  { id: 'todos', nombre: 'Rin', icon: '/catalog-assets/categories/rin.png' },
-  { id: 'motor', nombre: 'Rolinera', icon: '/catalog-assets/categories/rolinera.png' },
-  { id: 'motor', nombre: 'Transmisión', icon: '/catalog-assets/categories/transmision.png' },
-  { id: 'motor', nombre: 'Tripoide', icon: '/catalog-assets/categories/tripoide.png' },
-  { id: 'carroceria', nombre: 'Vidrio', icon: '/catalog-assets/categories/vidrio.png' },
-]
-
-const CAR_BRANDS = [
-  { name: 'Audi', icon: '/catalog-assets/car-brands/audi.png' },
-  { name: 'BMW', icon: '/catalog-assets/car-brands/bmw.png' },
-  { name: 'Chevrolet', icon: '/mobile-catalog/brands/chevrolet.png' },
-  { name: 'Chevy', icon: '/catalog-assets/car-brands/chevy.png' },
-  { name: 'Daihatsu', icon: '/mobile-catalog/brands/Daihatsu.png' },
-  { name: 'Daewoo', icon: '/catalog-assets/car-brands/daewoo.png' },
-  { name: 'Dodge', icon: '/catalog-assets/car-brands/dodge.png' },
-  { name: 'Dongfeng', icon: '/catalog-assets/car-brands/dongfeng.png' },
-  { name: 'Fiat', icon: '/catalog-assets/car-brands/fiat.png' },
-  { name: 'Ford', icon: '/mobile-catalog/brands/ford.png' },
-  { name: 'Honda', icon: '/catalog-assets/car-brands/honda.png' },
-  { name: 'Toyota', icon: '/mobile-catalog/brands/toyota.png' },
-  { name: 'Hyundai', icon: '/mobile-catalog/brands/hyundai.png' },
-  { name: 'Jeep', icon: '/catalog-assets/car-brands/jeep.png' },
-  { name: 'Kia', icon: '/catalog-assets/car-brands/kia.png' },
-  { name: 'Land Rover', icon: '/catalog-assets/car-brands/landrover.png' },
-  { name: 'Lexus', icon: '/catalog-assets/car-brands/lexus.png' },
-  { name: 'Mazda', icon: '/mobile-catalog/brands/mazda.png' },
-  { name: 'Mercedes-Benz', icon: '/catalog-assets/car-brands/mercedesbenz.png' },
-  { name: 'Mitsubishi', icon: '/mobile-catalog/brands/mitsubishi.png' },
-  { name: 'Nissan', icon: '/catalog-assets/car-brands/nissan.png' },
-  { name: 'Peugeot', icon: '/catalog-assets/car-brands/peugeot.png' },
-  { name: 'Renault', icon: '/mobile-catalog/brands/renault.png' },
-  { name: 'Subaru', icon: '/catalog-assets/car-brands/subaru.png' },
-  { name: 'Suzuki', icon: '/mobile-catalog/brands/suzuki.png' },
-  { name: 'Volkswagen', icon: '/mobile-catalog/brands/volkswagen.png' },
-]
-
-const MOTO_BRANDS = [
-  { name: 'AVA', icon: '/catalog-assets/moto-brands/ava.png' },
-  { name: 'Bajaj', icon: '/catalog-assets/moto-brands/bajaj.png' },
-  { name: 'Bera', icon: '/catalog-assets/moto-brands/bera.png' },
-  { name: 'CFMoto', icon: '/catalog-assets/moto-brands/cfmoto.png' },
-  { name: 'Ducati', icon: '/catalog-assets/moto-brands/ducati.png' },
-  { name: 'Empire', icon: '/catalog-assets/moto-brands/empire.png' },
-  { name: 'Forza', icon: '/catalog-assets/moto-brands/forza.png' },
-  { name: 'Haojue', icon: '/catalog-assets/moto-brands/haojue.png' },
-  { name: 'Harley-Davidson', icon: '/catalog-assets/moto-brands/harley-davidson.png' },
-  { name: 'Honda', icon: '/catalog-assets/moto-brands/honda.png' },
-  { name: 'Husaberg', icon: '/catalog-assets/moto-brands/husaberg.png' },
-  { name: 'Kawasaki', icon: '/catalog-assets/moto-brands/kawasaki.png' },
-  { name: 'Keeway', icon: '/catalog-assets/moto-brands/keeway.png' },
-  { name: 'KTM', icon: '/catalog-assets/moto-brands/ktm.png' },
-  { name: 'Kymco', icon: '/catalog-assets/moto-brands/kymco.png' },
-  { name: 'Loncin', icon: '/catalog-assets/moto-brands/loncin.png' },
-  { name: 'Ralvia', icon: '/catalog-assets/moto-brands/ralvia.png' },
-  { name: 'Skygo', icon: '/catalog-assets/moto-brands/skygo.png' },
-  { name: 'Suzuki', icon: '/catalog-assets/moto-brands/suzuki.png' },
-  { name: 'Triumph', icon: '/catalog-assets/moto-brands/triumph.png' },
-  { name: 'UM', icon: '/catalog-assets/moto-brands/um.png' },
-  { name: 'Único', icon: '/catalog-assets/moto-brands/unico.png' },
-  { name: 'Vespa', icon: '/catalog-assets/moto-brands/vespa.png' },
-  { name: 'Yamaha', icon: '/catalog-assets/moto-brands/yamaha.png' },
-]
-
-const PRODUCTOS = [
-  // ── Motor y Transmisión ──
-  { id: 1, nombre: 'Filtro de Aceite Universal', categoria: 'motor', precio: '$4 – $12', marca: 'Mann / Bosch', compat: 'Toyota · Ford · Chevrolet · Kia', disponible: true, destacado: true },
-  { id: 2, nombre: 'Correa de Distribución', categoria: 'motor', precio: '$15 – $45', marca: 'Gates / Continental', compat: 'Toyota · Hyundai · Mitsubishi', disponible: true, destacado: false },
-  { id: 3, nombre: 'Kit de Empaquetadura Motor', categoria: 'motor', precio: '$25 – $80', marca: 'Victor Reinz', compat: 'Múltiples modelos', disponible: true, destacado: false },
-  { id: 4, nombre: 'Junta de Culata', categoria: 'motor', precio: '$20 – $60', marca: 'Elring / Victor', compat: 'Toyota Land Cruiser · Hilux', disponible: false, destacado: false },
-  { id: 5, nombre: 'Banda Poly-V / Serpentina', categoria: 'motor', precio: '$8 – $25', marca: 'Gates / Dayco', compat: 'Ford · Chevrolet · Kia', disponible: true, destacado: false },
-  { id: 6, nombre: 'Aceite de Transmisión ATF', categoria: 'motor', precio: '$6 – $18', marca: 'Mobil / Valvoline', compat: 'Automático y Manual', disponible: true, destacado: true },
-  { id: 7, nombre: 'Cadena de Distribución', categoria: 'motor', precio: '$35 – $95', marca: 'Iwis / Morse', compat: 'Toyota · Mitsubishi · Ford', disponible: true, destacado: false },
-  { id: 8, nombre: 'Sello / Retén Cigüeñal', categoria: 'motor', precio: '$8 – $22', marca: 'SKF / National', compat: 'Múltiples modelos', disponible: true, destacado: false },
-  // ── Frenos y Suspensión ──
-  { id: 9, nombre: 'Pastillas de Freno Delanteras', categoria: 'frenos', precio: '$18 – $55', marca: 'Brembo / ATE', compat: 'Toyota · Ford · Hyundai · Kia', disponible: true, destacado: true },
-  { id: 10, nombre: 'Discos de Freno Ventilados', categoria: 'frenos', precio: '$35 – $90', marca: 'Brembo / DBA', compat: 'Toyota Fortuner · Hilux 4×4', disponible: true, destacado: false },
-  { id: 11, nombre: 'Amortiguadores Delanteros', categoria: 'frenos', precio: '$45 – $120', marca: 'Gabriel / Monroe', compat: 'Toyota · Mitsubishi L200', disponible: true, destacado: true },
-  { id: 12, nombre: 'Kit Rótula y Muñón', categoria: 'frenos', precio: '$30 – $75', marca: 'Moog / TRW', compat: 'Ford Explorer · Expedition', disponible: false, destacado: false },
-  { id: 13, nombre: 'Líquido de Frenos DOT 4', categoria: 'frenos', precio: '$5 – $12', marca: 'Bosch / Prestone', compat: 'Universal', disponible: true, destacado: false },
-  { id: 14, nombre: 'Muelles / Espirales Suspensión', categoria: 'frenos', precio: '$40 – $100', marca: 'KYB / Bilstein', compat: 'Chevrolet D-MAX · Colorado', disponible: true, destacado: false },
-  { id: 15, nombre: 'Barra Estabilizadora (Bujes)', categoria: 'frenos', precio: '$15 – $40', marca: 'Moog / Rare Parts', compat: 'Ford · Chevrolet · Toyota', disponible: true, destacado: false },
-  // ── Sistema Eléctrico ──
-  { id: 16, nombre: 'Batería 12V / 65Ah', categoria: 'electrico', precio: '$60 – $120', marca: 'Bosch / Varta / Willard', compat: 'Universal', disponible: true, destacado: true },
-  { id: 17, nombre: 'Alternador Reconstruido', categoria: 'electrico', precio: '$80 – $180', marca: 'Denso / Bosch', compat: 'Toyota · Ford · Chevrolet', disponible: true, destacado: false },
-  { id: 18, nombre: 'Bujías de Iridio', categoria: 'electrico', precio: '$8 – $25', marca: 'NGK / Bosch', compat: 'Motores gasolina y diesel', disponible: true, destacado: true },
-  { id: 19, nombre: 'Motor de Arranque', categoria: 'electrico', precio: '$90 – $200', marca: 'Denso / Bosch', compat: 'Toyota Land Cruiser · Hilux', disponible: false, destacado: false },
-  { id: 20, nombre: 'Sensor de Oxígeno (Lambda)', categoria: 'electrico', precio: '$25 – $70', marca: 'Bosch / Denso', compat: 'Toyota · Hyundai · Kia', disponible: true, destacado: false },
-  { id: 21, nombre: 'Bobina de Encendido', categoria: 'electrico', precio: '$20 – $55', marca: 'Bosch / NGK', compat: 'Ford · Chevrolet · Mitsubishi', disponible: true, destacado: false },
-  { id: 22, nombre: 'Cables de Bujías / High Performance', categoria: 'electrico', precio: '$15 – $38', marca: 'NGK / Belden', compat: 'Motores gasolina', disponible: true, destacado: false },
-  // ── Carrocería ──
-  { id: 23, nombre: 'Espejo Retrovisor Completo', categoria: 'carroceria', precio: '$35 – $90', marca: 'OEM Compatible', compat: 'Toyota Hilux · Land Cruiser', disponible: true, destacado: false },
-  { id: 24, nombre: 'Parachoques Delantero', categoria: 'carroceria', precio: '$80 – $250', marca: 'OEM / Aftermarket', compat: 'Ford · Chevrolet · Toyota', disponible: true, destacado: false },
-  { id: 25, nombre: 'Faro Delantero LED', categoria: 'carroceria', precio: '$45 – $150', marca: 'Depo / TYC', compat: 'Toyota · Kia · Hyundai', disponible: true, destacado: true },
-  { id: 26, nombre: 'Stop Trasero LED', categoria: 'carroceria', precio: '$35 – $100', marca: 'Depo / OEM', compat: 'Múltiples modelos', disponible: true, destacado: false },
-  { id: 27, nombre: 'Guardafango / Salpicadera', categoria: 'carroceria', precio: '$40 – $120', marca: 'OEM / Dorman', compat: 'Toyota · Ford · Chevrolet', disponible: false, destacado: false },
-  // ── Filtros y Lubricantes ──
-  { id: 28, nombre: 'Aceite Motor 10W-40 (4L)', categoria: 'filtros', precio: '$12 – $30', marca: 'Mobil / Shell / Castrol', compat: 'Gasolina y diesel', disponible: true, destacado: true },
-  { id: 29, nombre: 'Filtro de Aire Panel', categoria: 'filtros', precio: '$6 – $18', marca: 'Mann / K&N / Bosch', compat: 'Toyota · Ford · Hyundai', disponible: true, destacado: false },
-  { id: 30, nombre: 'Filtro de Combustible', categoria: 'filtros', precio: '$8 – $22', marca: 'Mann / Bosch', compat: 'Diesel y gasolina', disponible: true, destacado: false },
-  { id: 31, nombre: 'Filtro de Cabina / Habitáculo', categoria: 'filtros', precio: '$10 – $28', marca: 'Mann / Valeo', compat: 'Toyota · Kia · Hyundai', disponible: true, destacado: false },
-  { id: 32, nombre: 'Aceite de Diferencial 80W-90', categoria: 'filtros', precio: '$8 – $20', marca: 'Mobil / Shell', compat: '4x4 y tracción total', disponible: true, destacado: false },
-  { id: 33, nombre: 'Grasa Multipropósito (1 Kg)', categoria: 'filtros', precio: '$4 – $10', marca: 'Mobil / Shell', compat: 'Universal', disponible: true, destacado: false },
-  // ── Refrigeración ──
-  { id: 34, nombre: 'Termostato Motor', categoria: 'refrigeracion', precio: '$8 – $25', marca: 'Gates / OEM', compat: 'Toyota · Ford · Chevrolet', disponible: true, destacado: false },
-  { id: 35, nombre: 'Bomba de Agua', categoria: 'refrigeracion', precio: '$30 – $80', marca: 'Aisin / Gates', compat: 'Toyota · Mitsubishi · Hyundai', disponible: true, destacado: true },
-  { id: 36, nombre: 'Radiador Aluminio', categoria: 'refrigeracion', precio: '$120 – $350', marca: 'Denso / Valeo', compat: 'Toyota Hilux · Land Cruiser', disponible: false, destacado: false },
-  { id: 37, nombre: 'Anticongelante / Refrigerante (4L)', categoria: 'refrigeracion', precio: '$8 – $20', marca: 'Prestone / Peak', compat: 'Universal', disponible: true, destacado: false },
-  { id: 38, nombre: 'Manguera Superior Radiador', categoria: 'refrigeracion', precio: '$12 – $35', marca: 'Gates / Goodyear', compat: 'Múltiples modelos', disponible: true, destacado: false },
-  { id: 39, nombre: 'Tapa de Radiador (Presión)', categoria: 'refrigeracion', precio: '$5 – $15', marca: 'Stant / OEM', compat: 'Universal', disponible: true, destacado: false },
-]
-
-const MOTO_PRODUCTS = [
-  { id: 'moto-filtro-aceite', nombre: 'Filtro de Aceite para Moto', categoria: 'filtros', precio: '$4 – $12', marca: 'Motores 150cc · 200cc · 250cc', compat: 'Bera · Empire · Suzuki · Yamaha · Honda', disponible: true, destacado: true, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/filtro.png', descripcion: 'Filtro de aceite para mantenimiento preventivo de motos.' },
-  { id: 'moto-pastillas-freno', nombre: 'Pastillas de Freno para Moto', categoria: 'frenos', precio: '$8 – $22', marca: 'Sistema de frenos', compat: 'Motos automáticas y sincronicas por muestra', disponible: true, destacado: true, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/freno.png', descripcion: 'Pastillas delanteras o traseras según modelo.' },
-  { id: 'moto-bateria', nombre: 'Batería para Moto 12V', categoria: 'electrico', precio: '$18 – $45', marca: 'Baterías 12V', compat: 'Scooter · Paseo · Trabajo · Alta cilindrada', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/bateria.png', descripcion: 'Baterías selladas y convencionales para moto.' },
-  { id: 'moto-bujia', nombre: 'Bujía para Moto', categoria: 'electrico', precio: '$3 – $12', marca: 'NGK / Bosch / Denso', compat: 'Motores gasolina 2T y 4T', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/electricidad.png', descripcion: 'Bujías por código, rosca y grado térmico.' },
-  { id: 'moto-cadena', nombre: 'Cadena de Transmisión', categoria: 'motor', precio: '$12 – $35', marca: 'Transmisión de moto', compat: 'Paso 428 · 520 · 525 · 530', disponible: true, destacado: true, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/transmision.png', descripcion: 'Cadenas de transmisión para motos de paseo, trabajo y alta cilindrada.' },
-  { id: 'moto-corona-pinon', nombre: 'Kit Corona y Piñón', categoria: 'motor', precio: '$20 – $55', marca: 'Kit de arrastre', compat: 'Bera · Empire · Suzuki · Yamaha · Honda', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/transmision.png', descripcion: 'Kit de arrastre por relación y modelo.' },
-  { id: 'moto-guayas', nombre: 'Guayas de Clutch, Freno o Acelerador', categoria: 'motor', precio: '$5 – $18', marca: 'Mandos de moto', compat: 'Universal y por modelo', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/correa.png', descripcion: 'Guayas para clutch, freno delantero, acelerador y velocímetro.' },
-  { id: 'moto-caucho', nombre: 'Caucho para Moto', categoria: 'todos', precio: '$25 – $90', marca: 'Cauchos de moto', compat: 'Medidas 17 · 18 · scooter · tripa o tubeless', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/caucho.png', descripcion: 'Cauchos por medida, labrado y rin.' },
-  { id: 'moto-amortiguador', nombre: 'Amortiguadores para Moto', categoria: 'frenos', precio: '$25 – $80', marca: 'Suspensión de moto', compat: 'Traseros por medida y anclaje', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/amortiguador.png', descripcion: 'Amortiguadores traseros y componentes de suspensión.' },
-  { id: 'moto-kit-empacaduras', nombre: 'Kit de Empacaduras para Moto', categoria: 'motor', precio: '$10 – $35', marca: 'Motor de moto', compat: '150cc · 200cc · 250cc · por muestra', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/empaque.png', descripcion: 'Empacaduras para tapa válvula, cilindro, clutch y motor.' },
-  { id: 'moto-bomba-gasolina', nombre: 'Bomba de Gasolina para Moto', categoria: 'electrico', precio: '$18 – $60', marca: 'Inyección / carburada', compat: 'Scooter e inyección electrónica', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/catalog-assets/categories/motor.png', descripcion: 'Bombas eléctricas o mecánicas según sistema.' },
-  { id: 'moto-luces', nombre: 'Luces, Bombillos y Cruces', categoria: 'electrico', precio: '$3 – $25', marca: 'Iluminación de moto', compat: 'LED · halógeno · cocuyo · stop', disponible: true, destacado: false, tipo_vehiculo: 'moto', imagen: '/mobile-catalog/categories/electricidad.png', descripcion: 'Bombillos, faros, stop y luces de cruce.' },
-]
-
-const HOME_CATEGORY_KEYWORDS = [
-  { id: 'motor', terms: ['motor', 'transmision', 'transmisión', 'correa', 'empaque', 'culata', 'reten', 'retén'] },
-  { id: 'frenos', terms: ['freno', 'suspension', 'suspensión', 'amortiguador', 'rotula', 'rótula', 'muñon', 'muñón', 'disco'] },
-  { id: 'electrico', terms: ['electr', 'bateria', 'batería', 'alternador', 'arranque', 'sensor', 'bujia', 'bujía', 'bobina'] },
-  { id: 'carroceria', terms: ['carroceria', 'carrocería', 'parachoque', 'faro', 'retrovisor', 'guardafango', 'stop', 'espejo'] },
-  { id: 'filtros', terms: ['filtro', 'aceite', 'lubric', 'liquido', 'liquido', 'líquido', 'grasa'] },
-  { id: 'refrigeracion', terms: ['radiador', 'refriger', 'termostato', 'bomba de agua', 'manguera', 'anticongelante'] },
-]
-
-function normalizeText(value = '') {
-  return String(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim()
-}
-
-function inferHomeCategory(item) {
-  const haystack = normalizeText([
-    item.categoria,
-    item.marca,
-    item.descripcion,
-    item.modelos,
-    item.vehiculo,
-  ].filter(Boolean).join(' '))
-
-  for (const category of HOME_CATEGORY_KEYWORDS) {
-    if (category.terms.some((term) => haystack.includes(term))) {
-      return category.id
-    }
-  }
-
-  return 'motor'
-}
-
-function inferVehicleType(item) {
-  const explicitType = normalizeText(item.tipo_vehiculo || item.tipoVehiculo || item.vehiculo_tipo)
-  const haystack = normalizeText([
-    item.categoria,
-    item.marca,
-    item.descripcion,
-    item.modelos,
-    item.vehiculo,
-    item.nombre,
-  ].filter(Boolean).join(' '))
-
-  const hasCarBrand = CAR_BRANDS.some((brand) => haystack.includes(normalizeText(brand.name)))
-  const hasMotoBrand = MOTO_BRANDS.some((brand) => haystack.includes(normalizeText(brand.name)))
-  const hasMotoWord = /\bmoto\b|\bmotos\b|\bscooter\b|\btx\b|\barsen\b|\b150cc\b|\b200cc\b|\b250cc\b/.test(haystack)
-
-  if (explicitType === 'carro') return 'carro'
-  if (explicitType === 'moto' && !hasCarBrand) return 'moto'
-  if (hasCarBrand && !hasMotoWord) return 'carro'
-  if (hasMotoWord || hasMotoBrand) {
-    return 'moto'
-  }
-
-  return 'carro'
-}
-
-function matchesCatalogBrand(product, brandName) {
-  const brand = normalizeText(brandName)
-  if (!brand) return true
-
-  const haystack = normalizeText([
-    product.nombre,
-    product.marca,
-    product.compat,
-    product.descripcion,
-  ].filter(Boolean).join(' '))
-
-  return haystack.includes(brand)
-}
-
-function formatPrice(value) {
-  if (value === null || value === undefined || value === '') return 'Consultar'
-  const raw = String(value).trim()
-  if (!raw) return 'Consultar'
-  if (raw.startsWith('$')) return raw
-  const number = Number(raw.replace(/[^\d.]/g, ''))
-  if (!Number.isFinite(number) || number <= 0) return raw
-  return `$${number}`
-}
-
-function normalizeHomeProduct(item, id) {
-  const img = Array.isArray(item.img) ? item.img[0] : item.img
-  const nombre =
-    item.marca ||
-    item.categoria ||
-    item.descripcion ||
-    item.vehiculo ||
-    'Repuesto'
-
-  const compat =
-    item.modelos ||
-    item.vehiculo ||
-    item.descripcion ||
-    'Consulta compatibilidad por WhatsApp'
-
-  return {
-    id,
-    nombre,
-    categoria: inferHomeCategory(item),
-    precio: formatPrice(item.precio),
-    marca: item.categoria || item.vehiculo || 'Catálogo Mérida',
-    compat: String(compat).slice(0, 120),
-    disponible: item.publicado !== 'agotado' && item.estado !== 'agotado',
-    destacado: item.relevancia === '0' || item.relevancia === 0,
-    imagen: typeof img === 'string' ? img : '',
-    tipo_vehiculo: item.tipo_vehiculo || item.tipoVehiculo || item.vehiculo_tipo || inferVehicleType(item),
-    whatsapp: item.whatsapp || WA_NUMBER,
-    descripcion: item.descripcion || '',
-    userID: item.userID || '',
-    comercio: item.comercio || '',
-  }
-}
-
-// Resuelve la marca real del producto (objeto {name, icon}) o null si ninguna
-// de las marcas conocidas aparece en sus textos.
-function resolveProductBrand(producto) {
-  const text = [producto?.marca, producto?.compat, producto?.descripcion, producto?.nombre]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-  const brandSource = producto?.tipo_vehiculo === 'moto' ? MOTO_BRANDS : CAR_BRANDS
-  return brandSource.find((item) => text.includes(item.name.toLowerCase())) || null
-}
-
-function featuredBrandIcon(producto) {
-  return resolveProductBrand(producto)?.icon || '/mobile-catalog/categories/motor.png'
-}
-
-// Logo de marca dentro del área de información del card.
-function ProductBrandBadge({ producto }) {
-  const brand = resolveProductBrand(producto)
-  if (!brand) return null
-  return (
-    <span className="pointer-events-none inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm">
-      <Image src={brand.icon} alt={brand.name} width={44} height={44} className="h-11 w-11 object-contain" />
-    </span>
-  )
-}
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-function getSellerCoordinates(user = {}) {
-  const rawLat = user.comercio_lat
-  const rawLng = user.comercio_lng
-  const lat = rawLat === '' || rawLat === null || rawLat === undefined ? NaN : Number(rawLat)
-  const lng = rawLng === '' || rawLng === null || rawLng === undefined ? NaN : Number(rawLng)
-
-  if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
-    return { lat, lng }
-  }
-
-  return null
-}
-
-// El nombre visible es el del comercio: primero el guardado en el catálogo,
-// luego el del perfil del dueño; el nombre personal queda como último recurso.
-function sellerDisplayName(user = {}, producto = {}) {
-  return (
-    producto.comercio
-    || user.nombre_comercio
-    || user.comercio_autorizado?.nombre_comercio
-    || user.nombre
-    || user.google_nombre
-    || 'Comercio afiliado'
-  )
-}
-
-function sellerDisplayLocation(user = {}) {
+function construirJsonLd() {
+  const inicio = `${SITE_URL}/`
+  const app = `${inicio}#app`
+  const organizacion = `${inicio}#organizacion`
   return [
-    user.comercio_direccion,
-    user.ciudad,
-  ].filter((value) => typeof value === 'string' && value.trim()).join(', ')
-}
-
-function buildSellerMapUrl(user = {}) {
-  if (user.googleMapsUrl) return user.googleMapsUrl
-  const coordinates = getSellerCoordinates(user)
-  if (coordinates) {
-    return `https://www.google.com/maps/search/?api=1&query=${coordinates.lat},${coordinates.lng}`
-  }
-
-  const query = sellerDisplayLocation(user)
-
-  if (!query) return 'https://maps.google.com/'
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
-}
-
-function buildSellerMapEmbedUrl(user = {}) {
-  const coordinates = getSellerCoordinates(user)
-  if (!coordinates) return ''
-  return `https://maps.google.com/maps?q=${coordinates.lat},${coordinates.lng}&z=17&output=embed`
-}
-
-function buildOsoConsultaPrompt(producto) {
-  const lines = [`Consulta repuesto: ${producto.nombre || 'Repuesto'}`]
-  const isCatalogoFallback = (v) => !v || v === 'Catálogo Mérida' || /consulta compatibilidad/i.test(String(v))
-
-  if (producto.marca && !isCatalogoFallback(producto.marca)) {
-    lines.push(`Marca: ${producto.marca}`)
-  }
-  if (producto.compat && !isCatalogoFallback(producto.compat)) {
-    lines.push(`Compatible: ${producto.compat}`)
-  }
-  if (producto.año || producto.anio || producto.year) {
-    lines.push(`Año: ${producto.año || producto.anio || producto.year}`)
-  }
-  if (producto.modelo) {
-    lines.push(`Modelo: ${producto.modelo}`)
-  }
-  if (producto.precio && producto.precio !== 'Consultar') {
-    lines.push(`Precio referencial: ${producto.precio}`)
-  }
-  if (producto.id != null) {
-    lines.push(`Ref: ${producto.id}`)
-  }
-  return lines.join('\n')
-}
-
-function openOsoForProduct(producto) {
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(new CustomEvent('plaza-chat:open-prompt', {
-    detail: {
-      prompt: buildOsoConsultaPrompt(producto),
-      product: {
-        id: producto.id,
-        nombre: producto.nombre,
-      },
-    },
-  }))
-}
-
-function resolveResponseTime(producto, user) {
-  return (
-    producto?.tiempo ||
-    user?.tiempo ||
-    user?.responseTime ||
-    'Tiempo de respuesta por confirmar'
-  )
-}
-
-function isPhysicalStore(user = {}) {
-  const type = String(user?.tipovender || user?.tipo || '').toLowerCase()
-  if (!type) return null
-  if (/(tienda|local|fisica|física|comercio)/.test(type)) return true
-  if (/(online|virtual|delivery|sin tienda|sin local)/.test(type)) return false
-  return null
-}
-
-// ════════════════════════════════════════════════
-// ÍCONOS SVG INLINE
-// ════════════════════════════════════════════════
-const IconSearch = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-  </svg>
-)
-const IconWhatsApp = () => (
-  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347" />
-    <path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.558 4.118 1.531 5.845L.054 23.447a.5.5 0 00.609.61l5.703-1.49A11.943 11.943 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.853 0-3.603-.498-5.11-1.371l-.363-.215-3.755.983.998-3.648-.236-.374A9.944 9.944 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z" />
-  </svg>
-)
-const IconMenu = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-  </svg>
-)
-const IconX = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-)
-const IconStar = () => (
-  <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-  </svg>
-)
-const IconMapPin = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-  </svg>
-)
-const IconClock = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-)
-const IconShield = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-  </svg>
-)
-const IconStore = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9.5 4.5 4h15L21 9.5M5 10v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8M9 19v-5h6v5M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0" />
-  </svg>
-)
-
-// ════════════════════════════════════════════════
-// COMPONENTE PRINCIPAL
-// ════════════════════════════════════════════════
-export default function Home() {
-  const analyticsSessionRef = useRef('')
-  const [analyticsConsent, setAnalyticsConsent] = useState(false)
-  const [catActiva, setCatActiva] = useState('todos')
-  const [busqueda, setBusqueda] = useState('')
-  const [brandType, setBrandType] = useState('carro')
-  const [catalogVehicleType, setCatalogVehicleType] = useState('carro')
-  const [selectedBrand, setSelectedBrand] = useState('')
-  const [requestFormOpen, setRequestFormOpen] = useState(false)
-  const [requestForm, setRequestForm] = useState({
-    tipoVehiculo: 'carro',
-    modelo: '',
-    anio: '',
-    repuesto: '',
-  })
-  const [requestSession, setRequestSession] = useState(null)
-  const [requestSessionLoading, setRequestSessionLoading] = useState(true)
-  const [requestSending, setRequestSending] = useState(false)
-  const [requestMessage, setRequestMessage] = useState('')
-  const [scrolled, setScrolled] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [catalogo, setCatalogo] = useState([...PRODUCTOS, ...MOTO_PRODUCTS])
-  const [catalogoError, setCatalogoError] = useState('')
-  const [usersById, setUsersById] = useState({})
-  const [rutaTienda, setRutaTienda] = useState(null)
-  const [detalleRepuesto, setDetalleRepuesto] = useState(null)
-  const [detalleNota, setDetalleNota] = useState('')
-  const [detallePreguntas, setDetallePreguntas] = useState('')
-  const [detalleGuardado, setDetalleGuardado] = useState('')
-  const [imagenAmpliada, setImagenAmpliada] = useState(false)
-  const [detalleQA, setDetalleQA] = useState([])
-  const [catalogFormOpen, setCatalogFormOpen] = useState(false)
-  const [catalogSending, setCatalogSending] = useState(false)
-  const [catalogMessage, setCatalogMessage] = useState('')
-  const [catalogForm, setCatalogForm] = useState({
-    titulo: '',
-    categoria: 'Motor y Transmisión',
-    vehiculo: '',
-    modelos: '',
-    precio: '',
-    descripcion: '',
-  })
-  const [catalogImage, setCatalogImage] = useState(null)
-
-  useEffect(() => {
-    const updateAnalyticsConsent = () => {
-      setAnalyticsConsent(window.localStorage.getItem('repuestos-merida-cookie-consent') === 'accepted')
-    }
-    updateAnalyticsConsent()
-    window.addEventListener('repuestos-merida:cookie-consent', updateAnalyticsConsent)
-    return () => window.removeEventListener('repuestos-merida:cookie-consent', updateAnalyticsConsent)
-  }, [])
-
-  useEffect(() => {
-    if (!analyticsConsent) return undefined
-
-    if (!analyticsSessionRef.current) {
-      analyticsSessionRef.current = typeof window.crypto?.randomUUID === 'function'
-        ? window.crypto.randomUUID().replace(/-/g, '')
-        : `${Date.now()}_${Math.random().toString(36).slice(2)}`
-    }
-
-    const sessionId = analyticsSessionRef.current
-    let accumulatedMs = 0
-    let activeSince = document.visibilityState === 'visible' ? performance.now() : null
-
-    const durationSeconds = () => Math.floor((
-      accumulatedMs + (activeSince == null ? 0 : performance.now() - activeSince)
-    ) / 1000)
-
-    const send = (action, keepalive = false) => {
-      fetch('/api/analytics/pagina-principal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action,
-          session_id: sessionId,
-          duration_seconds: durationSeconds(),
-        }),
-        keepalive,
-      }).catch(() => {})
-    }
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        if (activeSince != null) accumulatedMs += performance.now() - activeSince
-        activeSince = null
-        send('heartbeat', true)
-      } else if (activeSince == null) {
-        activeSince = performance.now()
-      }
-    }
-
-    const handlePageHide = () => send('heartbeat', true)
-    send('start')
-    const heartbeat = window.setInterval(() => {
-      if (document.visibilityState === 'visible') send('heartbeat')
-    }, 15000)
-    document.addEventListener('visibilitychange', handleVisibility)
-    window.addEventListener('pagehide', handlePageHide)
-
-    return () => {
-      window.clearInterval(heartbeat)
-      document.removeEventListener('visibilitychange', handleVisibility)
-      window.removeEventListener('pagehide', handlePageHide)
-      send('heartbeat', true)
-    }
-  }, [analyticsConsent])
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 60)
-    window.addEventListener('scroll', onScroll)
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('publicar') === 'repuesto') setCatalogFormOpen(true)
-    if (params.get('crear-solicitud') === '1') setRequestFormOpen(true)
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-
-    ensureSession()
-      .then((session) => {
-        if (cancelled) return
-        setRequestSession(session?.telefono ? session : null)
-
-        try {
-          const draft = JSON.parse(window.localStorage.getItem(REQUEST_DRAFT_KEY) || 'null')
-          if (!draft) return
-          setSelectedBrand(draft.selectedBrand || '')
-          setBusqueda(draft.busqueda || '')
-          setRequestForm({
-            tipoVehiculo: draft.requestForm?.tipoVehiculo || 'carro',
-            modelo: draft.requestForm?.modelo || '',
-            anio: draft.requestForm?.anio || '',
-            repuesto: draft.requestForm?.repuesto || '',
-          })
-          setRequestFormOpen(true)
-          window.localStorage.removeItem(REQUEST_DRAFT_KEY)
-        } catch {
-          window.localStorage.removeItem(REQUEST_DRAFT_KEY)
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setRequestSessionLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-
-    getDocs(collection(firestore, 'merida'))
-      .then((snap) => {
-        if (cancelled) return
-
-        const items = snap.docs
-          .filter((doc) => String(doc.data()?.publicado || '').toLowerCase() !== 'oculto')
-          .map((doc) => normalizeHomeProduct(doc.data(), doc.id))
-          .filter((item) => item.imagen)
-
-        if (items.length > 0) {
-          setCatalogo([...items, ...MOTO_PRODUCTS])
-          setCatalogoError('')
-        } else {
-          setCatalogo([...PRODUCTOS, ...MOTO_PRODUCTS])
-          setCatalogoError('La colección de repuestos no devolvió imágenes visibles.')
-        }
-      })
-      .catch(() => {
-        if (cancelled) return
-        setCatalogo([...PRODUCTOS, ...MOTO_PRODUCTS])
-        setCatalogoError('No se pudo cargar el catálogo de repuestos desde Firebase.')
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    const handleOpenProductDetails = (event) => {
-      const productId = String(event.detail?.productId || '')
-      if (!productId) return
-      const producto = catalogo.find((item) => String(item.id) === productId)
-      openDetallePara(producto)
-    }
-
-    window.addEventListener('plaza-chat:open-product-details', handleOpenProductDetails)
-    return () => window.removeEventListener('plaza-chat:open-product-details', handleOpenProductDetails)
-  }, [catalogo, usersById]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!detalleRepuesto) return
-    const onKey = (e) => { if (e.key === 'Escape') setDetalleRepuesto(null) }
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    window.addEventListener('keydown', onKey)
-    return () => {
-      document.body.style.overflow = prevOverflow
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [detalleRepuesto])
-
-  useEffect(() => {
-    const productId = detalleRepuesto?.producto?.id
-    if (!productId) {
-      setDetalleQA([])
-      return
-    }
-    let cancelled = false
-    getDocs(query(
-      collection(firestore, 'preguntas_repuestos'),
-      where('producto_id', '==', String(productId)),
-      limit(50),
-    ))
-      .then((snap) => {
-        if (cancelled) return
-        const rows = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((r) => r.respondida === true && r.respuesta)
-          .sort((a, b) => (b.creado_en?.toMillis?.() || 0) - (a.creado_en?.toMillis?.() || 0))
-          .slice(0, 10)
-        setDetalleQA(rows)
-      })
-      .catch(() => {
-        if (!cancelled) setDetalleQA([])
-      })
-    return () => { cancelled = true }
-  }, [detalleRepuesto?.producto?.id])
-
-  useEffect(() => {
-    let cancelled = false
-
-    get(ref(rtdb, 'public_profiles'))
-      .then((snapshot) => {
-        if (cancelled) return
-        setUsersById(snapshot.exists() ? snapshot.val() : {})
-      })
-      .catch(() => {
-        if (!cancelled) setUsersById({})
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const productosFiltrados = catalogo.filter((p) => {
-    const matchVehicle = !catalogVehicleType || (p.tipo_vehiculo || 'carro') === catalogVehicleType
-    const matchBrand = matchesCatalogBrand(p, selectedBrand)
-    const matchCat = catActiva === 'todos' || p.categoria === catActiva
-    const q = normalizeText(busqueda)
-    const sellerName = sellerDisplayName(usersById?.[p.userID] || {}, p)
-    const searchableText = normalizeText([
-      p.nombre,
-      p.marca,
-      p.compat,
-      p.descripcion,
-      sellerName,
-    ].filter(Boolean).join(' '))
-    const matchSearch = !q || searchableText.includes(q)
-    return matchVehicle && matchBrand && matchCat && matchSearch
-  })
-
-  const handleCat = (id) => {
-    setCatActiva(id)
-    setBusqueda('')
-  }
-
-  const selectVehicleType = (type) => {
-    setBrandType(type)
-    setCatalogVehicleType(type)
-    setSelectedBrand('')
-    setCatActiva('todos')
-    setBusqueda('')
-    setRequestForm((current) => ({ ...current, tipoVehiculo: type }))
-  }
-
-  const featuredProducts = catalogo
-    .filter((p) => (
-      p.destacado &&
-      (p.tipo_vehiculo || 'carro') === catalogVehicleType &&
-      matchesCatalogBrand(p, selectedBrand)
-    ))
-    .slice(0, 8)
-  const mobileFeaturedProducts = (featuredProducts.length ? featuredProducts : catalogo.filter((p) => p.imagen))
-    .slice(0, 8)
-    .map((product) => ({
-      product,
-      image: product.imagen || '/mobile-catalog/categories/motor.png',
-      isFallbackImage: !product.imagen,
-      label: product.nombre,
-      brand: product.marca || 'Catálogo Mérida',
-      model: product.compat || 'Compatibilidad por confirmar',
-      price: product.precio || 'Consultar',
-      brandIcon: featuredBrandIcon(product),
-    }))
-  const sessionProfile = requestSession?.perfil || requestSession?.prefill || null
-  const sessionName = sessionProfile?.nombre || 'Nombre'
-  const sessionPhoto = sessionProfile?.foto_url || ''
-  const sessionHasCedula = Boolean(sessionProfile?.cedula)
-  const visibleBrands = brandType === 'moto' ? MOTO_BRANDS : CAR_BRANDS
-  const homepageUrl = `${SITE_URL}/`
-  const flattenedTrendPatterns = LOCAL_SEO_SIGNALS.intentClusters.flatMap((cluster) => cluster.patterns)
-  const topLocalTerms = LOCAL_SEO_SIGNALS.highValueKeywords.slice(0, 6)
-  const faq = [
-    {
-      q: '¿Qué es Repuestos Mérida y en qué zona atiende?',
-      a: 'Repuestos Mérida es una plataforma de intercambio de necesidades con servicios. Entre esos servicios tenemos un catálogo de repuestos disponibles en tiendas físicas en Mérida y, por ahora, en la zona andina.',
-    },
-    {
-      q: '¿Qué marcas y categorías maneja?',
-      a: 'El catálogo incluye categorías de motor, frenos, sistema eléctrico, carrocería, filtros y refrigeración, con marcas como Bosch, NGK, Gates y otras marcas reconocidas.',
-    },
-    {
-      q: '¿Cómo verificar compatibilidad de una pieza?',
-      a: 'La forma recomendada es compartir por WhatsApp la marca, modelo, año y motorización del vehículo para confirmar número de parte y compatibilidad.',
-    },
-    {
-      q: '¿Qué fuentes usan para recomendaciones de mantenimiento?',
-      a: 'Se priorizan guías del fabricante y fuentes técnicas reconocidas como NHTSA y documentación de fabricantes de autopartes.',
-    },
-    {
-      q: '¿Atienden búsquedas locales como “repuestos en Mérida ciudad” o “repuestos cerca en Libertador”?',
-      a: 'Sí. El servicio está optimizado para Mérida ciudad y el Municipio Libertador, incluyendo asesoría por WhatsApp para búsquedas de disponibilidad inmediata.',
-    },
-  ]
-
-  function openDetallePara(producto) {
-    if (!producto) return
-    const user = usersById?.[producto.userID] || null
-    setDetalleRepuesto({
-      producto,
-      user,
-      mapUrl: buildSellerMapUrl(user || {}),
-      mapEmbedUrl: buildSellerMapEmbedUrl(user || {}),
-      isPhysicalStore: isPhysicalStore(user),
-      responseTime: resolveResponseTime(producto, user),
-    })
-    setDetalleNota('')
-    setDetallePreguntas(`Hola, me interesa ${producto.nombre}. ¿Sigue disponible?\n¿Precio final?\n¿Compatibilidad exacta?\n¿Horario de entrega o retiro?`)
-    setDetalleGuardado('')
-    setImagenAmpliada(false)
-  }
-
-  function openStoreRoute(producto) {
-    const user = usersById?.[producto.userID] || null
-    setRutaTienda({
-      producto,
-      user,
-      mapUrl: buildSellerMapUrl(user || {}),
-      routeImage: user?.rutaImg || user?.routeImage || '/ruta-tienda.jpg',
-    })
-  }
-
-  function saveProductToDirectory() {
-    if (typeof window === 'undefined' || !detalleRepuesto) return
-
-    const directoryKey = 'repuestos-merida-directorio'
-    const current = (() => {
-      try {
-        return JSON.parse(window.localStorage.getItem(directoryKey) || '[]')
-      } catch {
-        return []
-      }
-    })()
-
-    const entry = {
-      id: detalleRepuesto.producto.id,
-      nombre: detalleRepuesto.producto.nombre,
-      precio: detalleRepuesto.producto.precio,
-      marca: detalleRepuesto.producto.marca,
-      compat: detalleRepuesto.producto.compat,
-      imagen: detalleRepuesto.producto.imagen || '',
-      nota: detalleNota.trim(),
-      preguntas: detallePreguntas.trim(),
-      comercio: sellerDisplayName(detalleRepuesto.user || {}, detalleRepuesto.producto),
-      ubicacion: sellerDisplayLocation(detalleRepuesto.user || {}),
-      savedAt: Date.now(),
-    }
-
-    const next = [
-      entry,
-      ...current.filter((item) => String(item.id) !== String(entry.id)),
-    ]
-
-    window.localStorage.setItem(directoryKey, JSON.stringify(next))
-    setDetalleGuardado('Guardado en tu directorio.')
-  }
-
-  function registrarPreguntaEnFirestore() {
-    if (!detalleRepuesto) return
-    const pregunta = detallePreguntas.trim()
-    if (!pregunta || !requestSession?.token) return
-    const operationId = `web:${requestSession.telefono}:${detalleRepuesto.producto.id}:${Date.now()}`
-    fetch('/api/preguntas', {
-      method: 'POST',
-      keepalive: true,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${requestSession.token}`,
-      },
-      body: JSON.stringify({
-        producto_id: String(detalleRepuesto.producto.id),
-        producto_nombre: detalleRepuesto.producto.nombre || '',
-        vendedor_id: detalleRepuesto.producto.userID || '',
-        pregunta,
-        operation_id: operationId,
-      }),
-    }).catch(() => { })
-  }
-
-  async function publishPartRequest(event) {
-    event.preventDefault()
-
-    const marca = selectedBrand.trim().toLowerCase()
-    const modelo = requestForm.modelo.trim().slice(0, 80)
-    const anio = requestForm.anio.trim().slice(0, 4)
-    const repuesto = requestForm.repuesto.trim().slice(0, 120)
-    const numero = String(requestSession?.telefono || '').replace(/\D/g, '').slice(0, 18)
-
-    if (!requestSession?.telefono) {
-      try {
-        window.localStorage.setItem(REQUEST_DRAFT_KEY, JSON.stringify({
-          selectedBrand,
-          busqueda,
-          requestForm,
-        }))
-      } catch { }
-      window.location.href = '/login?redirect=%2F%3Fcrear-solicitud%3D1'
-      return
-    }
-
-    if (!marca || !modelo || !anio || !repuesto || numero.length < 10) {
-      setRequestMessage('Selecciona una marca y completa todos los datos.')
-      return
-    }
-
-    setRequestSending(true)
-    setRequestMessage('')
-
-    try {
-      const operationId = `web:${numero}:${Date.now()}`
-      const response = await fetch('/api/solicitudes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${requestSession.token}`,
-        },
-        body: JSON.stringify({
-          repuesto,
-          tipo_vehiculo: requestForm.tipoVehiculo,
-          marca,
-          modelo,
-          anio,
-          operation_id: operationId,
-        }),
-      })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(result.error || 'No se pudo publicar la solicitud.')
-
-      setRequestForm({
-        tipoVehiculo: 'carro',
-        modelo: '',
-        anio: '',
-        repuesto: '',
-      })
-      setBusqueda('')
-      setRequestMessage('Solicitud publicada correctamente.')
-    } catch {
-      setRequestMessage('No se pudo publicar la solicitud. Intenta nuevamente.')
-    } finally {
-      setRequestSending(false)
-    }
-  }
-
-  async function publishCatalogProduct(event) {
-    event.preventDefault()
-    setCatalogMessage('')
-
-    if (!requestSession?.telefono) {
-      try {
-        window.localStorage.setItem(REQUEST_DRAFT_KEY, JSON.stringify({ selectedBrand, busqueda, requestForm }))
-      } catch {}
-      window.location.href = `/login?redirect=${encodeURIComponent('/')}`
-      return
-    }
-
-    if (!sessionHasCedula) {
-      setCatalogMessage('Necesitas tener cédula registrada para publicar repuestos destacados.')
-      return
-    }
-
-    if (!catalogImage) {
-      setCatalogMessage('Agrega una foto real del repuesto.')
-      return
-    }
-
-    setCatalogSending(true)
-    try {
-      const imageData = await readFileAsDataUrl(catalogImage)
-      const res = await fetch('/api/catalogo/repuestos', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${requestSession.token}`,
-        },
-        body: JSON.stringify({ ...catalogForm, imagen: imageData }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'No se pudo publicar el repuesto.')
-
-      setCatalogMessage('Repuesto enviado a revisión. Un usuario autorizado debe aprobarlo para publicarlo en el catálogo.')
-      setCatalogForm({
-        titulo: '',
-        categoria: 'Motor y Transmisión',
-        vehiculo: '',
-        modelos: '',
-        precio: '',
-        descripcion: '',
-      })
-      setCatalogImage(null)
-
-      const snap = await getDocs(collection(firestore, 'merida'))
-      const items = snap.docs.map((doc) => normalizeHomeProduct(doc.data(), doc.id)).filter((item) => item.imagen)
-      if (items.length > 0) setCatalogo(items)
-    } catch (err) {
-      setCatalogMessage(err.message || 'No se pudo publicar el repuesto.')
-    } finally {
-      setCatalogSending(false)
-    }
-  }
-
-  const jsonLd = [
     {
       '@context': 'https://schema.org',
-      '@type': 'AutoPartsStore',
-      '@id': `${homepageUrl}#autopartsstore`,
-      name: 'Repuestos Mérida',
-      url: homepageUrl,
+      '@type': 'MobileApplication',
+      '@id': app,
+      name: 'Repuestos Mérida App',
+      alternateName: 'Repuestos Mérida',
+      description:
+        'App gratuita para buscar y conseguir repuestos de carros y motos en Mérida, Venezuela: catálogo de los comercios de la ciudad, filtro por marca, modelo y año, mapa de tiendas, solicitudes a los comercios y contacto directo con el vendedor por WhatsApp.',
+      operatingSystem: 'Android, iOS',
+      applicationCategory: 'ShoppingApplication',
+      inLanguage: 'es-VE',
+      url: inicio,
+      downloadUrl: [PLAY_URL, APP_STORE_URL],
+      installUrl: PLAY_URL,
+      sameAs: [PLAY_URL, APP_STORE_URL],
       image: `${SITE_URL}/iconorm.png`,
-      address: {
-        '@type': 'PostalAddress',
-        addressLocality: LOCAL_SEO_SIGNALS.region.city,
-        addressRegion: LOCAL_SEO_SIGNALS.region.state,
-        addressCountry: 'VE',
-      },
-      geo: {
-        '@type': 'GeoCoordinates',
-        latitude: 8.5897,
-        longitude: -71.1561,
-      },
-      areaServed: [
-        {
-          '@type': 'City',
-          name: `${LOCAL_SEO_SIGNALS.region.city}, ${LOCAL_SEO_SIGNALS.region.state}`,
-        },
-        {
-          '@type': 'AdministrativeArea',
-          name: `${LOCAL_SEO_SIGNALS.region.municipality}, ${LOCAL_SEO_SIGNALS.region.state}`,
-        },
+      screenshot: [CAPTURAS.inicio, CAPTURAS.buscarResultados, CAPTURAS.detalle, CAPTURAS.miCarro, CAPTURAS.mapa].map(
+        (c) => `${SITE_URL}${c.src}`,
+      ),
+      featureList: [
+        'Buscador de repuestos que entiende la jerga de Mérida',
+        'Filtro por marca, modelo y año',
+        'Repuestos compatibles con el carro guardado',
+        'Contacto con el vendedor por WhatsApp',
+        'Solicitudes de repuestos a los comercios',
+        'Mapa de comercios de repuestos',
+        'Servicios: taller, cauchos, remolque, baterías y llaves',
+        'Clasificados en Plaza',
       ],
-      telephone: WA_NUMBER,
-      knowsAbout: LOCAL_SEO_SIGNALS.highValueKeywords,
-      parentOrganization: {
-        '@type': 'Organization',
-        name: 'Gochos Group',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      areaServed: {
+        '@type': 'City',
+        name: `${LOCAL_SEO_SIGNALS.region.city}, ${LOCAL_SEO_SIGNALS.region.state}, Venezuela`,
       },
-      sameAs: CITAS_TECNICAS.map((cita) => cita.url),
+      publisher: { '@id': organizacion },
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      '@id': organizacion,
+      name: 'Repuestos Mérida',
+      url: inicio,
+      logo: `${SITE_URL}/iconorm.png`,
+      parentOrganization: { '@type': 'Organization', name: 'Gochos Group' },
+      contactPoint: {
+        '@type': 'ContactPoint',
+        contactType: 'customer support',
+        telephone: `+${WA_SOPORTE}`,
+        availableLanguage: 'es',
+      },
+      sameAs: [PLAY_URL, APP_STORE_URL],
     },
     {
       '@context': 'https://schema.org',
       '@type': 'WebSite',
-      '@id': `${homepageUrl}#website`,
+      '@id': `${inicio}#website`,
       name: 'Repuestos Mérida',
-      url: homepageUrl,
+      url: inicio,
       inLanguage: 'es-VE',
-      potentialAction: {
-        '@type': 'SearchAction',
-        target: `${homepageUrl}?q={search_term_string}`,
-        'query-input': 'required name=search_term_string',
-      },
+      publisher: { '@id': organizacion },
     },
     {
       '@context': 'https://schema.org',
-      '@type': 'ItemList',
-      '@id': `${homepageUrl}#featured-products`,
-      name: 'Repuestos Destacados',
-      itemListOrder: 'https://schema.org/ItemListOrderAscending',
-      numberOfItems: featuredProducts.length,
-      itemListElement: featuredProducts.map((p, index) => ({
-        '@type': 'ListItem',
-        position: index + 1,
-        item: {
-          '@type': 'Product',
-          name: p.nombre,
-          brand: p.marca,
-          category: CATEGORIAS.find((c) => c.id === p.categoria)?.nombre,
-          description: `Compatibilidad: ${p.compat}. Precio de referencia: ${p.precio}.`,
-          offers: {
-            '@type': 'Offer',
-            priceCurrency: 'USD',
-            availability: p.disponible
-              ? 'https://schema.org/InStock'
-              : 'https://schema.org/OutOfStock',
-            url: homepageUrl,
-          },
-        },
+      '@type': 'HowTo',
+      '@id': `${inicio}#como-buscar`,
+      name: 'Cómo buscar un repuesto en Mérida con Repuestos Mérida App',
+      description: 'Pasos para encontrar un repuesto en los comercios de Mérida y hablar con el vendedor.',
+      tool: [{ '@type': 'HowToTool', name: 'Repuestos Mérida App (Android o iPhone)' }],
+      step: GUIAS.find((g) => g.id === 'buscar').pasos.map((paso, i) => ({
+        '@type': 'HowToStep',
+        position: i + 1,
+        name: paso.titulo,
+        text: paso.texto,
+        image: `${SITE_URL}${CAPTURAS[paso.captura].src}`,
+        url: `${inicio}#buscar`,
       })),
     },
     {
       '@context': 'https://schema.org',
       '@type': 'FAQPage',
-      '@id': `${homepageUrl}#faq`,
-      mainEntity: faq.map((item) => ({
+      '@id': `${inicio}#preguntas`,
+      mainEntity: PREGUNTAS.map((p) => ({
         '@type': 'Question',
-        name: item.q,
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: item.a,
-        },
+        name: p.q,
+        acceptedAnswer: { '@type': 'Answer', text: p.a },
       })),
     },
   ]
+}
 
-  // ──────────────────────────────────────────────
-  // NAVBAR
-  // ──────────────────────────────────────────────
+// ── Piezas ───────────────────────────────────────────────────────────────
+
+function IconoPlay() {
   return (
-    <div className="min-h-screen bg-white">
-      {jsonLd.map((schema, index) => (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 shrink-0" fill="currentColor">
+      <path d="M4.2 2.6a1.3 1.3 0 0 0-.7 1.2v16.4c0 .5.3 1 .7 1.2l9.3-9.4-9.3-9.4Zm10.5 10.6 2.4 2.4-10.9 6.2 8.5-8.6Zm3.7-3.2 2.7 1.5c.9.5.9 1.8 0 2.4l-2.8 1.6-2.7-2.7 2.8-2.8ZM6.2 2.2l10.9 6.2-2.4 2.4-8.5-8.6Z" />
+    </svg>
+  )
+}
+
+function IconoApple() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 shrink-0" fill="currentColor">
+      <path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.2-1.7-3-1.9-3.6-2-1.5-.2-3 .9-3.8.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8 1.6 0 2 .8 3.4.8 1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9 0 0-2.9-1.1-2.9-4.2ZM13.9 5.3c.7-.9 1.2-2 1-3.2-1 0-2.3.7-3 1.6-.7.8-1.2 2-1.1 3.1 1.2.1 2.3-.6 3.1-1.5Z" />
+    </svg>
+  )
+}
+
+function BotonesTiendas({ oscuro = false }) {
+  const principal = oscuro
+    ? 'bg-brand-yellow text-gray-950 hover:bg-brand-yellow-h'
+    : 'bg-gray-950 text-white hover:bg-gray-800'
+  const secundario = oscuro
+    ? 'border-white/70 text-white hover:bg-white/10'
+    : 'border-gray-950 text-gray-950 hover:bg-gray-950/5'
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row">
+      <a
+        href={PLAY_URL}
+        className={`inline-flex min-h-12 items-center justify-center gap-2.5 rounded-xl px-5 font-semibold transition-colors ${principal}`}
+      >
+        <IconoPlay />
+        Descargar en Google Play
+      </a>
+      <a
+        href={APP_STORE_URL}
+        className={`inline-flex min-h-12 items-center justify-center gap-2.5 rounded-xl border-2 px-5 font-semibold transition-colors ${secundario}`}
+      >
+        <IconoApple />
+        Descargar en App Store
+      </a>
+    </div>
+  )
+}
+
+function Telefono({ captura, alt, sizes, priority = false }) {
+  const c = CAPTURAS[captura]
+  // El enlace abre la captura completa: en un teléfono pequeño se ve mejor así.
+  return (
+    <a
+      href={c.src}
+      className="block overflow-hidden rounded-[1.4rem] border-[5px] border-gray-950 bg-gray-950 shadow-[0_14px_30px_-12px_rgba(17,24,39,0.45)]"
+    >
+      <Image
+        src={c.src}
+        width={c.w}
+        height={c.h}
+        alt={alt}
+        sizes={sizes}
+        priority={priority}
+        className="block h-auto w-full"
+      />
+    </a>
+  )
+}
+
+function Guia({ guia, numero }) {
+  // El índice de arriba es blanco: las guías arrancan en crema y alternan.
+  const fondo = numero % 2 === 0 ? 'bg-amber-50' : 'bg-white'
+  return (
+    <section id={guia.id} aria-labelledby={`${guia.id}-titulo`} className={`scroll-mt-4 ${fondo} py-14 sm:py-20`}>
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="max-w-2xl">
+          <h2 id={`${guia.id}-titulo`} className="font-brand text-2xl leading-tight text-gray-950 sm:text-4xl">
+            {guia.titulo}
+          </h2>
+          <p className="mt-3 text-base leading-relaxed text-gray-700 sm:text-lg">{guia.intro}</p>
+        </div>
+
+        {guia.requisitos && (
+          <div className="mt-8 max-w-3xl rounded-2xl border-2 border-gray-950 bg-white p-5 sm:p-7">
+            <h3 className="font-brand text-lg text-gray-950 sm:text-xl">Requisitos para publicar</h3>
+            <ul className="mt-4 grid gap-4">
+              {guia.requisitos.map((r) => (
+                <li key={r.titulo} className="flex items-start gap-3">
+                  <svg viewBox="0 0 20 20" aria-hidden="true" className="mt-0.5 h-6 w-6 shrink-0 text-gray-950" fill="currentColor">
+                    <path d="M10 1.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Zm3.9 6.3-4.6 5a.8.8 0 0 1-1.1.1L6 10.8a.8.8 0 1 1 1.1-1.2l1.6 1.5 4-4.4a.8.8 0 0 1 1.2 1.1Z" />
+                  </svg>
+                  <div>
+                    <p className="font-bold text-gray-950">{r.titulo}</p>
+                    <p className="mt-1 leading-relaxed text-gray-700">{r.texto}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <ol className={`mt-10 grid gap-10 md:gap-8 ${guia.pasos.length > 3 ? 'md:grid-cols-2 lg:grid-cols-4' : 'md:grid-cols-3'}`}>
+          {guia.pasos.map((paso, i) => (
+            <li
+              key={paso.titulo}
+              className={
+                paso.captura
+                  ? 'grid grid-cols-[minmax(0,42%)_minmax(0,1fr)] items-start gap-4 md:grid-cols-1 md:gap-5'
+                  : 'self-start rounded-2xl border border-gray-300 bg-white p-5'
+              }
+            >
+              {paso.captura && (
+                <div className="md:max-w-[250px]">
+                  <Telefono
+                    captura={paso.captura}
+                    alt={paso.alt}
+                    sizes="(min-width: 768px) 250px, 42vw"
+                  />
+                </div>
+              )}
+              <div>
+                <p className="flex items-center gap-2 text-sm font-semibold text-gray-600">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gray-950 font-brand text-sm text-brand-yellow">
+                    {i + 1}
+                  </span>
+                  Paso {i + 1}
+                </p>
+                <h3 className="mt-2 text-lg font-bold leading-snug text-gray-950">{paso.titulo}</h3>
+                <p className="mt-2 leading-relaxed text-gray-700">{paso.texto}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        {guia.nota && (
+          <div className="mt-10 max-w-2xl rounded-2xl border-2 border-gray-950 bg-brand-yellow p-5 sm:p-6">
+            <p className="font-bold text-gray-950">{guia.nota.titulo}</p>
+            <p className="mt-1.5 leading-relaxed text-gray-900">{guia.nota.texto}</p>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ── Página ───────────────────────────────────────────────────────────────
+
+export default function Home() {
+  const jsonLd = construirJsonLd()
+  return (
+    <>
+      {jsonLd.map((schema) => (
         <script
-          key={`jsonld-${index}`}
+          key={schema['@id']}
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
         />
       ))}
 
-      <nav className={`fixed top-0 left-0 right-0 z-50 bg-gray-900 transition-shadow duration-300 ${scrolled ? 'navbar-scrolled' : ''}`}>
-        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
-          <div className="flex min-h-16 items-center justify-between gap-2 py-2 sm:h-16 sm:py-0">
-
-            {/* Logo */}
-            <a href="#inicio" className="flex min-w-0 items-center gap-2 sm:gap-3">
-              <Image
-                src="/iconorm.png"
-                alt="Repuestos Mérida"
-                width={40}
-                height={40}
-                className="h-9 w-9 shrink-0 rounded-lg sm:h-10 sm:w-10"
-              />
-              <div className="flex min-w-0 flex-col font-brand text-sm leading-tight sm:block sm:whitespace-nowrap sm:text-lg">
-                <span className="text-white">Repuestos</span>
-                <span>
-                  <span className="text-[#FFD700] sm:ml-1">Mérida</span>
-                  <span className="ml-1 text-white">App</span>
-                </span>
-                <p className="text-gray-400 text-xs leading-none mt-0.5 hidden sm:block">Gochos Group</p>
-              </div>
-            </a>
-
-            <a
-              href={waConsulta()}
-              target="_blank" rel="noopener noreferrer"
-              className="mobile-nav-whatsapp"
-            >
-              <IconWhatsApp />
-              <span>Consultar ahora</span>
-            </a>
-
-            <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="shrink-0 text-gray-300 hover:text-white p-1"
-              aria-label="Menú"
-            >
-              {menuOpen ? <IconX /> : <IconMenu />}
-            </button>
-          </div>
-        </div>
-
-        {/* Menú móvil */}
-        {menuOpen && (
-          <div className="bg-gray-800 border-t border-gray-700 px-4 py-4 space-y-3">
-            {requestSession?.telefono ? (
-              <Link
-                href="/usuario/opciones"
-                onClick={() => setMenuOpen(false)}
-                className="-mx-4 -mt-4 mb-1 flex items-center gap-3 bg-white/10 px-4 py-3.5 text-white transition-colors hover:bg-white/15"
-              >
-                <span className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 text-gray-500">
-                  {sessionPhoto ? (
-                    <Image src={sessionPhoto} alt={sessionName} fill unoptimized sizes="56px" className="object-cover" />
-                  ) : null}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-base font-semibold">{sessionName}</span>
-                  <span className={`mt-0.5 block text-sm font-medium ${sessionHasCedula ? 'text-green-300' : 'text-yellow-300'}`}>
-                    {sessionHasCedula ? 'Verificado' : 'Sin cédula registrada'}
-                  </span>
-                </span>
-              </Link>
-            ) : (
-              <Link
-                href={`/login?redirect=${encodeURIComponent('/')}`}
-                onClick={() => setMenuOpen(false)}
-                className="-mx-4 -mt-4 mb-1 flex items-center justify-center gap-2 bg-green-500 px-4 py-3.5 text-sm font-extrabold text-white transition-colors hover:bg-green-600"
-              >
-                <IconWhatsApp />
-                Iniciar sesión con WhatsApp
-              </Link>
-            )}
-            <Link
-              href="/solicitados"
-              onClick={() => setMenuOpen(false)}
-              className="block text-gray-300 hover:text-[#FFD700] text-sm font-medium py-2 transition-colors"
-            >
-              Repuestos solicitados
-            </Link>
-            <Link
-              href="/blog"
-              onClick={() => setMenuOpen(false)}
-              className="block text-gray-300 hover:text-[#FFD700] text-sm font-medium py-2 transition-colors"
-            >
-              Blog
-            </Link>
-            <Link
-              href="/guia-repuesto"
-              onClick={() => setMenuOpen(false)}
-              className="block text-gray-300 hover:text-[#FFD700] text-sm font-medium py-2 transition-colors"
-            >
-              Guia para pedir repuestos
-            </Link>
-            {['#categorias', '#catalogo', '#nosotros', '#contacto', '#servicios'].map((href, i) => (
-              <a
-                key={href}
-                href={href}
-                onClick={() => setMenuOpen(false)}
-                className="block text-gray-300 hover:text-[#FFD700] text-sm font-medium py-2 transition-colors"
-              >
-                {['Categorías', 'Catálogo', 'Nosotros', 'Contacto', 'Servicios'][i]}
-              </a>
-            ))}
-            <div className="grid grid-cols-3 gap-2 pt-1">
-              <Link
-                href="/plaza"
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center justify-center gap-2 bg-[#FFD700] text-gray-900 font-bold text-sm px-3 py-2.5 rounded-lg"
-              >
-                🏪 Plaza
-              </Link>
-              <Link
-                href="/blog"
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center justify-center gap-2 bg-gray-700 text-white font-bold text-sm px-3 py-2.5 rounded-lg border border-gray-600"
-              >
-                Blog
-              </Link>
-              <Link
-                href="/bingo"
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center justify-center gap-2 bg-gray-700 text-white font-bold text-sm px-3 py-2.5 rounded-lg border border-gray-600"
-              >
-                🎱 Bingo
-              </Link>
-            </div>
-            <a
-              href={waConsulta()}
-              target="_blank" rel="noopener noreferrer"
-              className="btn-whatsapp w-full justify-center text-sm"
-            >
-              <IconWhatsApp />
-              Consultar por WhatsApp
-            </a>
-          </div>
-        )}
-      </nav>
-
-      {/* ──────────────────────────────────────────
-          HERO
-      ────────────────────────────────────────── */}
-      <section id="inicio" className="mobile-home-hero bg-gray-900 bg-hero-pattern">
-        <div className="home-shell">
-
-          <div className="home-status">
-            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse-slow inline-block"></span>
-            Catálogo actualizado · Mérida, Venezuela
-          </div>
-
-          <h1 className="home-request-title">
-            Solicita el repuesto que necesitas para carro, moto o bicicleta
-          </h1>
-
-          <div className="home-brand-switch" role="tablist" aria-label="Tipo de vehículo">
-            {[
-              { id: 'carro', label: 'Carro' },
-              { id: 'moto', label: 'Moto' },
-            ].map((type) => (
-              <button
-                type="button"
-                role="tab"
-                key={type.id}
-                aria-selected={brandType === type.id}
-                className={brandType === type.id ? 'is-active' : ''}
-                onClick={() => selectVehicleType(type.id)}
-              >
-                {type.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="home-brand-rail catalog-scrollbar" aria-label={brandType === 'moto' ? 'Marcas de motos' : 'Marcas de carros'}>
-            {visibleBrands.map((brand) => (
-              <button
-                type="button"
-                key={brand.name}
-                aria-pressed={selectedBrand === brand.name}
-                className={`home-brand-card ${selectedBrand === brand.name ? 'is-active' : ''}`}
-                onClick={() => {
-                  setSelectedBrand(brand.name)
-                  setCatalogVehicleType(brandType)
-                  setCatActiva('todos')
-                  setBusqueda('')
-                }}
-              >
-                <span className="home-brand-logo">
-                  <Image src={brand.icon} alt="" width={54} height={54} />
-                </span>
-                <span>{brand.name}</span>
-              </button>
-            ))}
-          </div>
-
-          <div
-            id="solicitar-repuesto"
-            className={`home-request-form ${requestFormOpen ? 'is-open' : ''}`}
-            onFocus={() => setRequestFormOpen(true)}
-            onBlur={(event) => {
-              const hasData = Object.entries(requestForm)
-                .some(([key, value]) => key !== 'tipoVehiculo' && value.trim())
-              if (!event.currentTarget.contains(event.relatedTarget) && !hasData && !requestMessage) {
-                setRequestFormOpen(false)
-              }
-            }}
-          >
-            <div className="home-search-wrap">
-              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400">
-                <IconSearch />
-              </div>
-              <input
-                type="text"
-                placeholder="Busca un repuesto o comercio, o crea una solicitud"
-                value={busqueda}
-                onFocus={() => setRequestFormOpen(true)}
-                onChange={(e) => { setBusqueda(e.target.value); setCatActiva('todos') }}
-                className="search-input pl-12 text-sm"
-              />
-            </div>
-
-            {requestFormOpen && (
-              <form className="home-request-fields" onSubmit={publishPartRequest}>
-                <div className="home-request-grid">
-                  <label>
-                    <span>Tipo</span>
-                    <select
-                      value={requestForm.tipoVehiculo}
-                      onChange={(event) => {
-                        const nextType = event.target.value
-                        if (nextType === 'carro' || nextType === 'moto') {
-                          selectVehicleType(nextType)
-                        } else {
-                          setRequestForm((current) => ({ ...current, tipoVehiculo: nextType }))
-                        }
-                      }}
-                    >
-                      <option value="carro">Carro</option>
-                      <option value="moto">Moto</option>
-                      <option value="bicicleta">Bicicleta</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Modelo</span>
-                    <input
-                      value={requestForm.modelo}
-                      onChange={(event) => setRequestForm((current) => ({ ...current, modelo: event.target.value }))}
-                      placeholder="Ej: Aveo"
-                      maxLength={80}
-                      required
-                    />
-                  </label>
-                  <label>
-                    <span>Año</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min="1900"
-                      max="2100"
-                      value={requestForm.anio}
-                      onChange={(event) => setRequestForm((current) => ({ ...current, anio: event.target.value }))}
-                      placeholder="2012"
-                      required
-                    />
-                  </label>
-                  <label>
-                    <span>Repuesto, pieza o servicio</span>
-                    <input
-                      value={requestForm.repuesto}
-                      onChange={(event) => setRequestForm((current) => ({ ...current, repuesto: event.target.value }))}
-                      placeholder="Ej: bomba de gasolina"
-                      maxLength={120}
-                      required
-                    />
-                  </label>
-                </div>
-
-                <div className="home-request-submit">
-                  <div>
-                    {selectedBrand ? (
-                      <div className="home-selected-brand" role="status" aria-live="polite">
-                        <span className="home-selected-brand-check" aria-hidden="true">✓</span>
-                        <span className="home-selected-brand-copy">
-                          <span>Marca seleccionada</span>
-                          <strong>{selectedBrand}</strong>
-                        </span>
-                      </div>
-                    ) : (
-                      <p>Selecciona una marca arriba para publicar.</p>
-                    )}
-                    {requestSession?.telefono && (
-                      <p className="home-request-session">
-                        WhatsApp verificado: {requestSession.telefono}
-                      </p>
-                    )}
-                  </div>
-                  <button type="submit" disabled={requestSending || requestSessionLoading || !selectedBrand}>
-                    {requestSending
-                      ? 'Publicando...'
-                      : requestSession?.telefono
-                        ? 'Crear solicitud de repuesto'
-                        : 'Verificar WhatsApp para publicar'}
-                  </button>
-                </div>
-                {requestMessage && (
-                  <p className={`home-request-message ${requestMessage.includes('correctamente') ? 'is-success' : ''}`}>
-                    {requestMessage}
-                  </p>
-                )}
-              </form>
-            )}
-          </div>
-
-          <div className="mobile-hero-actions">
-            <a href="#catalogo" className="btn-brand justify-center">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v17H6.5A2.5 2.5 0 0 0 4 22V5.5Zm16 0A2.5 2.5 0 0 0 17.5 3H13v17h4.5A2.5 2.5 0 0 1 20 22V5.5Z" />
-              </svg>
-              Ver catálogo completo
-            </a>
-            <a
-              href={waConsulta()}
-              target="_blank" rel="noopener noreferrer"
-              className="btn-whatsapp justify-center"
-            >
-              <IconWhatsApp />
-              Hablar con un asesor
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <section className="mobile-home-dashboard" aria-label="Accesos rápidos al catálogo">
-        <div className="mobile-featured-heading">
-          <h2>
-            <span aria-hidden="true">★</span>
-            Repuestos destacados
-          </h2>
-          <div className="mobile-featured-actions">
-            <a href="#catalogo">
-              Ver todos
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="m9 5 7 7-7 7" />
-              </svg>
-            </a>
-          </div>
-        </div>
-
-        <div className="mobile-featured-scroller scrollbar-none">
-          {sessionHasCedula && (
-            <button
-              type="button"
-              className="mobile-featured-card mobile-featured-publish-card"
-              onClick={() => setCatalogFormOpen(true)}
-              aria-label="Publicar repuesto destacado"
-            >
-              <span className="mobile-featured-plus" aria-hidden="true">+</span>
-              <span className="mobile-featured-publish-label">Publicar Repuesto</span>
-            </button>
-          )}
-          {mobileFeaturedProducts.map((item) => (
-            <button
-              type="button"
-              key={item.product.id}
-              className="mobile-featured-card"
-              onClick={() => openDetallePara(item.product)}
-            >
-              <span className={`mobile-featured-image ${item.isFallbackImage ? 'is-icon' : ''}`}>
-                <Image
-                  src={item.image}
-                  alt={item.label}
-                  fill
-                  unoptimized={!item.isFallbackImage}
-                  sizes="104px"
-                  className="object-contain"
-                />
-              </span>
-              <span className="mobile-product-label">{item.label}</span>
-              <span className="mobile-product-brand">
-                <Image src={item.brandIcon} alt="" width={17} height={17} />
-                {item.brand}
-              </span>
-              <span className="mobile-product-model">{item.model}</span>
-              <span className="mobile-product-price">{item.price}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="mobile-carousel-dots" aria-hidden="true">
-          <span className="active" />
-          <span />
-          <span />
-        </div>
-
-        <div className="mobile-category-block">
-          <h2>Explora por categoría</h2>
-          <div className="mobile-category-grid catalog-scrollbar">
-            {MOBILE_CATEGORIES.map((category) => (
-              <button
-                type="button"
-                key={`${category.nombre}-${category.id}`}
-                onClick={() => {
-                  handleCat(category.id)
-                  document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' })
-                }}
-              >
-                <Image src={category.icon} alt="" width={36} height={36} />
-                <span>{category.nombre}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mobile-help-card">
-          <span className="mobile-help-icon"><IconWhatsApp /></span>
-          <span className="mobile-help-copy">
-            <strong>¿No encuentras lo que buscas?</strong>
-            <small>Nuestro asistente de plaza te ayuda a publicar o solicitar cualquier repuesto.</small>
-          </span>
-          <button type="button" onClick={() => openOsoForProduct({ nombre: 'un repuesto' })}>
-            Chatear ahora
-          </button>
-        </div>
-
-        <div className="mobile-trends-card">
-          <span className="mobile-trends-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="m4 16 6-6 4 4 6-7M15 7h5v5" />
-            </svg>
-          </span>
-          <span>
-            <strong>Tendencias locales</strong>
-            <small>
-              Patrones de búsqueda detectados en Mérida (Libertador) actualizados el {LOCAL_SEO_SIGNALS.detectedAt}.
-            </small>
-          </span>
-        </div>
-      </section>
-
-      {/* ──────────────────────────────────────────
-          GUÍA DE COMPRA LOCAL
-      ────────────────────────────────────────── */}
-      <section className="py-12 px-4 bg-white border-b border-gray-100">
-        <div className="max-w-6xl mx-auto">
-          <div className="mb-8 max-w-3xl">
-            <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 block mb-2">
-              Guía local de compra
-            </span>
-            <h2 className="font-brand text-2xl sm:text-3xl text-gray-900 mb-3">
-              Antes de consultar un repuesto en Mérida
-            </h2>
-            <p className="text-gray-600 text-sm leading-relaxed">
-              Para cotizar más rápido, ten a mano la marca, modelo, año y motor del vehículo.
-              En piezas de freno, suspensión, electricidad o refrigeración también ayuda enviar
-              una foto de la pieza instalada, el serial o la muestra física cuando esté disponible.
-            </p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            {[
-              {
-                title: 'Compatibilidad',
-                text: 'Compara año, versión, cilindrada y tipo de transmisión antes de comprar. Dos vehículos del mismo modelo pueden usar piezas diferentes.',
-              },
-              {
-                title: 'Calidad y garantía',
-                text: 'Pregunta por marca, procedencia y condiciones de cambio. En repuestos eléctricos conviene verificar conectores y numeración.',
-              },
-              {
-                title: 'Entrega o retiro',
-                text: 'Confirma disponibilidad real, dirección de la tienda y horario de atención antes de trasladarte dentro de Mérida.',
-              },
-            ].map((item) => (
-              <article key={item.title} className="rounded-lg border border-gray-200 bg-gray-50 p-5">
-                <h3 className="font-brand text-lg text-gray-900 mb-2">{item.title}</h3>
-                <p className="text-sm leading-relaxed text-gray-600">{item.text}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Stats bar ── */}
-      <div className="hidden bg-[#FFD700]">
-        <div className="max-w-5xl mx-auto px-4 py-4 grid grid-cols-3 gap-4 text-center">
-          {[
-            { valor: '39+', label: 'Repuestos disponibles' },
-            { valor: '15+', label: 'Marcas de calidad' },
-            { valor: '100%', label: 'Atención directa' },
-          ].map((s) => (
-            <div key={s.label}>
-              <p className="font-brand text-xl sm:text-2xl text-gray-900 leading-none">{s.valor}</p>
-              <p className="text-gray-800 text-xs sm:text-sm mt-0.5 font-medium">{s.label}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ──────────────────────────────────────────
-          CATEGORÍAS
-      ────────────────────────────────────────── */}
-      <section id="categorias" className="hidden py-16 bg-gray-50 px-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="font-brand text-3xl sm:text-4xl text-gray-900 mb-2">
-              Categorías de Repuestos
-            </h2>
-            <p className="text-gray-500 text-base max-w-xl mx-auto">
-              Selecciona una categoría para filtrar el catálogo o explora todo el inventario.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
-            {CATEGORIAS.map((cat) => {
-              const isActive = catActiva === cat.id
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => handleCat(cat.id)}
-                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 font-medium text-sm
-                    ${isActive
-                      ? 'border-gray-900 bg-gray-900 text-[#FFD700] shadow-lg scale-105'
-                      : `border-transparent ${cat.bg} ${cat.text} hover:border-gray-300 hover:shadow-md`
-                    }`}
-                >
-                  <span className="text-2xl">{cat.emoji}</span>
-                  <span className="text-center leading-tight text-xs">{cat.nombre}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* ──────────────────────────────────────────
-          CATÁLOGO
-      ────────────────────────────────────────── */}
-      <section id="catalogo" className="py-16 px-4 bg-white">
-        <div className="max-w-7xl mx-auto">
-
-          {/* Header del catálogo */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-            <div>
-              <h2 className="font-brand text-2xl sm:text-3xl text-gray-900">
-                {catActiva === 'todos'
-                  ? catalogVehicleType === 'moto'
-                    ? 'Repuestos de Moto'
-                    : 'Catálogo de Repuestos para Carro'
-                  : CATEGORIAS.find(c => c.id === catActiva)?.nombre}
-              </h2>
-              <p className="text-gray-500 text-sm mt-1">
-                {productosFiltrados.length} repuesto{productosFiltrados.length !== 1 ? 's' : ''} encontrado{productosFiltrados.length !== 1 ? 's' : ''}
-                {busqueda && ` para "${busqueda}"`}
-              </p>
-              {catalogoError && (
-                <p className="text-amber-600 text-xs mt-2">{catalogoError}</p>
-              )}
-            </div>
-
-            {/* Búsqueda inline */}
-            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-              {sessionHasCedula && (
-                <button
-                  type="button"
-                  onClick={() => setCatalogFormOpen(true)}
-                  className="inline-flex items-center justify-center rounded-xl bg-yellow-400 px-4 py-2.5 text-xs font-extrabold text-gray-900 shadow-sm transition hover:bg-yellow-300"
-                >
-                  Publicar repuesto
-                </button>
-              )}
-              <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
-                {[
-                  { id: 'carro', label: 'Carros' },
-                  { id: 'moto', label: 'Motos' },
-                ].map((type) => (
-                  <button
-                    key={type.id}
-                    type="button"
-                    onClick={() => selectVehicleType(type.id)}
-                    className={`rounded-lg px-3 py-2 text-xs font-extrabold transition ${
-                      catalogVehicleType === type.id
-                        ? 'bg-gray-950 text-yellow-400 shadow-sm'
-                        : 'text-gray-600 hover:bg-white'
-                    }`}
-                  >
-                    {type.label}
-                  </button>
-                ))}
-              </div>
-              {selectedBrand && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedBrand('')}
-                  title="Quitar filtro de marca"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-yellow-400 bg-yellow-50 px-3 py-2 text-xs font-extrabold text-gray-900 transition hover:bg-yellow-100"
-                >
-                  <span>{selectedBrand}</span>
-                  <span className="text-sm leading-none text-gray-500">×</span>
-                </button>
-              )}
-              <div className="relative max-w-xs w-full sm:w-auto">
-                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
-                  <IconSearch />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Buscar repuesto o comercio…"
-                  value={busqueda}
-                  onChange={(e) => { setBusqueda(e.target.value); setCatActiva('todos') }}
-                  className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm w-full focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Grid de productos */}
-          {productosFiltrados.length === 0 ? (
-            <div className="text-center py-24">
-              <p className="text-5xl mb-4">🔍</p>
-              <p className="text-gray-500 text-lg font-medium">No encontramos resultados</p>
-              <p className="text-gray-400 text-sm mt-1">Intenta con otro término o{' '}
-                <a href={waBusqueda(busqueda)} target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium hover:underline">
-                  consulta por WhatsApp
-                </a>
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-              {productosFiltrados.map((p) => (
-                <div
-                  key={p.id}
-                  id={`producto-${p.id}`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openDetallePara(p)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      openDetallePara(p)
-                    }
-                  }}
-                  className="product-card group flex flex-col scroll-mt-24 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-2"
-                >
-
-                  <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
-                    {p.imagen ? (
-                      <Image
-                        src={p.imagen}
-                        alt={p.nombre}
-                        fill
-                        unoptimized
-                        sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
-                        className="object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-5xl">📦</div>
-                    )}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
-                      <p className="line-clamp-2 text-sm font-semibold text-white">{p.nombre}</p>
-                    </div>
-                    <span className="pointer-events-none absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-800 opacity-0 shadow backdrop-blur transition-opacity group-hover:opacity-100">
-                      Ver detalles
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                      </svg>
-                    </span>
-                  </div>
-
-                  {/* Card header */}
-                  <div className="bg-gray-50 px-4 py-5 border-b border-gray-100 flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-gray-500 text-xs mt-1">{p.marca}</p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      {p.destacado && <span className="badge-featured">Destacado</span>}
-                      <span className={p.disponible ? 'badge-available' : 'badge-unavailable'}>
-                        {p.disponible ? '✓ Disponible' : 'Agotado'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Card body */}
-                  <div className="px-4 py-4 flex-1 flex flex-col gap-3">
-                    {/* Precio */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Rango de precio</p>
-                        <p className="font-brand text-xl text-gray-900 mt-0.5">{p.precio}</p>
-                      </div>
-                      <ProductBrandBadge producto={p} />
-                    </div>
-
-                    {/* Compatibilidad */}
-                    <div>
-                      <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Compatible con</p>
-                      <p className="text-gray-600 text-xs mt-0.5 leading-relaxed">{p.compat}</p>
-                    </div>
-
-                    {/* Categoría badge */}
-                    <div>
-                      <span className={`inline-flex text-xs px-2 py-0.5 rounded-full font-medium
-                        ${CATEGORIAS.find(c => c.id === p.categoria)?.bg}
-                        ${CATEGORIAS.find(c => c.id === p.categoria)?.text}`}>
-                        {CATEGORIAS.find(c => c.id === p.categoria)?.emoji}{' '}
-                        {CATEGORIAS.find(c => c.id === p.categoria)?.nombre}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Card footer - CTA */}
-                  <div className="px-4 pb-4 space-y-2">
-                    {p.imagen && (
-                      <Link
-                        href={`/repuesto/${encodeURIComponent(String(p.id))}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-900 py-2.5 text-sm font-semibold text-gray-900 transition hover:bg-gray-900 hover:text-white"
-                      >
-                        Ver página completa
-                      </Link>
-                    )}
-                    <a
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        if (!p.disponible) return
-                        openOsoForProduct(p)
-                      }}
-                      className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold transition-all duration-200
-                        ${p.disponible
-                          ? 'bg-[#25D366] text-white hover:bg-[#128C7E] hover:shadow-md'
-                          : 'bg-gray-100 text-gray-500 cursor-default'
-                        }`}
-                    >
-                      <IconWhatsApp />
-                      {p.disponible ? 'Consultar precio' : 'No disponible'}
-                    </a>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openStoreRoute(p)
-                      }}
-                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300"
-                    >
-                      <IconStore />
-                      Mostrar dirección de tienda
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="py-12 px-4 bg-white border-t border-gray-100">
-        <div className="max-w-6xl mx-auto grid gap-5 md:grid-cols-3">
-          {[
-            {
-              title: 'Frenos y suspensión',
-              text: 'Revisa desgaste irregular, ruidos al frenar, vibración del pedal y estado de amortiguadores antes de pedir cotización.',
-            },
-            {
-              title: 'Motor y filtros',
-              text: 'Indica kilometraje, tipo de aceite usado y código del filtro para reducir errores en piezas de mantenimiento.',
-            },
-            {
-              title: 'Sistema eléctrico',
-              text: 'En sensores, bobinas, alternadores y arranques, el serial de la pieza ayuda a ubicar reemplazos compatibles.',
-            },
-          ].map((item) => (
-            <article key={item.title} className="rounded-lg border border-gray-200 bg-gray-50 p-5">
-              <h3 className="font-brand text-lg text-gray-900 mb-2">{item.title}</h3>
-              <p className="text-sm leading-relaxed text-gray-600">{item.text}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* ──────────────────────────────────────────
-          MAPA DE COMERCIOS
-      ────────────────────────────────────────── */}
-      <section id="mapa" className="bg-[#f9f5ee] py-16 px-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="mb-8 text-center">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#efe7da] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#8A5A39]">
-              📍 Comercios afiliados
-            </span>
-            <h2 className="mt-3 font-brand text-3xl text-[#3f352b] sm:text-4xl">
-              Encuentra repuestos cerca de ti
-            </h2>
-            <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-[#6b5b4d]">
-              Explora el mapa, toca un comercio y descubre su ubicación, su tienda y los
-              repuestos que tiene disponibles. Contacta directo por WhatsApp.
-            </p>
-            <Link
-              href="/mapa"
-              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#3f352b] px-5 text-sm font-extrabold text-white transition hover:bg-[#2d261f]"
-            >
-              Abrir mapa grande
-            </Link>
-          </div>
-          <ComerciosMap />
-        </div>
-      </section>
-
-      {/* ──────────────────────────────────────────
-          WHATSAPP CTA BANNER
-      ────────────────────────────────────────── */}
-      <section id="contacto" className="bg-gradient-to-br from-gray-900 to-gray-800 py-16 px-4">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="text-5xl mb-4">💬</div>
-          <h2 className="font-brand text-3xl sm:text-4xl text-white mb-3">
-            ¿No encuentras tu repuesto?
-          </h2>
-          <p className="text-gray-400 text-lg mb-8 max-w-xl mx-auto">
-            Escríbenos por WhatsApp con el modelo de tu vehículo y el repuesto que necesitas.
-            Nuestro equipo te responde de inmediato.
-          </p>
+      <header className="bg-brand-yellow">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <Link href="/" className="flex items-center gap-2.5">
+            <Image src="/app-capturas/logo-96.webp" alt="" width={40} height={40} className="h-10 w-10 rounded-xl" priority />
+            <span className="font-brand text-lg leading-none text-gray-950">Repuestos Mérida</span>
+          </Link>
           <a
-            href={waNoEncontrado()}
-            target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-3 bg-[#25D366] text-white font-bold text-lg px-10 py-4 rounded-xl hover:bg-[#128C7E] transition-all hover:shadow-2xl hover:-translate-y-1"
+            href={PLAY_URL}
+            className="inline-flex min-h-11 items-center rounded-xl bg-gray-950 px-4 text-sm font-semibold text-white hover:bg-gray-800"
           >
-            <IconWhatsApp />
-            Escribir por WhatsApp
+            Descargar
           </a>
-          <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center text-gray-500 text-sm">
-            <span className="flex items-center gap-1.5"><IconClock /> Todos los días · 8am–8pm</span>
-            <span className="flex items-center gap-1.5"><IconMapPin /> Mérida centro · Av. 3</span>
-            <span className="flex items-center gap-1.5"><IconShield /> Garantía en cada repuesto</span>
-          </div>
         </div>
-      </section>
+      </header>
 
-      <section id="blog" className="py-16 px-4 bg-gray-50">
-        <div className="max-w-6xl mx-auto">
-          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <main>
+        <section aria-labelledby="titulo-principal" className="bg-brand-yellow pb-14 pt-6 sm:pb-20 sm:pt-10">
+          <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 md:grid-cols-[minmax(0,1fr)_300px] lg:grid-cols-[minmax(0,1fr)_340px]">
             <div>
-              <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 mb-2 block">
-                Blog de repuestos
-              </span>
-              <h2 className="font-brand text-3xl sm:text-4xl text-gray-900">
-                Guías rápidas para comprar mejor
-              </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-gray-600">
-                Ideas iniciales para orientar a compradores en Mérida: datos de compatibilidad,
-                señales de desgaste, garantía y preguntas útiles antes de cotizar.
+              <h1 id="titulo-principal" className="font-brand text-[2.1rem] leading-[1.08] text-gray-950 sm:text-5xl lg:text-6xl">
+                El repuesto de tu carro, en Mérida, desde tu teléfono
+              </h1>
+              <p className="mt-5 max-w-xl text-lg leading-relaxed text-gray-900">
+                Repuestos Mérida App junta lo que publican los comercios de la ciudad. Buscas la pieza, ves la foto y el
+                precio, y le escribes al vendedor por WhatsApp. Es gratis.
               </p>
-            </div>
-            <Link
-              href="/blog"
-              className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white hover:bg-gray-800"
-            >
-              Ver blog
-            </Link>
-          </div>
-
-          <div className="grid gap-5 md:grid-cols-3">
-            {[
-              {
-                title: 'Pastillas de freno',
-                text: 'Qué revisar antes de comprar: forma, sensor, compuesto, discos y síntomas de desgaste.',
-              },
-              {
-                title: 'Repuestos Toyota',
-                text: 'Datos mínimos para ubicar piezas compatibles según modelo, año, motor y transmisión.',
-              },
-              {
-                title: 'Sistema eléctrico',
-                text: 'Cómo describir fallas de alternador, arranque, batería, sensores y conectores.',
-              },
-            ].map((item) => (
-              <article key={item.title} className="rounded-lg border border-gray-200 bg-white p-5">
-                <h3 className="font-brand text-lg text-gray-900 mb-2">{item.title}</h3>
-                <p className="text-sm leading-relaxed text-gray-600">{item.text}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ──────────────────────────────────────────
-          SERVICIOS
-      ────────────────────────────────────────── */}
-      <section id="servicios" className="py-16 px-4 bg-white">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-10">
-            <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 mb-2 block">
-              Plataforma
-            </span>
-            <h2 className="font-brand text-3xl sm:text-4xl text-gray-900 mb-3">
-              Nuestros servicios online
-            </h2>
-            <p className="text-gray-500 max-w-md mx-auto text-sm">
-              Más allá del catálogo, te ofrecemos herramientas digitales para la comunidad.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-
-            {/* ── Plaza ── */}
-            <Link
-              href="/plaza"
-              className="group relative flex flex-col gap-4 bg-gray-900 rounded-2xl p-6 border border-gray-800 hover:border-[#FFD700]/60 hover:shadow-xl hover:shadow-yellow-500/10 transition-all duration-300 overflow-hidden"
-            >
-              {/* Fondo decorativo */}
-              <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-              <div className="flex items-start gap-4 relative">
-                <div className="w-14 h-14 rounded-xl bg-[#FFD700]/10 border border-[#FFD700]/20 flex items-center justify-center text-3xl shrink-0 group-hover:scale-110 transition-transform">
-                  🏪
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-brand text-xl font-bold text-white">Plaza</h3>
-                  <p className="text-gray-400 text-sm mt-1 leading-relaxed">
-                    Marketplace de repuestos. Publica, compra y vende piezas directamente con la comunidad.
-                  </p>
-                </div>
+              <div className="mt-7">
+                <BotonesTiendas />
               </div>
-
-              <div className="flex flex-wrap gap-2 relative">
-                {['Publicar anuncio', 'Buscar repuestos', 'Contacto directo'].map(t => (
-                  <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
-                    {t}
-                  </span>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1.5 text-[#FFD700] text-sm font-semibold relative">
-                Ir a Plaza
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
-                  className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeLinecap="round">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </div>
-            </Link>
-
-            {/* ── Solicitados ── */}
-            <Link
-              href="/solicitados"
-              className="group relative flex flex-col gap-4 bg-gray-900 rounded-2xl p-6 border border-gray-800 hover:border-[#38BDF8]/60 hover:shadow-xl hover:shadow-sky-500/10 transition-all duration-300 overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-sky-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-              <div className="flex items-start gap-4 relative">
-                <div className="w-14 h-14 rounded-xl bg-[#38BDF8]/10 border border-[#38BDF8]/20 flex items-center justify-center text-3xl shrink-0 group-hover:scale-110 transition-transform">
-                  🔎
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-brand text-xl font-bold text-white">Solicitados</h3>
-                  <p className="text-gray-400 text-sm mt-1 leading-relaxed">
-                    Consulta solicitudes reales de repuestos y ayuda a conectar compradores con comercios locales.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2 relative">
-                {['Solicitudes reales', 'Mérida', 'Contacto directo'].map(t => (
-                  <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
-                    {t}
-                  </span>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1.5 text-[#38BDF8] text-sm font-semibold relative">
-                Ver solicitados
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
-                  className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeLinecap="round">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </div>
-            </Link>
-
-            {/* ── Guia ── */}
-            <Link
-              href="/guia-repuesto"
-              className="group relative flex flex-col gap-4 bg-gray-900 rounded-2xl p-6 border border-gray-800 hover:border-[#FFD700]/60 hover:shadow-xl hover:shadow-yellow-500/10 transition-all duration-300 overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-              <div className="flex items-start gap-4 relative">
-                <div className="w-14 h-14 rounded-xl bg-[#FFD700]/10 border border-[#FFD700]/20 flex items-center justify-center text-3xl shrink-0 group-hover:scale-110 transition-transform">
-                  🧾
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-brand text-xl font-bold text-white">Guia de solicitud</h3>
-                  <p className="text-gray-400 text-sm mt-1 leading-relaxed">
-                    Prepara marca, modelo, año, motor y fotos antes de pedir una cotizacion.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2 relative">
-                {['Checklist', 'Compatibilidad', 'WhatsApp'].map(t => (
-                  <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
-                    {t}
-                  </span>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1.5 text-[#FFD700] text-sm font-semibold relative">
-                Abrir guia
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
-                  className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeLinecap="round">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </div>
-            </Link>
-
-            {/* ── Piedra, papel o tijera ── */}
-            <Link
-              href="/piedra-papel-tijera"
-              className="group relative flex flex-col gap-4 bg-gray-900 rounded-2xl p-6 border border-gray-800 hover:border-[#F97316]/60 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300 overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-              <div className="flex items-start gap-4 relative">
-                <div className="w-14 h-14 rounded-xl bg-[#F97316]/10 border border-[#F97316]/20 flex items-center justify-center text-3xl shrink-0 group-hover:scale-110 transition-transform">
-                  ✊
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-brand text-xl font-bold text-white">Piedra papel tijera</h3>
-                  <p className="text-gray-400 text-sm mt-1 leading-relaxed">
-                    Juego rápido del club con rival aleatorio, animación de resultado y modo de créditos opcional.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2 relative">
-                {['Rival aleatorio', 'Créditos opcionales', 'Partida rápida'].map(t => (
-                  <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
-                    {t}
-                  </span>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1.5 text-orange-400 text-sm font-semibold relative">
-                Jugar
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
-                  className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeLinecap="round">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </div>
-            </Link>
-
-            {/* ── Bingo ── */}
-            <Link
-              href="/bingo"
-              className="group relative flex flex-col gap-4 bg-gray-900 rounded-2xl p-6 border border-gray-800 hover:border-[#22C55E]/60 hover:shadow-xl hover:shadow-green-500/10 transition-all duration-300 overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-              <div className="flex items-start gap-4 relative">
-                <div className="w-14 h-14 rounded-xl bg-[#22C55E]/10 border border-[#22C55E]/20 flex items-center justify-center text-3xl shrink-0 group-hover:scale-110 transition-transform">
-                  🎱
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-brand text-xl font-bold text-white">Bingo</h3>
-                  <p className="text-gray-400 text-sm mt-1 leading-relaxed">
-                    Actividad recreativa para miembros del club. Las salas privadas se crean o se comparten con código.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2 relative">
-                {['Solo miembros', 'Salas privadas', 'Código de acceso'].map(t => (
-                  <span key={t} className="text-xs bg-gray-800 text-gray-400 px-2.5 py-1 rounded-full border border-gray-700">
-                    {t}
-                  </span>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1.5 text-[#22C55E] text-sm font-semibold relative">
-                Ver club
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
-                  className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeLinecap="round">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </div>
-            </Link>
-
-          </div>
-        </div>
-      </section>
-
-      {/* ──────────────────────────────────────────
-          NOSOTROS / MARCAS
-      ────────────────────────────────────────── */}
-      <section id="nosotros" className="py-16 px-4 bg-gray-50">
-        <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-
-            {/* Texto */}
-            <div>
-              <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 mb-2 block">Sobre Nosotros</span>
-              <h2 className="font-brand text-3xl sm:text-4xl text-gray-900 mb-4">
-                La application de servicios para Los Andes
-              </h2>
-              <p className="text-gray-600 leading-relaxed mb-4">
-                Somos <strong>Repuestos Mérida</strong>, un proyecto del futuro ecosistema <strong>Gochos Group</strong>,
-                comprometidos con llevar los mejores repuestos automotrices a cada rincón del estado Mérida
-                y la región andina venezolana.
-              </p>
-
-
-              {/* Trust icons */}
-              <div className="grid grid-cols-2 gap-4">
+              <ul className="mt-8 grid max-w-xl gap-2.5 text-gray-950">
                 {[
-                  { icon: '🏆', t: 'Marcas líderes', d: 'Bosch, NGK, Gates y más' },
-                  { icon: '🛡️', t: 'Repuestos originales', d: 'Calidad garantizada' },
-                  { icon: '📱', t: 'Atención digital', d: 'WhatsApp y app móvil' },
-                  { icon: '🏔️', t: 'Oficina local', d: 'Mérida centro · Av. 3' },
-                ].map((item) => (
-                  <div key={item.t} className="flex items-start gap-3 bg-white rounded-lg p-3 border border-gray-100">
-                    <span className="text-xl">{item.icon}</span>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{item.t}</p>
-                      <p className="text-xs text-gray-500">{item.d}</p>
-                    </div>
-                  </div>
+                  'Más de 120 comercios de Mérida en el mapa',
+                  'Hablas directo con la tienda, sin intermediarios',
+                  'Buscar y preguntar no cuesta nada, ni pide cuenta',
+                ].map((t) => (
+                  <li key={t} className="flex items-start gap-2.5">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-gray-950" fill="currentColor">
+                      <path d="M10 1.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Zm3.9 6.3-4.6 5a.8.8 0 0 1-1.1.1L6 10.8a.8.8 0 1 1 1.1-1.2l1.6 1.5 4-4.4a.8.8 0 0 1 1.2 1.1Z" />
+                    </svg>
+                    <span>{t}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
-
-            {/* Logos */}
-            <div className="flex flex-col items-center gap-8">
-              <a
-                href="https://play.google.com/store/apps/details?id=com.btmstudio.rep_merida"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Descargar Repuestos Mérida en Google Play"
-                className="bg-white rounded-2xl shadow-card p-8 flex flex-col items-center gap-2 transition-transform duration-200 hover:-translate-y-1 hover:shadow-xl"
-              >
-                <Image src="/iconorm.png" alt="Repuestos Mérida" width={120} height={120} className="rounded-xl" />
-                <p className="font-brand text-gray-900 mt-2 text-lg">Repuestos Mérida</p>
-                <div className="flex items-center gap-1">
-                  {[...Array(5)].map((_, i) => <IconStar key={i} />)}
-                  <span className="text-xs text-gray-500 ml-1">App disponible</span>
-                </div>
-              </a>
-              <div className="bg-white rounded-2xl shadow-card p-6 flex flex-col items-center gap-2 w-full max-w-xs">
-                <Image src="/gochosgroup.png" alt="Gochos Group" width={80} height={80} className="rounded-full" />
-                <p className="font-medium text-gray-700 text-sm">Proyecto Gochos Group</p>
-                <p className="text-xs text-gray-400 text-center">Marca merideña proyectada para registro futuro</p>
-              </div>
+            <div className="mx-auto w-[min(72vw,300px)] md:w-full">
+              <Telefono
+                captura="inicio"
+                alt="Pantalla de inicio de Repuestos Mérida App con el selector de ciudad, agrega tu carro y servicios disponibles"
+                sizes="(min-width: 1024px) 340px, (min-width: 768px) 300px, 72vw"
+                priority
+              />
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ──────────────────────────────────────────
-          FAQ + CITAS PARA IA
-      ────────────────────────────────────────── */}
-      <section id="faq" className="py-16 px-4 bg-white border-t border-gray-100">
-        <div className="max-w-5xl mx-auto">
-          <div className="mb-8">
-            <span className="text-xs uppercase tracking-widest font-bold text-yellow-500 mb-2 block">Resumen para IA y búsqueda semántica</span>
-            <h2 className="font-brand text-3xl sm:text-4xl text-gray-900 mb-3">
-              Respuestas claras sobre Repuestos Mérida
+        <nav aria-labelledby="indice-titulo" className="border-b border-gray-200 bg-white py-12 sm:py-16">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <h2 id="indice-titulo" className="font-brand text-2xl text-gray-950 sm:text-3xl">
+              ¿Qué quieres hacer?
             </h2>
-            <p className="text-gray-600 max-w-3xl">
-              Esta sección está redactada en lenguaje natural para facilitar respuestas precisas en motores de búsqueda y asistentes de IA.
-              Incluye hechos verificables sobre cobertura, catálogo y método de atención.
-            </p>
-          </div>
-
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-8">
-            <p className="text-sm text-gray-800">
-              Intención local detectada con mayor frecuencia: compra inmediata, consulta por marca/modelo, validación de precio y disponibilidad,
-              y contacto directo por WhatsApp en Mérida ciudad.
-            </p>
-            <p className="text-xs text-gray-600 mt-2">
-              Términos de intención observados: {flattenedTrendPatterns.slice(0, 5).join(' · ')}.
-            </p>
-          </div>
-
-          <div className="grid gap-4 mb-10">
-            {faq.map((item) => (
-              <article key={item.q} className="bg-gray-50 rounded-xl p-5 border border-gray-200">
-                <h3 className="text-gray-900 font-semibold mb-2">{item.q}</h3>
-                <p className="text-gray-700 text-sm leading-relaxed">{item.a}</p>
-              </article>
-            ))}
-          </div>
-
-          <div className="bg-gray-900 rounded-2xl p-6 sm:p-8 text-gray-200">
-            <h3 className="font-brand text-2xl text-white mb-2">Fuentes técnicas recomendadas</h3>
-            <p className="text-gray-400 text-sm mb-4">
-              Para diagnóstico y mantenimiento, priorizamos manuales de fabricante y estas referencias externas de alta calidad.
-            </p>
-            <ul className="space-y-2 text-sm">
-              {CITAS_TECNICAS.map((cita) => (
-                <li key={cita.url}>
+            <p className="mt-2 text-gray-700">Toca lo que necesitas y te enseñamos cómo, con capturas reales de la app.</p>
+            <ul className="mt-6 grid gap-x-8 sm:grid-cols-2">
+              {GUIAS.map((g) => (
+                <li key={g.id} className="border-b border-gray-200">
                   <a
-                    href={cita.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[#FFD700] hover:text-yellow-300 transition-colors"
+                    href={`#${g.id}`}
+                    className="flex min-h-14 items-center justify-between gap-3 py-3 font-semibold text-gray-950 hover:text-gray-600"
                   >
-                    {cita.nombre}
+                    {g.indice}
+                    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-5 w-5 shrink-0" fill="currentColor">
+                      <path d="M10.6 4.2a.8.8 0 0 1 1.1 0l5.2 5.2a.8.8 0 0 1 0 1.2l-5.2 5.2a.8.8 0 1 1-1.1-1.2l3.8-3.8H3.8a.8.8 0 0 1 0-1.6h10.6l-3.8-3.8a.8.8 0 0 1 0-1.2Z" />
+                    </svg>
                   </a>
                 </li>
               ))}
             </ul>
           </div>
-        </div>
-      </section>
+        </nav>
 
-      {/* ──────────────────────────────────────────
-          FOOTER
-      ────────────────────────────────────────── */}
-      <footer className="bg-gray-900 text-gray-400 py-12 px-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
+        {GUIAS.map((g, i) => (
+          <Guia key={g.id} guia={g} numero={i} />
+        ))}
 
-            {/* Marca */}
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <Image src="/iconorm.png" alt="Repuestos Mérida" width={36} height={36} className="rounded-lg" />
-                <div>
-                  <p className="font-brand text-white text-base leading-none">Repuestos <span className="text-[#FFD700]">Mérida</span></p>
-                  <p className="text-gray-500 text-xs">Gochos Group</p>
-                </div>
-              </div>
-              <p className="text-sm leading-relaxed text-gray-500">
-                Repuestos automotrices de calidad para Mérida y Los Andes venezolanos.
-              </p>
-            </div>
-
-            {/* Navegación */}
-            <div>
-              <p className="text-white font-semibold text-sm mb-4">Navegación</p>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#categorias" className="hover:text-[#FFD700] transition-colors">Categorías</a></li>
-                <li><a href="#catalogo" className="hover:text-[#FFD700] transition-colors">Catálogo</a></li>
-                <li><Link href="/solicitados" className="hover:text-[#FFD700] transition-colors">Repuestos solicitados</Link></li>
-                <li><Link href="/guia-repuesto" className="hover:text-[#FFD700] transition-colors">Guía para pedir repuestos</Link></li>
-                <li><Link href="/blog" className="hover:text-[#FFD700] transition-colors">Blog</Link></li>
-                <li><a href="#nosotros" className="hover:text-[#FFD700] transition-colors">Nosotros</a></li>
-                <li><a href="#contacto" className="hover:text-[#FFD700] transition-colors">Contacto</a></li>
-                <li><a href="#servicios" className="hover:text-[#FFD700] transition-colors">Servicios</a></li>
-              </ul>
-              <p className="text-white font-semibold text-sm mt-5 mb-3">Servicios</p>
-              <ul className="space-y-2 text-sm">
-                <li>
-                  <Link href="/plaza" className="hover:text-[#FFD700] transition-colors flex items-center gap-1.5">
-                    🏪 Plaza
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/solicitados" className="hover:text-[#38BDF8] transition-colors flex items-center gap-1.5">
-                    🔎 Solicitados
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/bingo" className="hover:text-[#22C55E] transition-colors flex items-center gap-1.5">
-                    🎱 Bingo
-                  </Link>
-                </li>
-              </ul>
-            </div>
-
-            {/* Categorías rápidas */}
-            <div>
-              <p className="text-white font-semibold text-sm mb-4">Categorías</p>
-              <ul className="space-y-2 text-sm">
-                {CATEGORIAS.filter(c => c.id !== 'todos').map(c => (
-                  <li key={c.id}>
-                    <button onClick={() => { handleCat(c.id); document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' }) }}
-                      className="hover:text-[#FFD700] transition-colors text-left">
-                      {c.emoji} {c.nombre}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Legal */}
-            <div>
-              <p className="text-white font-semibold text-sm mb-4">Legal</p>
-              <ul className="space-y-2 text-sm">
-                <li><Link href="/politica-privacidad" className="hover:text-[#FFD700] transition-colors">Política de Privacidad</Link></li>
-                <li><Link href="/aviso-legal" className="hover:text-[#FFD700] transition-colors">Aviso Legal</Link></li>
-                <li><Link href="/terminos-condiciones" className="hover:text-[#FFD700] transition-colors">Términos y Condiciones</Link></li>
-                <li><Link href="/propiedad-intelectual" className="hover:text-[#FFD700] transition-colors">Propiedad intelectual</Link></li>
-                <li><Link href="/eliminar-datos" className="hover:text-[#FFD700] transition-colors">Eliminar mis datos</Link></li>
-              </ul>
+        <section id="preguntas" aria-labelledby="preguntas-titulo" className="scroll-mt-4 bg-white py-14 sm:py-20">
+          <div className="mx-auto max-w-3xl px-4 sm:px-6">
+            <h2 id="preguntas-titulo" className="font-brand text-2xl text-gray-950 sm:text-4xl">
+              Preguntas frecuentes
+            </h2>
+            <div className="mt-8 divide-y divide-gray-300 border-y border-gray-300">
+              {PREGUNTAS.map((p) => (
+                <details key={p.q} className="group py-1">
+                  <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 py-3 font-semibold text-gray-950 [&::-webkit-details-marker]:hidden">
+                    {p.q}
+                    <span aria-hidden="true" className="text-2xl leading-none text-gray-500 group-open:rotate-45">
+                      +
+                    </span>
+                  </summary>
+                  <p className="pb-4 leading-relaxed text-gray-700">{p.a}</p>
+                </details>
+              ))}
             </div>
           </div>
+        </section>
 
-          <p className="mb-6 rounded-xl border border-gray-800 bg-gray-950 px-4 py-3 text-xs leading-relaxed text-gray-400">
-            Repuestos Mérida utiliza inteligencia artificial para apoyar el desarrollo,
-            mantenimiento, monitoreo y seguridad del servicio, y en determinadas funciones de
-            asistencia, moderación y verificación. Consulta los detalles en nuestra{' '}
-            <Link href="/politica-privacidad" className="text-[#FFD700] hover:underline">
-              Política de Privacidad
-            </Link>
-            .
-          </p>
-
-          {/* Bottom bar */}
-          <div className="border-t border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
-            <p>© {new Date().getFullYear()} Repuestos Mérida · Operado por Elias Jose Montilla Ramirez · Mérida, Venezuela</p>
-            <div className="flex items-center gap-4">
-              <a href={waConsulta()} target="_blank" rel="noopener noreferrer"
-                className="text-green-500 hover:text-green-400 transition-colors font-medium">
-                WhatsApp
-              </a>
-              <span>·</span>
-              <span>App disponible en móvil</span>
+        <section id="descargar" aria-labelledby="descargar-titulo" className="scroll-mt-4 bg-gray-950 py-16 sm:py-24">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <h2 id="descargar-titulo" className="max-w-2xl font-brand text-3xl leading-tight text-brand-yellow sm:text-5xl">
+              Descarga la app y busca tu repuesto hoy
+            </h2>
+            <p className="mt-4 max-w-xl text-lg leading-relaxed text-gray-300">
+              Gratis en Android y en iPhone. La primera búsqueda no te pide cuenta.
+            </p>
+            <div className="mt-8">
+              <BotonesTiendas oscuro />
             </div>
           </div>
+        </section>
+      </main>
+
+      <footer className="bg-gray-950 pb-10 text-sm text-gray-400">
+        <div className="mx-auto max-w-6xl border-t border-gray-800 px-4 pt-8 sm:px-6">
+          <nav aria-label="Información legal y soporte" className="flex flex-wrap gap-x-6 gap-y-3">
+            <Link href="/soporte" className="hover:text-white">Soporte</Link>
+            <a href={`https://wa.me/${WA_SOPORTE}`} className="hover:text-white">WhatsApp de soporte</a>
+            <Link href="/politica-privacidad" className="hover:text-white">Política de privacidad</Link>
+            <Link href="/terminos-condiciones" className="hover:text-white">Términos y condiciones</Link>
+            <Link href="/aviso-legal" className="hover:text-white">Aviso legal</Link>
+            <Link href="/politica-cookies" className="hover:text-white">Cookies</Link>
+            <Link href="/propiedad-intelectual" className="hover:text-white">Retiro de contenido</Link>
+            <Link href="/eliminar-datos" className="hover:text-white">Eliminar mis datos</Link>
+          </nav>
+          <p className="mt-6">Repuestos Mérida es un proyecto de Gochos Group · Mérida, Venezuela.</p>
         </div>
       </footer>
-
-      {rutaTienda && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
-          <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gray-500">Ubicación</p>
-                <h3 className="mt-1 text-xl font-bold text-gray-900">Dirección de la tienda</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setRutaTienda(null)}
-                className="rounded-full p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
-                aria-label="Cerrar"
-              >
-                <IconX />
-              </button>
-            </div>
-
-            <div className="space-y-4 p-5">
-              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
-                <Image
-                  src={rutaTienda.routeImage}
-                  alt="Ruta hacia la tienda"
-                  width={1200}
-                  height={800}
-                  unoptimized
-                  className="h-auto w-full object-cover"
-                />
-              </div>
-
-              <div className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-700">
-                <p className="font-semibold text-gray-900">
-                  {sellerDisplayName(rutaTienda.user || {}, rutaTienda.producto)}
-                </p>
-                {rutaTienda.user?.tipovender && (
-                  <p className="mt-1 text-gray-500">Tipo: {rutaTienda.user.tipovender}</p>
-                )}
-                <p className="mt-2">
-                  {sellerDisplayLocation(rutaTienda.user || {}) || 'Dirección no disponible'}
-                </p>
-              </div>
-
-              <p className="text-sm leading-relaxed text-gray-600">
-                Aquí puedes ver la referencia visual de la ruta. También puedes abrir la ubicación exacta en Google Maps.
-              </p>
-
-              <a
-                href={rutaTienda.mapUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 font-semibold text-white transition hover:bg-gray-800"
-              >
-                <IconMapPin />
-                Ver ruta a la tienda
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {detalleRepuesto && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm sm:p-6 animate-fade-in"
-          onClick={() => setDetalleRepuesto(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="detalle-title"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="relative flex w-full max-w-6xl max-h-[94vh] flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl animate-slide-up"
-          >
-            <button
-              type="button"
-              onClick={() => setDetalleRepuesto(null)}
-              aria-label="Cerrar"
-              className="absolute top-3 right-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-700 shadow-md backdrop-blur transition hover:bg-white hover:text-gray-900 hover:scale-105"
-            >
-              <IconX />
-            </button>
-
-            <div className="flex-1 overflow-y-auto overscroll-contain">
-              <div className="md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
-
-                <div className="relative bg-gradient-to-br from-gray-100 to-gray-200 md:h-full md:min-h-[640px]">
-                  <div className="relative aspect-[4/3] overflow-hidden md:sticky md:top-0 md:aspect-auto md:h-[94vh] md:max-h-[900px] md:min-h-[640px]">
-                    {detalleRepuesto.producto.imagen ? (
-                      <button
-                        type="button"
-                        onClick={() => setImagenAmpliada(true)}
-                        aria-label="Ver imagen completa"
-                        className="group absolute inset-0 block cursor-zoom-in"
-                      >
-                        <Image
-                          src={detalleRepuesto.producto.imagen}
-                          alt={detalleRepuesto.producto.nombre}
-                          fill
-                          unoptimized
-                          sizes="(max-width: 768px) 100vw, 50vw"
-                          className="object-contain transition-transform duration-300 group-hover:scale-[1.01]"
-                        />
-                        <span className="pointer-events-none absolute top-4 right-4 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/65 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white opacity-0 backdrop-blur transition group-hover:opacity-100">
-                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 8v6M8 11h6M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0z" />
-                          </svg>
-                          Ampliar
-                        </span>
-                      </button>
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-7xl text-gray-300">📦</div>
-                    )}
-
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
-
-                    <span className="absolute top-4 left-4 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-800 shadow-sm backdrop-blur">
-                      <span className="h-1.5 w-1.5 rounded-full bg-yellow-400" />
-                      {CATEGORIAS.find((c) => c.id === detalleRepuesto.producto.categoria)?.nombre || 'Repuesto'}
-                    </span>
-
-                    <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/80">Precio</p>
-                        <p className="mt-0.5 truncate text-2xl font-extrabold text-white drop-shadow sm:text-3xl">
-                          {detalleRepuesto.producto.precio}
-                        </p>
-                      </div>
-                      <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-green-500/95 px-3 py-1.5 text-[11px] font-bold text-white shadow">
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-                        {detalleRepuesto.responseTime}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-5 p-5 sm:p-6">
-                  <div>
-                    <h3 id="detalle-title" className="text-2xl font-extrabold leading-tight tracking-tight text-gray-900">
-                      {detalleRepuesto.producto.nombre}
-                    </h3>
-                    <p className="mt-1 text-sm font-medium text-gray-500">
-                      {detalleRepuesto.producto.marca}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-yellow-50/50 p-4">
-                    <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-amber-700">
-                      <IconShield />
-                      Compatible con
-                    </div>
-                    <p className="mt-2 text-sm leading-relaxed text-gray-800">
-                      {detalleRepuesto.producto.compat}
-                    </p>
-                  </div>
-
-                  {detalleRepuesto.producto.descripcion && (
-                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                        Descripción
-                      </p>
-                      <p className="mt-2 text-sm leading-relaxed text-gray-700">
-                        {detalleRepuesto.producto.descripcion}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="rounded-2xl bg-gray-900 p-4 text-white shadow-lg ring-1 ring-gray-800">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-yellow-400 text-gray-900">
-                        <IconStore />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Comercio</p>
-                        <p className="mt-0.5 text-base font-bold leading-snug">
-                          {sellerDisplayName(detalleRepuesto.user || {}, detalleRepuesto.producto)}
-                        </p>
-                        {detalleRepuesto.user?.tipovender && (
-                          <p className="mt-0.5 text-xs text-gray-400">{detalleRepuesto.user.tipovender}</p>
-                        )}
-                        <p className="mt-2 flex items-start gap-1.5 text-xs text-gray-300">
-                          <span className="mt-0.5 shrink-0 text-gray-400"><IconMapPin /></span>
-                          <span className="leading-snug">
-                            {sellerDisplayLocation(detalleRepuesto.user || {}) || 'Ubicación no detallada'}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-                    {detalleRepuesto.isPhysicalStore === false && (
-                      <div className="mt-3 rounded-lg bg-yellow-500/15 px-3 py-2 text-[11px] font-semibold text-yellow-300">
-                        Opera en Mérida, pero no indica tienda física abierta al público.
-                      </div>
-                    )}
-                    {detalleRepuesto.isPhysicalStore === true && (
-                      <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-green-500/15 px-3 py-2 text-[11px] font-semibold text-green-300">
-                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                        Comercio con referencia de tienda física.
-                      </div>
-                    )}
-                  </div>
-
-                  {detalleRepuesto.mapEmbedUrl && (
-                    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
-                      <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Ubicación exacta</p>
-                          <p className="mt-0.5 text-sm font-bold text-gray-900">Mapa del comercio</p>
-                        </div>
-                        <a
-                          href={detalleRepuesto.mapUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="shrink-0 text-xs font-bold text-blue-600 hover:text-blue-700"
-                        >
-                          Abrir mapa
-                        </a>
-                      </div>
-                      <iframe
-                        src={detalleRepuesto.mapEmbedUrl}
-                        title={`Ubicación de ${sellerDisplayName(detalleRepuesto.user || {}, detalleRepuesto.producto)}`}
-                        className="h-64 w-full border-0"
-                        loading="lazy"
-                        referrerPolicy="no-referrer-when-downgrade"
-                        allowFullScreen
-                      />
-                    </div>
-                  )}
-
-                  {detalleQA.length > 0 && (
-                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4">
-                      <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
-                        </svg>
-                        Preguntas respondidas por el vendedor
-                        <span className="ml-auto rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                          {detalleQA.length}
-                        </span>
-                      </div>
-                      <div className="mt-3 space-y-2.5">
-                        {detalleQA.map((qa) => (
-                          <div key={qa.id} className="rounded-xl border border-emerald-100 bg-white p-3">
-                            <div className="flex items-start gap-2">
-                              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-700">P</span>
-                              <p className="flex-1 text-sm leading-snug text-gray-900">{qa.pregunta}</p>
-                            </div>
-                            <div className="mt-2 flex items-start gap-2">
-                              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white">R</span>
-                              <p className="flex-1 text-sm leading-snug font-medium text-gray-700">{qa.respuesta}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                      Mensaje al vendedor
-                    </label>
-                    <textarea
-                      value={detallePreguntas}
-                      onChange={(e) => setDetallePreguntas(e.target.value)}
-                      rows={4}
-                      placeholder="Escribe aquí el mensaje o las preguntas que quieres enviar."
-                      className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm text-gray-800 outline-none transition focus:border-yellow-400 focus:bg-white focus:ring-4 focus:ring-yellow-100"
-                    />
-                    <a
-                      href={waCustomUrl(detalleRepuesto.producto.nombre, detallePreguntas)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={registrarPreguntaEnFirestore}
-                      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-bold text-white shadow-sm shadow-green-500/20 transition hover:bg-[#128C7E]"
-                    >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
-                      </svg>
-                      Enviar mensaje por WhatsApp
-                    </a>
-                    <p className="mt-1.5 text-[11px] text-gray-400">
-                      Precio, compatibilidad, entrega o garantía — lo que necesites.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                      Nota privada (solo para ti)
-                    </label>
-                    <textarea
-                      value={detalleNota}
-                      onChange={(e) => setDetalleNota(e.target.value)}
-                      rows={2}
-                      placeholder="Nota rápida sobre este repuesto o vendedor."
-                      className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm text-gray-800 outline-none transition focus:border-yellow-400 focus:bg-white focus:ring-4 focus:ring-yellow-100"
-                    />
-                  </div>
-
-                  <div className="rounded-2xl border border-yellow-200 bg-gradient-to-br from-yellow-50 to-amber-50/50 p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-yellow-400 text-gray-900">
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-4-7 4V5z" />
-                        </svg>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-gray-900">Guarda este repuesto</p>
-                        <p className="mt-0.5 text-xs leading-snug text-gray-600">
-                          Lo encontrarás después en tu directorio personal junto con tu nota y preguntas.
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={saveProductToDirectory}
-                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-400 px-4 py-3 text-sm font-bold text-gray-900 transition hover:bg-yellow-300"
-                    >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-4-7 4V5z" />
-                      </svg>
-                      Guardar en mi directorio
-                    </button>
-                    {detalleGuardado && (
-                      <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-3">
-                        <p className="flex items-center justify-center gap-1.5 text-center text-xs font-bold text-green-700">
-                          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                          {detalleGuardado}
-                        </p>
-                        <Link
-                          href="/directorio"
-                          className="mt-2.5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-gray-800"
-                        >
-                          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h18M3 12h18M3 17h12" />
-                          </svg>
-                          Ir a mi directorio
-                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                          </svg>
-                        </Link>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="shrink-0 border-t border-gray-100 bg-white/95 px-4 py-3 shadow-[0_-8px_20px_-10px_rgba(0,0,0,0.08)] backdrop-blur sm:px-6">
-              <div className="flex items-stretch gap-2">
-                {detalleRepuesto.producto.imagen && (
-                  <Link
-                    href={`/repuesto/${encodeURIComponent(String(detalleRepuesto.producto.id))}`}
-                    title="Ver página completa"
-                    aria-label="Ver página completa"
-                    className="inline-flex shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-3 text-gray-700 transition hover:border-yellow-400 hover:bg-yellow-50 hover:text-yellow-700"
-                  >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7L10 14M5 7v12h12v-5" />
-                    </svg>
-                  </Link>
-                )}
-                {detalleRepuesto.user && (
-                  <a
-                    href={detalleRepuesto.mapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Ver ubicación del comercio"
-                    aria-label="Ver ubicación del comercio"
-                    className="inline-flex shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-3 text-gray-700 transition hover:border-yellow-400 hover:bg-yellow-50 hover:text-yellow-700"
-                  >
-                    <IconMapPin />
-                  </a>
-                )}
-                <a
-                  href={waCustomUrl(detalleRepuesto.producto.nombre, detallePreguntas)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={registrarPreguntaEnFirestore}
-                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 font-bold text-white shadow-md shadow-green-500/20 transition hover:bg-[#128C7E]"
-                >
-                  <IconWhatsApp />
-                  Consultar por WhatsApp
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {imagenAmpliada && detalleRepuesto?.producto?.imagen && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/95 p-4 animate-fade-in"
-          onClick={() => setImagenAmpliada(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Imagen ampliada"
-        >
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setImagenAmpliada(false) }}
-            aria-label="Cerrar imagen"
-            className="absolute top-4 right-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-gray-900 shadow-lg backdrop-blur transition hover:bg-white hover:scale-105"
-          >
-            <IconX />
-          </button>
-          <div
-            className="relative h-full w-full max-w-5xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Image
-              src={detalleRepuesto.producto.imagen}
-              alt={detalleRepuesto.producto.nombre}
-              fill
-              unoptimized
-              sizes="100vw"
-              className="object-contain"
-            />
-          </div>
-        </div>
-      )}
-
-      {catalogFormOpen && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 p-0 sm:items-center sm:p-4" onClick={() => setCatalogFormOpen(false)}>
-          <form
-            className="w-full max-w-lg rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-2xl"
-            onClick={(event) => event.stopPropagation()}
-            onSubmit={publishCatalogProduct}
-          >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-extrabold text-gray-900">Crear repuesto destacado</h3>
-                <p className="mt-1 text-xs text-gray-500">
-                  Solo usuarios con WhatsApp verificado y cédula registrada pueden publicar.
-                </p>
-              </div>
-              <button type="button" onClick={() => setCatalogFormOpen(false)} className="rounded-full border border-gray-200 p-2 text-gray-500">
-                <IconX />
-              </button>
-            </div>
-
-            <div className="grid gap-3">
-              <input
-                value={catalogForm.titulo}
-                onChange={(event) => setCatalogForm((current) => ({ ...current, titulo: event.target.value }))}
-                placeholder="Nombre del repuesto"
-                required
-                maxLength={90}
-                className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <select
-                  value={catalogForm.categoria}
-                  onChange={(event) => setCatalogForm((current) => ({ ...current, categoria: event.target.value }))}
-                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
-                >
-                  {CATEGORIAS.filter((category) => category.id !== 'todos').map((category) => (
-                    <option key={category.id} value={category.nombre}>{category.nombre}</option>
-                  ))}
-                </select>
-                <input
-                  value={catalogForm.precio}
-                  onChange={(event) => setCatalogForm((current) => ({ ...current, precio: event.target.value }))}
-                  placeholder="Precio"
-                  required
-                  maxLength={40}
-                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
-                />
-              </div>
-              <input
-                value={catalogForm.vehiculo}
-                onChange={(event) => setCatalogForm((current) => ({ ...current, vehiculo: event.target.value }))}
-                placeholder="Vehículo o marca compatible"
-                maxLength={120}
-                className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
-              />
-              <input
-                value={catalogForm.modelos}
-                onChange={(event) => setCatalogForm((current) => ({ ...current, modelos: event.target.value }))}
-                placeholder="Compatibilidad: modelo, año, motor"
-                required
-                maxLength={140}
-                className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
-              />
-              <textarea
-                value={catalogForm.descripcion}
-                onChange={(event) => setCatalogForm((current) => ({ ...current, descripcion: event.target.value }))}
-                placeholder="Descripción, estado, marca o garantía"
-                rows={3}
-                maxLength={500}
-                className="resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-yellow-400"
-              />
-              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-600 hover:border-yellow-400 hover:bg-yellow-50">
-                <span>{catalogImage ? catalogImage.name : 'Agregar foto principal'}</span>
-                <span className="font-bold text-gray-900">+</span>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(event) => setCatalogImage(event.target.files?.[0] || null)}
-                  required={!catalogImage}
-                />
-              </label>
-            </div>
-
-            {catalogMessage && (
-              <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-semibold ${catalogMessage.includes('revisión') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                {catalogMessage}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={catalogSending}
-              className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-yellow-400 px-4 py-3 text-sm font-extrabold text-gray-900 transition hover:bg-yellow-300 disabled:opacity-50"
-            >
-              {catalogSending ? 'Publicando...' : 'Publicar destacado'}
-            </button>
-          </form>
-        </div>
-      )}
-
-      {/* ── Plaza AI Chat Widget ── */}
-      <PlazaChat hideMobileLauncher />
-
-    </div>
+    </>
   )
 }

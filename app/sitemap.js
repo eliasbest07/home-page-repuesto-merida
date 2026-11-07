@@ -1,52 +1,22 @@
-import { POSTS } from './blog/posts'
-
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://repuestosmerida.com'
 
 export default function sitemap() {
   const now = new Date()
-  const articulos = POSTS.filter((p) => !p.noindex).map((p) => ({
-    url: `${SITE_URL}/blog/${p.slug}`,
-    lastModified: new Date(p.date),
-    changeFrequency: 'monthly',
-    priority: 0.7,
-  }))
+  const legales = [
+    ['/politica-privacidad', 0.5],
+    ['/terminos-condiciones', 0.5],
+    ['/aviso-legal', 0.5],
+    ['/politica-cookies', 0.5],
+    ['/eliminar-datos', 0.4],
+    ['/propiedad-intelectual', 0.5],
+  ]
 
   return [
     {
       url: `${SITE_URL}/`,
       lastModified: now,
-      changeFrequency: 'daily',
-      priority: 1,
-    },
-    {
-      url: `${SITE_URL}/plaza`,
-      lastModified: now,
-      changeFrequency: 'daily',
-      priority: 0.9,
-    },
-    {
-      url: `${SITE_URL}/plaza/ayuda`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.75,
-    },
-    {
-      url: `${SITE_URL}/solicitados`,
-      lastModified: now,
-      changeFrequency: 'daily',
-      priority: 0.9,
-    },
-    {
-      url: `${SITE_URL}/blog`,
-      lastModified: now,
       changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${SITE_URL}/guia-repuesto`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.85,
+      priority: 1,
     },
     {
       url: `${SITE_URL}/soporte`,
@@ -54,48 +24,11 @@ export default function sitemap() {
       changeFrequency: 'monthly',
       priority: 0.7,
     },
-    {
-      url: `${SITE_URL}/rio-albarregas`,
+    ...legales.map(([ruta, priority]) => ({
+      url: `${SITE_URL}${ruta}`,
       lastModified: now,
       changeFrequency: 'monthly',
-      priority: 0.75,
-    },
-    ...articulos,
-    {
-      url: `${SITE_URL}/politica-privacidad`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
-    {
-      url: `${SITE_URL}/terminos-condiciones`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
-    {
-      url: `${SITE_URL}/aviso-legal`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
-    {
-      url: `${SITE_URL}/politica-cookies`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
-    {
-      url: `${SITE_URL}/eliminar-datos`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.4,
-    },
-    {
-      url: `${SITE_URL}/propiedad-intelectual`,
-      lastModified: now,
-      changeFrequency: 'monthly',
-      priority: 0.5,
-    },
+      priority,
+    })),
   ]
 }

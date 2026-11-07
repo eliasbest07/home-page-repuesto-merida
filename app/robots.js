@@ -6,27 +6,9 @@ export default function robots() {
       {
         userAgent: '*',
         allow: '/',
-        // Rutas funcionales / juegos / paneles: sin contenido del editor, fuera del índice.
-        disallow: [
-          '/api/',
-          '/login',
-          '/registro',
-          '/auth/',
-          '/configurador',
-          '/bingo',
-          '/rifa',
-          '/rifas',
-          '/piedra-papel-tijera',
-          '/verificacion',
-          '/usuario/',
-          '/directorio',
-          '/anuncio/',
-          '/repuesto/',
-          '/plaza/login',
-          '/plaza/publicar',
-          '/plaza/mis-anuncios',
-          '/plaza/solicitar',
-        ],
+        // Solo la API queda fuera del índice. Las páginas viejas redirigen a la
+        // landing y tienen que poder rastrearse para que Google siga la redirección.
+        disallow: ['/api/'],
       },
       { userAgent: 'GPTBot', allow: '/' },
       { userAgent: 'ChatGPT-User', allow: '/' },
