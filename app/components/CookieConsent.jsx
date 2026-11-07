@@ -39,38 +39,32 @@ export default function CookieConsent() {
   return (
     <>
       {showDialog && (
+        // Barra baja y corta: en un teléfono pequeño no tapa la portada.
         <section
-          className="fixed inset-x-4 bottom-4 z-[100] mx-auto max-w-3xl rounded-2xl border border-gray-700 bg-gray-950 p-5 text-white shadow-2xl"
+          className="fixed inset-x-2 bottom-2 z-[100] mx-auto flex max-w-3xl flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-gray-950 px-4 py-3 text-white shadow-lg"
           role="dialog"
-          aria-labelledby="cookie-title"
+          aria-label="Preferencias de cookies"
         >
-          <h2 id="cookie-title" className="text-lg font-bold">
-            Preferencias de cookies
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-gray-300">
-            Las tecnologías estrictamente necesarias están siempre activas porque permiten la
-            sesión, la seguridad y guardar tu elección. Con tu autorización activamos medición de
-            uso y, cuando corresponda, publicidad de Google. Puedes usar las funciones esenciales
-            aunque rechaces las opcionales. Consulta la{' '}
+          <p className="min-w-0 flex-1 basis-56 text-sm leading-5 text-gray-200">
+            Con tu permiso medimos cómo se usa la página. Lo esencial funciona igual si no aceptas.{' '}
             <Link className="text-yellow-300 underline" href="/politica-cookies">
-              Política de Cookies
+              Más información
             </Link>
-            .
           </p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => choose('rejected')}
-              className="rounded-lg border border-gray-400 px-4 py-2 text-sm font-bold hover:bg-gray-800"
+              className="min-h-10 rounded-lg border border-gray-500 px-3 text-sm font-semibold hover:bg-gray-800"
             >
-              Rechazar opcionales
+              No, gracias
             </button>
             <button
               type="button"
               onClick={() => choose('accepted')}
-              className="rounded-lg bg-[#FFD700] px-4 py-2 text-sm font-bold text-gray-950 hover:bg-yellow-400"
+              className="min-h-10 rounded-lg bg-[#FFD700] px-3 text-sm font-bold text-gray-950 hover:bg-yellow-400"
             >
-              Aceptar opcionales
+              Aceptar
             </button>
           </div>
         </section>

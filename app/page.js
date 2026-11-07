@@ -1,5 +1,5 @@
-import Image from 'next/image'
 import Link from 'next/link'
+import { preload } from 'react-dom'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
 
 // Landing de la app: enseña a usar Repuestos Mérida App con capturas reales
@@ -452,6 +452,13 @@ function BotonesTiendas({ oscuro = false }) {
   )
 }
 
+// Cada captura existe en 240, 400 y 720 px de ancho (`nombre-240.webp`,
+// `nombre-400.webp` y `nombre.webp`). La web tiene `images.unoptimized`, así
+// que el srcset va a mano: un teléfono de gama baja se baja la de 240 o 400.
+function srcsetDe(src) {
+  return [240, 400].map((w) => `${src.replace('.webp', `-${w}.webp`)} ${w}w`).concat(`${src} 720w`).join(', ')
+}
+
 function Telefono({ captura, alt, sizes, priority = false }) {
   const c = CAPTURAS[captura]
   // El enlace abre la captura completa: en un teléfono pequeño se ve mejor así.
@@ -460,13 +467,17 @@ function Telefono({ captura, alt, sizes, priority = false }) {
       href={c.src}
       className="block overflow-hidden rounded-[1.4rem] border-[5px] border-gray-950 bg-gray-950 shadow-[0_14px_30px_-12px_rgba(17,24,39,0.45)]"
     >
-      <Image
+      {/* eslint-disable-next-line @next/next/no-img-element -- srcset propio, ver srcsetDe */}
+      <img
         src={c.src}
+        srcSet={srcsetDe(c.src)}
+        sizes={sizes}
         width={c.w}
         height={c.h}
         alt={alt}
-        sizes={sizes}
-        priority={priority}
+        loading={priority ? 'eager' : 'lazy'}
+        fetchPriority={priority ? 'high' : 'auto'}
+        decoding="async"
         className="block h-auto w-full"
       />
     </a>
@@ -551,7 +562,17 @@ function Guia({ guia, numero }) {
 
 // ── Página ───────────────────────────────────────────────────────────────
 
+const TAMANOS_PORTADA = '(min-width: 1024px) 340px, (min-width: 768px) 300px, 72vw'
+
 export default function Home() {
+  // La captura de la portada es lo más grande que pinta la página: se pide
+  // desde el <head>, antes de que el navegador llegue a ella en el HTML.
+  preload(CAPTURAS.inicio.src, {
+    as: 'image',
+    imageSrcSet: srcsetDe(CAPTURAS.inicio.src),
+    imageSizes: TAMANOS_PORTADA,
+    fetchPriority: 'high',
+  })
   const jsonLd = construirJsonLd()
   return (
     <>
@@ -566,7 +587,8 @@ export default function Home() {
       <header className="bg-brand-yellow">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <Image src="/app-capturas/logo-96.webp" alt="" width={40} height={40} className="h-10 w-10 rounded-xl" priority />
+            {/* eslint-disable-next-line @next/next/no-img-element -- 3 KB, no necesita optimizador */}
+            <img src="/app-capturas/logo-96.webp" alt="" width={40} height={40} className="h-10 w-10 rounded-xl" />
             <span className="font-brand text-lg leading-none text-gray-950">Repuestos Mérida</span>
           </Link>
           <a
@@ -611,7 +633,7 @@ export default function Home() {
               <Telefono
                 captura="inicio"
                 alt="Pantalla de inicio de Repuestos Mérida App con el selector de ciudad, agrega tu carro y servicios disponibles"
-                sizes="(min-width: 1024px) 340px, (min-width: 768px) 300px, 72vw"
+                sizes={TAMANOS_PORTADA}
                 priority
               />
             </div>

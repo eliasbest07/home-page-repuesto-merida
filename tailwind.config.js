@@ -18,8 +18,7 @@ module.exports = {
         },
       },
       fontFamily: {
-        heading: ['Montserrat', 'Inter', 'sans-serif'],
-        body:    ['Inter', 'sans-serif'],
+        heading: ['var(--font-brand)', 'Arial Black', 'sans-serif'],
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
