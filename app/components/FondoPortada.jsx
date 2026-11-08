@@ -9,10 +9,10 @@ import { useEffect, useRef } from 'react'
 // Pensado para teléfonos de gama baja:
 //  - La primera foto la elige un guion dentro del HTML, así empieza a bajar
 //    antes de que cargue React.
-//  - Solo hay dos capas. Los cambios (barrido con filo de luz, subida o
-//    acercamiento, al azar), la foto que entra iluminada y luego se oscurece y
-//    el zoom lento de cada foto solo animan transform y opacity: los hace la
-//    GPU sin repintar. Con 2 GB de memoria o menos se
+//  - Solo hay dos capas. Los cambios (barrido con filo de luz, subida,
+//    acercamiento o esfera que crece, al azar), la foto que entra iluminada y luego
+//    se oscurece y el movimiento 3D de cada foto solo animan transform y
+//    opacity: los hace la GPU sin repintar. Con 2 GB de memoria o menos se
 //    quedan en un fundido simple.
 //  - Lo de Firebase se baja de uno en uno, después de que la página cargó,
 //    y no se baja con ahorro de datos, red lenta o poca memoria.
@@ -22,14 +22,18 @@ import { useEffect, useRef } from 'react'
 const DURACION_IMAGEN = 7000
 const DURACION_MAXIMA_VIDEO = 30000
 const TRANSICION = 1400
+const LADO_BRILLO = 160
 const SUAVE = 'cubic-bezier(0.77, 0, 0.175, 1)'
 const CLASE_MEDIO = 'h-full w-full object-cover'
 // Capa oscura de cada foto, para que el texto blanco se lea sobre cualquiera.
 const CLASE_VELO =
   'absolute inset-0 bg-gradient-to-b from-gray-950/75 via-gray-950/60 to-gray-950/80 md:bg-gradient-to-r md:from-gray-950/85 md:via-gray-950/60 md:to-gray-950/30'
-// La foto que entra llega iluminada, sin capa oscura; cuando ya se asentó, se oscurece.
+// La foto que entra llega iluminada y, cuando ya se asentó, se oscurece. No
+// llega del todo sin capa: probado en el teléfono, con una foto de mucho cielo
+// el título blanco desaparecía.
 const ILUMINADA = 1900
 const OSCURECE = 1300
+const VELO_AL_ENTRAR = 0.35
 
 // Filo de luz amarilla que va al frente del barrido. Está por encima de la capa
 // oscura (si no, el amarillo se apagaría), en un marco del tamaño del fondo que
@@ -79,6 +83,61 @@ function barrido(vertical) {
 const EFECTOS = {
   barrido: barrido(false),
   subida: barrido(true),
+  // La foto nueva aparece en el centro como una esfera pequeña (con brillo y
+  // sombra de bola, y la foto adentro girando como un globo) y crece hasta
+  // cubrir todo. El círculo es un recorte redondo que solo se escala: sigue
+  // siendo transform, sin repintar.
+  esfera: (entra, interior, sale, raiz) => {
+    const t = { duration: TRANSICION + 200, easing: SUAVE, fill: 'both' }
+    const ancho = raiz.clientWidth
+    const alto = raiz.clientHeight
+    const diametro = Math.ceil(Math.hypot(ancho, alto))
+    const bola = document.createElement('div')
+    bola.className = 'absolute overflow-hidden rounded-full'
+    Object.assign(bola.style, {
+      width: `${diametro}px`,
+      height: `${diametro}px`,
+      left: `${(ancho - diametro) / 2}px`,
+      top: `${(alto - diametro) / 2}px`,
+    })
+    Object.assign(interior.style, {
+      inset: 'auto',
+      left: `${(diametro - ancho) / 2}px`,
+      top: `${(diametro - alto) / 2}px`,
+      width: `${ancho}px`,
+      height: `${alto}px`,
+    })
+    // El brillo se pinta chico (LADO_BRILLO px) y la GPU lo estira al tamaño de la
+    // bola: un degradado borroso no pierde nada, y así no se rasteriza una capa
+    // del tamaño de la diagonal (en el Motorola, ~2600 px por lado), que era lo
+    // que daba un tirón de hasta 400 ms.
+    const brillo = document.createElement('div')
+    brillo.className =
+      'pointer-events-none absolute left-0 top-0 origin-top-left rounded-full bg-[radial-gradient(circle_at_32%_28%,rgba(255,255,255,0.6),rgba(255,255,255,0.1)_30%,rgba(0,0,0,0)_55%,rgba(0,0,0,0.6)_100%)]'
+    Object.assign(brillo.style, {
+      width: `${LADO_BRILLO}px`,
+      height: `${LADO_BRILLO}px`,
+      transform: `scale(${diametro / LADO_BRILLO})`,
+      willChange: 'transform',
+      opacity: '0',
+    })
+    entra.insertBefore(bola, interior)
+    bola.append(interior, brillo)
+    const crece = bola.animate([{ transform: 'scale(0.06) rotate(-35deg)' }, { transform: 'scale(1) rotate(0deg)' }], t)
+    crece.finished.then(() => {
+      // Ya cubre todo: fuera el brillo y el recorte redondo, que solo cuesta mientras crece.
+      brillo.remove()
+      bola.classList.remove('rounded-full')
+    }, () => {})
+    return [
+      crece,
+      // Giro en 2D: un rotateY con perspectiva dentro del recorte redondo obligaba
+      // a Chrome a armar un contexto 3D enmascarado, y daba tirones en el teléfono.
+      interior.animate([{ transform: 'rotate(25deg) scale(1.15)' }, { transform: 'rotate(0deg) scale(1)' }], t),
+      brillo.animate([{ opacity: 1 }, { opacity: 0.9, offset: 0.55 }, { opacity: 0 }], t),
+      sale.animate([{ transform: 'scale(1)' }, { transform: 'scale(0.9)' }], t),
+    ]
+  },
   acercamiento: (entra, interior, sale) => {
     const t = { duration: TRANSICION, easing: SUAVE, fill: 'both' }
     return [
@@ -89,18 +148,21 @@ const EFECTOS = {
   fundido: (entra) => [entra.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1200, easing: 'ease-out', fill: 'both' })],
 }
 
-// Zoom lento mientras se ve la foto (efecto Ken Burns), cada vez hacia otro lado.
-function kenBurns(medio, duracion) {
-  const x = (Math.random() * 6 - 3).toFixed(1)
-  const y = (Math.random() * 4 - 2).toFixed(1)
-  const cerca = `scale(1.18) translate(${x}%, ${y}%)`
-  const lejos = 'scale(1.04) translate(0, 0)'
-  const acercar = Math.random() < 0.5
-  return medio.animate([{ transform: acercar ? lejos : cerca }, { transform: acercar ? cerca : lejos }], {
-    duration: duracion,
-    easing: 'ease-in-out',
-    fill: 'both',
-  })
+// Movimiento 3D lento mientras se ve la foto: gira unos grados en perspectiva,
+// como una cámara que flota frente al paisaje, cada vez hacia otro lado. La
+// escala tapa los bordes que el giro dejaría a la vista. La primera foto arranca
+// quieta (es como la pintó el HTML) para que no dé un salto al cargar React.
+function movimiento3d(medio, duracion, desdeQuieta) {
+  const signo = () => (Math.random() < 0.5 ? -1 : 1)
+  const giroY = signo() * (3 + Math.random() * 3)
+  const giroX = signo() * (1.5 + Math.random() * 2)
+  const dx = (Math.random() * 4 - 2).toFixed(1)
+  const dy = (Math.random() * 3 - 1.5).toFixed(1)
+  const desde = desdeQuieta ? 'scale(1) rotateY(0deg) rotateX(0deg)' : `scale(1.16) rotateY(${-giroY}deg) rotateX(${giroX}deg)`
+  return medio.animate(
+    [{ transform: desde }, { transform: `scale(1.24) rotateY(${giroY}deg) rotateX(${-giroX}deg) translate3d(${dx}%, ${dy}%, 0)` }],
+    { duration: duracion, easing: 'ease-in-out', fill: 'both' },
+  )
 }
 const EVENTOS_INTERACCION = ['pointerdown', 'keydown', 'scroll', 'wheel']
 
@@ -186,7 +248,11 @@ export default function FondoPortada({ porDefecto, remotos }) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
     const ligero = (navigator.deviceMemory && navigator.deviceMemory <= 2) || navigator.hardwareConcurrency <= 2
-    const efectosVistosos = ['barrido', 'subida', 'acercamiento']
+    // La esfera es la transición más pesada (un recorte redondo del tamaño de la
+    // diagonal): en el Motorola con la CPU 3× más lenta daba un tirón de ~240 ms.
+    // Solo con 4 GB o más; si el navegador no lo dice (iPhone, Firefox), se usa.
+    const conEsfera = !navigator.deviceMemory || navigator.deviceMemory >= 4
+    const efectosVistosos = ['barrido', 'subida', 'acercamiento', ...(conEsfera ? ['esfera'] : [])]
     let ultimoEfecto = ''
     const elegirEfecto = () => {
       if (ligero) return 'fundido'
@@ -194,12 +260,12 @@ export default function FondoPortada({ porDefecto, remotos }) {
       ultimoEfecto = opciones[Math.floor(Math.random() * opciones.length)]
       return ultimoEfecto
     }
-    const zoomLento = (medio) => {
+    const zoomLento = (medio, desdeQuieta = false) => {
       if (ligero) return
       for (const a of medio.getAnimations()) a.cancel()
-      kenBurns(medio, (medio instanceof HTMLVideoElement ? DURACION_MAXIMA_VIDEO : DURACION_IMAGEN) + TRANSICION)
+      movimiento3d(medio, (medio instanceof HTMLVideoElement ? DURACION_MAXIMA_VIDEO : DURACION_IMAGEN) + TRANSICION, desdeQuieta)
     }
-    if (primera) zoomLento(primera)
+    if (primera) zoomLento(primera, true)
 
     let desmontado = false
     let visible = 0
@@ -273,12 +339,12 @@ export default function FondoPortada({ porDefecto, remotos }) {
       const entra = capas[1 - visible]
       const sale = capas[visible]
       const interior = document.createElement('div')
-      interior.className = 'absolute inset-0 overflow-hidden'
+      interior.className = 'absolute inset-0 overflow-hidden [perspective:1000px]'
       interior.append(medio)
       const velo = document.createElement('div')
       velo.className = CLASE_VELO
       entra.replaceChildren(interior, velo)
-      velo.animate([{ opacity: 0 }, { opacity: 0, offset: ILUMINADA / (ILUMINADA + OSCURECE) }, { opacity: 1 }], {
+      velo.animate([{ opacity: VELO_AL_ENTRAR }, { opacity: VELO_AL_ENTRAR, offset: ILUMINADA / (ILUMINADA + OSCURECE) }, { opacity: 1 }], {
         duration: ILUMINADA + OSCURECE,
         easing: 'ease-in-out',
         fill: 'both',
@@ -290,8 +356,10 @@ export default function FondoPortada({ porDefecto, remotos }) {
       const anterior = actual
       actual = medio
       visible = 1 - visible
-      zoomLento(medio)
+      // Primero la transición (la esfera mueve `interior` dentro de la bola) y
+      // después el movimiento 3D de la foto.
       const transicion = EFECTOS[elegirEfecto()](entra, interior, sale, raiz.current)
+      zoomLento(medio)
       programar(item, medio)
       // Al terminar, la capa que salió se vacía y se quitan las animaciones ya
       // cumplidas (todas acaban sin transformar). Vaciarla también quita la
@@ -358,8 +426,8 @@ export default function FondoPortada({ porDefecto, remotos }) {
   }, [porDefecto, remotos])
 
   return (
-    <div ref={raiz} aria-hidden="true" className="absolute inset-0 -z-10 overflow-hidden bg-gray-900">
-      <div ref={capaA} className="absolute inset-0 overflow-hidden">
+    <div ref={raiz} aria-hidden="true" className="absolute inset-0 -z-10 overflow-hidden bg-gray-900 [perspective:1400px]">
+      <div ref={capaA} className="absolute inset-0 overflow-hidden [perspective:1000px]">
         {/* Sin src: lo pone el guion de abajo con una foto al azar (de ahí suppressHydrationWarning). */}
         {/* eslint-disable-next-line @next/next/no-img-element -- la elige el guion antes de React */}
         <img id="fondo-portada-primera" alt="" fetchPriority="high" decoding="async" className={CLASE_MEDIO} suppressHydrationWarning />

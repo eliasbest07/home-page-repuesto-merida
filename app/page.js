@@ -611,10 +611,10 @@ export default async function Home() {
           <FondoPortada porDefecto={FONDOS_MERIDA} remotos={fondosFirebase} />
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 md:grid-cols-[minmax(0,1fr)_300px] lg:grid-cols-[minmax(0,1fr)_340px]">
             <div>
-              <h1 id="titulo-principal" className="font-brand text-[2.1rem] leading-[1.08] text-white [text-shadow:0_2px_18px_rgba(0,0,0,0.65)] sm:text-5xl lg:text-6xl">
+              <h1 id="titulo-principal" className="font-brand text-[2.1rem] leading-[1.08] text-white [text-shadow:0_2px_4px_rgba(0,0,0,0.5),0_4px_24px_rgba(0,0,0,0.75)] sm:text-5xl lg:text-6xl">
                 El repuesto de tu carro, <span className="text-brand-yellow">en Mérida</span>, desde tu teléfono
               </h1>
-              <p className="mt-5 max-w-xl text-lg leading-relaxed text-gray-100 [text-shadow:0_1px_10px_rgba(0,0,0,0.75)]">
+              <p className="mt-5 max-w-xl text-lg leading-relaxed text-gray-100 [text-shadow:0_1px_3px_rgba(0,0,0,0.6),0_2px_14px_rgba(0,0,0,0.8)]">
                 Repuestos Mérida App junta lo que publican los comercios de la ciudad. Buscas la pieza, ves la foto y el
                 precio, y le escribes al vendedor por WhatsApp. Es gratis.
               </p>
@@ -626,7 +626,7 @@ export default async function Home() {
                 {[
                   'Más de 120 comercios de Mérida en el mapa',
                   'Hablas directo con la tienda, sin intermediarios',
-                  'Buscar y preguntar no cuesta nada, ni pide cuenta',
+                  'Buscar y preguntar no cuesta nada',
                 ].map((t) => (
                   <li key={t} className="flex items-start gap-2.5">
                     <svg viewBox="0 0 20 20" aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-brand-yellow" fill="currentColor">
