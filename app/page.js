@@ -3,6 +3,7 @@ import { preload } from 'react-dom'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
 import { FONDOS_MERIDA, leerFondosFirebase } from '@/lib/fondoPortada'
 import FondoPortada from '@/app/components/FondoPortada'
+import BotonUsar from '@/app/components/BotonUsar'
 
 // Landing de la app: enseña a usar Repuestos Mérida App con capturas reales
 // (tomadas en un Motorola con la app 1.1.3). Es un componente de servidor sin
@@ -610,14 +611,15 @@ export default async function Home() {
           <FondoPortada porDefecto={FONDOS_MERIDA} remotos={fondosFirebase} />
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 md:grid-cols-[minmax(0,1fr)_300px] lg:grid-cols-[minmax(0,1fr)_340px]">
             <div>
-              <h1 id="titulo-principal" className="font-brand text-[2.1rem] leading-[1.08] text-white sm:text-5xl lg:text-6xl">
+              <h1 id="titulo-principal" className="font-brand text-[2.1rem] leading-[1.08] text-white [text-shadow:0_2px_18px_rgba(0,0,0,0.65)] sm:text-5xl lg:text-6xl">
                 El repuesto de tu carro, <span className="text-brand-yellow">en Mérida</span>, desde tu teléfono
               </h1>
-              <p className="mt-5 max-w-xl text-lg leading-relaxed text-gray-100">
+              <p className="mt-5 max-w-xl text-lg leading-relaxed text-gray-100 [text-shadow:0_1px_10px_rgba(0,0,0,0.75)]">
                 Repuestos Mérida App junta lo que publican los comercios de la ciudad. Buscas la pieza, ves la foto y el
                 precio, y le escribes al vendedor por WhatsApp. Es gratis.
               </p>
-              <div className="mt-7">
+              <div className="mt-7 grid max-w-xl gap-3">
+                <BotonUsar playUrl={PLAY_URL} appStoreUrl={APP_STORE_URL} />
                 <BotonesTiendas oscuro />
               </div>
               <ul className="mt-8 grid max-w-xl gap-2.5 text-white">

@@ -10,8 +10,9 @@ import { useEffect, useRef } from 'react'
 //  - La primera foto la elige un guion dentro del HTML, así empieza a bajar
 //    antes de que cargue React.
 //  - Solo hay dos capas. Los cambios (barrido con filo de luz, subida o
-//    acercamiento, al azar) y el zoom lento de cada foto solo animan transform
-//    y opacity: los hace la GPU sin repintar. Con 2 GB de memoria o menos se
+//    acercamiento, al azar), la foto que entra iluminada y luego se oscurece y
+//    el zoom lento de cada foto solo animan transform y opacity: los hace la
+//    GPU sin repintar. Con 2 GB de memoria o menos se
 //    quedan en un fundido simple.
 //  - Lo de Firebase se baja de uno en uno, después de que la página cargó,
 //    y no se baja con ahorro de datos, red lenta o poca memoria.
@@ -23,6 +24,12 @@ const DURACION_MAXIMA_VIDEO = 30000
 const TRANSICION = 1400
 const SUAVE = 'cubic-bezier(0.77, 0, 0.175, 1)'
 const CLASE_MEDIO = 'h-full w-full object-cover'
+// Capa oscura de cada foto, para que el texto blanco se lea sobre cualquiera.
+const CLASE_VELO =
+  'absolute inset-0 bg-gradient-to-b from-gray-950/75 via-gray-950/60 to-gray-950/80 md:bg-gradient-to-r md:from-gray-950/85 md:via-gray-950/60 md:to-gray-950/30'
+// La foto que entra llega iluminada, sin capa oscura; cuando ya se asentó, se oscurece.
+const ILUMINADA = 1900
+const OSCURECE = 1300
 
 // Filo de luz amarilla que va al frente del barrido. Está por encima de la capa
 // oscura (si no, el amarillo se apagaría), en un marco del tamaño del fondo que
@@ -111,7 +118,7 @@ function guionPrimeraFoto(lista) {
   const datos = JSON.stringify(lista.map((f) => [f.src, f.srcMovil, f.nombre])).replace(/</g, '\\u003c')
   return `(function(){try{var l=${datos},o=[],i,j,t;for(i=0;i<l.length;i++)o.push(i);for(i=o.length-1;i>0;i--){j=Math.floor(Math.random()*(i+1));t=o[i];o[i]=o[j];o[j]=t}
 var f=l[o[0]],m=window.matchMedia('(max-width: 767px)').matches,img=document.getElementById('fondo-portada-primera');
-img.src=m?f[1]:f[0];var n=document.getElementById('fondo-portada-nombre');if(n)n.textContent=f[2];
+img.src=m?f[1]:f[0];var n=document.getElementById('fondo-portada-nombre');if(n)n.setAttribute('data-nombre',f[2]);
 window.__fondoPortada={orden:o};}catch(e){}})()`
 }
 
@@ -174,7 +181,7 @@ export default function FondoPortada({ porDefecto, remotos }) {
       // El guion del HTML no corrió (bloqueado o con error): se pone aquí.
       const f = porDefecto[ordenPorDefecto[0]]
       primera.src = movil ? f.srcMovil : f.src
-      nombre.current.textContent = f.nombre
+      nombre.current.dataset.nombre = f.nombre
     }
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
@@ -268,10 +275,17 @@ export default function FondoPortada({ porDefecto, remotos }) {
       const interior = document.createElement('div')
       interior.className = 'absolute inset-0 overflow-hidden'
       interior.append(medio)
-      entra.replaceChildren(interior)
+      const velo = document.createElement('div')
+      velo.className = CLASE_VELO
+      entra.replaceChildren(interior, velo)
+      velo.animate([{ opacity: 0 }, { opacity: 0, offset: ILUMINADA / (ILUMINADA + OSCURECE) }, { opacity: 1 }], {
+        duration: ILUMINADA + OSCURECE,
+        easing: 'ease-in-out',
+        fill: 'both',
+      })
       entra.style.zIndex = '1'
       sale.style.zIndex = '0'
-      nombre.current.textContent = item.nombre || ''
+      nombre.current.dataset.nombre = item.nombre || ''
       nombre.current.parentElement.style.visibility = item.nombre ? 'visible' : 'hidden'
       const anterior = actual
       actual = medio
@@ -349,15 +363,16 @@ export default function FondoPortada({ porDefecto, remotos }) {
         {/* Sin src: lo pone el guion de abajo con una foto al azar (de ahí suppressHydrationWarning). */}
         {/* eslint-disable-next-line @next/next/no-img-element -- la elige el guion antes de React */}
         <img id="fondo-portada-primera" alt="" fetchPriority="high" decoding="async" className={CLASE_MEDIO} suppressHydrationWarning />
+        <div className={CLASE_VELO} />
       </div>
       <div ref={capaB} className="absolute inset-0 overflow-hidden" />
-      {/* Oscurece las fotos para que el texto blanco se lea sobre cualquiera. */}
-      <div className="absolute inset-0 bg-gradient-to-b from-gray-950/75 via-gray-950/60 to-gray-950/80 md:bg-gradient-to-r md:from-gray-950/85 md:via-gray-950/60 md:to-gray-950/30" />
       <p className="absolute bottom-3 left-4 flex items-center gap-1.5 text-xs font-semibold text-white/80 sm:left-6">
         <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true">
           <path d="M10 1.5a6 6 0 0 0-6 6c0 4.4 6 11 6 11s6-6.6 6-11a6 6 0 0 0-6-6Zm0 8.2a2.2 2.2 0 1 1 0-4.4 2.2 2.2 0 0 1 0 4.4Z" />
         </svg>
-        <span id="fondo-portada-nombre" ref={nombre} suppressHydrationWarning />
+        {/* El nombre va en data-nombre y lo muestra el CSS: si el guion del HTML le
+            metiera texto, React no lo esperaría y volvería a dibujar toda la portada. */}
+        <span id="fondo-portada-nombre" ref={nombre} className="after:content-[attr(data-nombre)]" suppressHydrationWarning />
       </p>
       <script dangerouslySetInnerHTML={{ __html: guionPrimeraFoto(porDefecto) }} />
     </div>
