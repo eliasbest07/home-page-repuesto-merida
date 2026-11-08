@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { preload } from 'react-dom'
 import { LOCAL_SEO_SIGNALS } from '@/lib/localSeoSignals'
+import { FONDOS_MERIDA, leerFondosFirebase } from '@/lib/fondoPortada'
+import FondoPortada from '@/app/components/FondoPortada'
 
 // Landing de la app: enseña a usar Repuestos Mérida App con capturas reales
 // (tomadas en un Motorola con la app 1.1.3). Es un componente de servidor sin
@@ -459,13 +461,13 @@ function srcsetDe(src) {
   return [240, 400].map((w) => `${src.replace('.webp', `-${w}.webp`)} ${w}w`).concat(`${src} 720w`).join(', ')
 }
 
-function Telefono({ captura, alt, sizes, priority = false }) {
+function Telefono({ captura, alt, sizes, priority = false, sobreFoto = false }) {
   const c = CAPTURAS[captura]
   // El enlace abre la captura completa: en un teléfono pequeño se ve mejor así.
   return (
     <a
       href={c.src}
-      className="block overflow-hidden rounded-[1.4rem] border-[5px] border-gray-950 bg-gray-950 shadow-[0_14px_30px_-12px_rgba(17,24,39,0.45)]"
+      className={`block overflow-hidden rounded-[1.4rem] border-[5px] border-gray-950 bg-gray-950 shadow-[0_14px_30px_-12px_rgba(17,24,39,0.45)] ${sobreFoto ? 'ring-1 ring-white/25' : ''}`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- srcset propio, ver srcsetDe */}
       <img
@@ -476,7 +478,6 @@ function Telefono({ captura, alt, sizes, priority = false }) {
         height={c.h}
         alt={alt}
         loading={priority ? 'eager' : 'lazy'}
-        fetchPriority={priority ? 'high' : 'auto'}
         decoding="async"
         className="block h-auto w-full"
       />
@@ -564,15 +565,19 @@ function Guia({ guia, numero }) {
 
 const TAMANOS_PORTADA = '(min-width: 1024px) 340px, (min-width: 768px) 300px, 72vw'
 
-export default function Home() {
-  // La captura de la portada es lo más grande que pinta la página: se pide
-  // desde el <head>, antes de que el navegador llegue a ella en el HTML.
+// La lista de fondos de Firebase se vuelve a leer cada 10 minutos.
+export const revalidate = 600
+
+export default async function Home() {
+  // La captura de la portada se pide desde el <head>, antes de que el navegador
+  // llegue a ella en el HTML. La prioridad alta queda para la foto de fondo,
+  // que es lo más grande que pinta la página.
   preload(CAPTURAS.inicio.src, {
     as: 'image',
     imageSrcSet: srcsetDe(CAPTURAS.inicio.src),
     imageSizes: TAMANOS_PORTADA,
-    fetchPriority: 'high',
   })
+  const fondosFirebase = await leerFondosFirebase()
   const jsonLd = construirJsonLd()
   return (
     <>
@@ -601,27 +606,28 @@ export default function Home() {
       </header>
 
       <main>
-        <section aria-labelledby="titulo-principal" className="bg-brand-yellow pb-14 pt-6 sm:pb-20 sm:pt-10">
+        <section aria-labelledby="titulo-principal" className="relative isolate overflow-hidden bg-gray-950 pb-16 pt-8 sm:pb-24 sm:pt-14">
+          <FondoPortada porDefecto={FONDOS_MERIDA} remotos={fondosFirebase} />
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 md:grid-cols-[minmax(0,1fr)_300px] lg:grid-cols-[minmax(0,1fr)_340px]">
             <div>
-              <h1 id="titulo-principal" className="font-brand text-[2.1rem] leading-[1.08] text-gray-950 sm:text-5xl lg:text-6xl">
-                El repuesto de tu carro, en Mérida, desde tu teléfono
+              <h1 id="titulo-principal" className="font-brand text-[2.1rem] leading-[1.08] text-white sm:text-5xl lg:text-6xl">
+                El repuesto de tu carro, <span className="text-brand-yellow">en Mérida</span>, desde tu teléfono
               </h1>
-              <p className="mt-5 max-w-xl text-lg leading-relaxed text-gray-900">
+              <p className="mt-5 max-w-xl text-lg leading-relaxed text-gray-100">
                 Repuestos Mérida App junta lo que publican los comercios de la ciudad. Buscas la pieza, ves la foto y el
                 precio, y le escribes al vendedor por WhatsApp. Es gratis.
               </p>
               <div className="mt-7">
-                <BotonesTiendas />
+                <BotonesTiendas oscuro />
               </div>
-              <ul className="mt-8 grid max-w-xl gap-2.5 text-gray-950">
+              <ul className="mt-8 grid max-w-xl gap-2.5 text-white">
                 {[
                   'Más de 120 comercios de Mérida en el mapa',
                   'Hablas directo con la tienda, sin intermediarios',
                   'Buscar y preguntar no cuesta nada, ni pide cuenta',
                 ].map((t) => (
                   <li key={t} className="flex items-start gap-2.5">
-                    <svg viewBox="0 0 20 20" aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-gray-950" fill="currentColor">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-brand-yellow" fill="currentColor">
                       <path d="M10 1.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Zm3.9 6.3-4.6 5a.8.8 0 0 1-1.1.1L6 10.8a.8.8 0 1 1 1.1-1.2l1.6 1.5 4-4.4a.8.8 0 0 1 1.2 1.1Z" />
                     </svg>
                     <span>{t}</span>
@@ -635,6 +641,7 @@ export default function Home() {
                 alt="Pantalla de inicio de Repuestos Mérida App con el selector de ciudad, agrega tu carro y servicios disponibles"
                 sizes={TAMANOS_PORTADA}
                 priority
+                sobreFoto
               />
             </div>
           </div>
